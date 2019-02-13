@@ -1,0 +1,214 @@
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE FlexibleInstances #-}
+
+module HMParser (
+  parseExpr,
+  parseModule,
+  parseModuleDbg
+) where
+
+import Text.Parsec
+import Text.Parsec.Text.Lazy (Parser)
+
+import qualified Text.Parsec.Expr as Ex
+import qualified Text.Parsec.Token as Tok
+import qualified Data.Text.Lazy as L
+import RecursionSchemes
+import Control.Arrow
+import Operators
+import Pretty
+
+import HMLexer
+import qualified Syntax as S
+
+data ExprF a
+  = Var String
+  | App a a
+  | Lam String a
+  | Let String a a
+  | Lit S.Lit
+  | If a a a
+  | Fix a
+  | Op Binop a a
+  deriving (Show, Eq, Ord, Functor)
+
+type Expr = Term ExprF
+
+removeOp :: Algebra ExprF S.Expr
+removeOp = \case
+  Op o e1 e2 -> S.App (S.App (S.Var $ toFunc o) e1) e2
+  Var s -> S.Var s
+  App a b -> S.App a b
+  Lam s a -> S.Lam s a
+  Let s a b -> S.Let s a b
+  Lit l -> S.Lit l
+  If a b c -> S.App (S.App (S.App (S.Var "if") a) b) c
+  Fix a -> S.Fix a
+
+pprint :: Algebra ExprF String
+pprint e = "(" ++ (case e of
+  Var n -> n
+  App a b -> a ++ " " ++ b
+  Lam n e -> "\\" ++ n ++ " " ++ e
+  Let n a b -> "let " ++ n ++ " = " ++ a ++ " in " ++ b
+  Lit l -> show l
+  Fix e -> "fix " ++ e
+  ) ++ ")"
+
+instance Pretty Expr where
+  pretty = cata pprint
+
+instance Pretty [(String, Expr)] where
+  pretty = fmap pretty' >>> unwords
+    where pretty' (s, e) = s ++ " : " ++ pretty e ++ ";\n"
+
+integer :: Parser Integer
+integer = Tok.integer lexer
+
+variable :: Parser Expr
+variable = do
+  x <- identifier
+  return $ In (Var x)
+
+number :: Parser Expr
+number = do
+  n <- integer
+  return $ In (Lit (S.LInt (fromIntegral n)))
+
+bool :: Parser Expr
+bool = (reserved "True" >> return (In $ Lit (S.LBool True)))
+    <|> (reserved "False" >> return (In $ Lit (S.LBool False)))
+
+fix :: Parser Expr
+fix = do
+  reservedOp "fix"
+  x <- expr
+  return $ In (Fix x)
+
+lambda :: Parser Expr
+lambda = do
+  reservedOp "\\"
+  args <- many identifier
+  reservedOp "->"
+  body <- expr
+  return $ foldr (thenIn Lam) body args
+
+letin :: Parser Expr
+letin = do
+  reserved "let"
+  x <- identifier
+  reservedOp "="
+  e1 <- expr
+  reserved "in"
+  e2 <- expr
+  return $ In (Let x e1 e2)
+
+
+ifthen :: Parser Expr
+ifthen = do
+  reserved "if"
+  cond <- expr
+  reservedOp "then"
+  tr <- expr
+  reserved "else"
+  fl <- expr
+  return $ In (If cond tr fl)
+
+aexp :: Parser Expr
+aexp =
+      parens expr
+  <|> bool
+  <|> number
+  <|> ifthen
+  <|> fix
+  <|> letin
+  <|> lambda
+  <|> variable
+
+term :: Parser Expr
+term = aexp >>= \x ->
+                (many1 aexp >>= \xs -> return (foldl (thenIn App) x xs))
+                <|> return x
+
+thenIn :: (a -> Expr -> ExprF Expr) -> (a -> Expr -> Expr)
+thenIn f a b = In $ f a b
+
+infixOp :: String -> (Expr -> Expr -> Expr) -> Ex.Assoc -> Op Expr
+infixOp x f = Ex.Infix (reservedOp x >> return f)
+
+
+table :: Operators Expr
+table = [
+    [
+      infixOp "*" (thenIn (Op Mul)) Ex.AssocLeft
+    ],
+    [
+      infixOp "+" (thenIn (Op Add)) Ex.AssocLeft
+    , infixOp "-" (thenIn (Op Sub)) Ex.AssocLeft
+    ],
+    [
+      infixOp "==" (thenIn (Op Eql)) Ex.AssocLeft
+    ]
+  ]
+
+expr :: Parser Expr
+expr = Ex.buildExpressionParser table term
+
+type Binding = (String, Expr)
+
+letdecl :: Parser Binding
+letdecl = do
+  reserved "let"
+  name <- identifier
+  args <- many identifier
+  reservedOp "="
+  body <- expr
+  return (name, foldr (thenIn Lam) body args)
+
+val :: Parser Binding
+val = do
+  ex <- expr
+  return ("it", ex)
+
+decl :: Parser Binding
+decl = try letdecl <|> val
+
+top :: Parser Binding
+top = do
+  x <- decl
+  optional semi
+  return x
+
+modl ::  Parser [Binding]
+modl = many top
+
+parseExpr :: L.Text -> Either ParseError S.Expr
+parseExpr = parse (contents expr) "<stdin>" >>> (id +++ cata removeOp)
+
+parseModule ::  L.Text -> Either ParseError [(String, S.Expr)]
+parseModule = parse (contents modl) "<stdin>" >>> (id +++ fmap (second (cata removeOp)))
+
+parseModuleDbg ::  L.Text -> String
+parseModuleDbg = parse (contents modl) "<stdin>" >>> (show ||| pretty)
+
+----\/\/
+
+
+
+satisfyT :: (Show a) => (a -> Bool) -> ParsecT [(a, SourcePos)] () Identity a
+satisfyT p = tokenPrim showTok advance testTok
+    where
+      showTok t     = show t
+      testTok (t, _) = if p t then Just t else Nothing
+
+advance _ _ ((_, pos) : _) = pos
+advance pos _ [] = pos
+
+parseAll :: String -> Either ParseError [(Root, SourcePos)]
+parseAll s = (parse (parseToken <* eof) "Token" $ s)>>= (parse (parseRoot <* eof) "Root")
+
+parseOne :: String -> Either ParseError Root
+parseOne s = fst <$> head <$> (parseAll s)

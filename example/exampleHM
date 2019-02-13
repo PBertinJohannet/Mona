@@ -1,0 +1,6 @@
+let facf = \f a -> if a == 0 then a else (f a);
+let o = \l -> l + 1;
+let p = \l -> if l == 0 then 5 else l + 1;
+let ift = \c t f -> if c then t else f;
+let fac = fix facf;
+let faccinq = fac 5;
