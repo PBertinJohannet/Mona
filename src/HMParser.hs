@@ -29,6 +29,21 @@ number = do
   n <- integer
   return (Lit (LInt (fromIntegral n)))
 
+lst :: Parser Expr
+lst = do
+  char '['
+  e <- mychainlfirst expr putIn inList
+  char ']'
+  return e
+  where putIn a = App (App (Var ":") a) $ Var "[]"
+
+inList :: Parser (Expr -> Expr -> Expr)
+inList =
+  do spaces
+     string ","
+     spaces
+     return $ \a b -> App (App (App (Var "flip") (Var ":")) a) b
+
 bool :: Parser Expr
 bool = (reserved "True" >> return (Lit (LBool True)))
     <|> (reserved "False" >> return (Lit (LBool False)))
@@ -50,12 +65,12 @@ lambda = do
 letin :: Parser Expr
 letin = do
   reserved "let"
-  x <- identifier
+  a <- identifier
   reservedOp "="
-  e1 <- expr
+  b <- expr
   reserved "in"
-  e2 <- expr
-  return (Let x e1 e2)
+  c <- expr
+  return $ App (Lam a c) b
 
 ifthen :: Parser Expr
 ifthen = do
@@ -77,6 +92,7 @@ aexp =
   <|> letin
   <|> lambda
   <|> variable
+  <|> lst
 
 fromOp :: [Expr] -> Expr
 fromOp (e:es) = e
@@ -84,23 +100,30 @@ fromOp (e:es) = e
 inExpr :: Parser Expr
 inExpr = mychainl aexp parseOperation
 
-mychainl :: Parser Expr -> Parser (Expr -> Expr -> Expr) -> Parser Expr
-p `mychainl` op = do {a <- p; rest a}
+mychainlfirst :: Parser Expr -> (Expr -> Expr) -> Parser (Expr -> Expr -> Expr) -> Parser Expr
+mychainlfirst p f op = do {a <- f <$> p; rest a}
   where rest a = (do f <- op
                      b <- p
                      rest (f a b))
                  <|> return a
 
-parseOperation :: Parser (Expr -> Expr -> Expr)
+
+mychainl :: Parser Expr -> Parser (Expr -> Expr -> Expr) -> Parser Expr
+mychainl p = mychainlfirst p id
+
 parseOperation =
   do spaces
-     symbol <- string "+" <|> string "-" <|> string "==" <|> string "*" <|> string ""
+     symbol <- try (string "++")
+           <|> string "+"
+           <|> string "-"
+           <|> string "=="
+           <|> string "*"
+           <|> string ":"
+           <|> string ""
      spaces
      return $ case symbol of
        "" -> App
        s -> \a b -> App (App (Var s) a) b
-
-
 
 infixOp :: String -> (a -> a -> a) -> Ex.Assoc -> Op a
 infixOp x f = Ex.Infix (reservedOp x >> return f)

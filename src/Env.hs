@@ -13,7 +13,10 @@ module Env (
   fromList,
   toList,
   pretty,
-  baseEnv
+  baseEnv,
+  modifyClass,
+  ClassEnv(..),
+  baseClasses,
 ) where
 
 import Prelude hiding (lookup)
@@ -31,15 +34,22 @@ import Operators
 -- Typing Environment
 -------------------------------------------------------------------------------
 
-newtype Env = TypeEnv { types :: Map.Map Name Scheme }
-  deriving (Eq, Show)
+newtype ClassEnv = ClassEnv {classes :: Map.Map Name Class} deriving (Eq, Show)
+
+newtype Env = TypeEnv { types :: Map.Map Name Scheme } deriving (Eq, Show)
 
 instance Pretty Env where
-  pretty (TypeEnv e) = mconcat . fmap showAssoc . Map.toList $ e
+  pretty (TypeEnv t) = mconcat . fmap showAssoc . Map.toList $ t
     where showAssoc (n, s) = n ++ " : "++ pretty s ++ "\n"
 
+modifyClass :: ClassEnv -> (String, Class) -> ClassEnv
+modifyClass env (n, c) = env{classes = Map.insert n c (classes env)}
+
 baseEnv :: Env
-baseEnv = TypeEnv $ Map.fromList allOps
+baseEnv = TypeEnv (Map.fromList allOps)
+
+baseClasses :: ClassEnv
+baseClasses = ClassEnv (Map.fromList allClasses)
 
 empty :: Env
 empty = TypeEnv Map.empty

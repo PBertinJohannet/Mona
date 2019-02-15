@@ -29,8 +29,12 @@ reservedOps = [
     "+",
     "*",
     "-",
+    ":",
+    "[",
+    "]",
     "=",
-    "=="
+    "==",
+    "++"
   ]
 
 lexer :: Tok.GenTokenParser L.Text () Identity

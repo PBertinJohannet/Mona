@@ -7,7 +7,6 @@ data Expr
   = Var Name
   | App Expr Expr
   | Lam Name Expr
-  | Let Name Expr Expr
   | Lit Lit
   | Fix Expr
   deriving (Show, Eq, Ord)
@@ -25,8 +24,7 @@ instance Pretty Expr where
   pretty e = "(" ++ (case e of
     Var n -> n
     App a b -> pretty a ++ " " ++ pretty b
-    Lam n e -> "\\n" ++ " " ++ pretty e
-    Let n a b -> "let " ++ n ++ " = " ++ pretty a ++ " in " ++ pretty b
+    Lam n e -> "\\"++ n ++ " " ++ pretty e
     Lit l -> show l
     Fix e -> "fix " ++ pretty e
     ) ++ ")"

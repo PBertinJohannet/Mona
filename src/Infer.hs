@@ -21,19 +21,24 @@ import Data.List (nub)
 import Pretty
 
 
-type Constraint = (Type, Type);
+data Constraint = Union (Type, Type) | InClass (Qual Type); -- a == b
 
 instance Pretty Constraint where
-  pretty (a, b) = pretty a ++ " should unify with : " ++ pretty b ++ "\n"
+  pretty = \case
+    Union (a, b) -> pretty a ++ " should unify with : " ++ pretty b ++ "\n"
+    InClass q -> pretty q ++ "\n"
 
-type Constraints= [Constraint]
+type Constraints = [Constraint]
 
 instance Pretty Constraints where
   pretty = fmap pretty >>> unwords
 
 instance Substituable Constraint where
-  apply s (a, b) = (apply s a, apply s b)
-  ftv (a, b) = ftv a `Set.union` ftv b
+  apply s = \case
+    Union (a, b) -> Union (apply s a, apply s b)
+    InClass q  -> InClass $ apply s q
+  ftv (Union (a, b)) = ftv a `Set.union` ftv b
+  ftv (InClass q) = ftv q
 
 data TypeError
   = UnboundVariable String
@@ -43,54 +48,53 @@ data TypeError
 
 type Infer a = (ReaderT Env (StateT InferState (Except TypeError)) a)
 
+type Solve a = (ReaderT ClassEnv (WriterT String (Except TypeError)) a)
+
 newtype InferState = InferState {count :: Int}
 
 initInfer :: InferState
 initInfer = InferState { count = 0 }
 
-runSolve :: [Constraint] -> Either TypeError Subst
-runSolve cs = fst $ runWriter $ runExceptT $ solver st
-  where st = (nullSubst, cs)
+runSolve :: ClassEnv -> [Constraint] -> Either TypeError Subst
+runSolve env cs = fmap fst
+  $ runIdentity
+  $ runExceptT
+  $ runWriterT
+  $ runReaderT (solver (nullSubst, cs)) env
 
-runSolveLog :: [Constraint] -> Writer String (Either TypeError Subst)
-runSolveLog cs = runExceptT $ solver st
-  where st = (nullSubst, cs)
+runSolveLog :: ClassEnv -> [Constraint] -> WriterT String (Except TypeError) Subst
+runSolveLog env cs = runReaderT (solver (nullSubst, cs)) env
 
 
-inferTopLog :: Env -> [(String, Expr)] -> Writer String (Either TypeError Env)
-inferTopLog env [] = return $ Right env
-inferTopLog env ((name, ex):xs) = do
-  e <- inferExprLog env ex
-  case e of
-    Left err -> return $ Left err
-    Right ty -> do
-      tell $ "found : " ++ pretty ty ++ "\n"
-      inferTopLog (extend env (name, ty)) xs
+inferTopLog :: ClassEnv -> Env -> [(String, Expr)] -> WriterT String (Except TypeError) Env
+inferTopLog _ env [] = return env
+inferTopLog cenv env ((name, ex):xs) = do
+  tell $ "infering : " ++ pretty ex ++ "\n"
+  e <- inferExprLog cenv env ex
+  tell $ "found : " ++ pretty e ++ "\n"
+  inferTopLog cenv (extend env (name, e)) xs
 
-inferTop :: Env -> [(String, Expr)] -> Either TypeError Env
-inferTop env [] = Right env
-inferTop env ((name, ex):xs) = case inferExpr env ex of
+inferTop :: ClassEnv -> Env -> [(String, Expr)] -> Either TypeError Env
+inferTop cenv env [] = Right env
+inferTop cenv env ((name, ex):xs) = case inferExpr cenv env ex of
   Left err -> Left err
-  Right ty -> inferTop (extend env (name, ty)) xs
+  Right ty -> inferTop cenv (extend env (name, ty)) xs
 
-inferExprLog :: Env -> Expr -> Writer String (Either TypeError Scheme)
-inferExprLog env ex = case runInfer env (infer ex) of
-  Left err -> return $ Left err
+inferExprLog :: ClassEnv -> Env -> Expr -> WriterT String (Except TypeError) Scheme
+inferExprLog cenv env ex = case runInfer env (infer ex) of
+  Left err -> throwError err
   Right (ty, cs) -> do
     tell $ "env : \n" ++ pretty env ++ "\n"
     tell $ pretty ty ++ "\n"
     tell $ "constraints : \n"++ pretty cs ++ "\n"
-    sol <- runSolveLog cs
-    case sol of
-      Left err -> return $ Left err
-      Right subst -> do
-        tell $ "found subst : " ++ pretty subst
-        return $ Right $ closeOver $ apply subst ty
+    subst <- runSolveLog cenv cs
+    tell $ "found subst : " ++ pretty subst
+    return $ closeOver $ apply subst ty
 
-inferExpr :: Env -> Expr -> Either TypeError Scheme
-inferExpr env ex = case runInfer env (infer ex) of
+inferExpr :: ClassEnv -> Env -> Expr -> Either TypeError Scheme
+inferExpr cenv env ex = case runInfer env (infer ex) of
   Left err -> Left err
-  Right (ty, cs) -> case runSolve cs of
+  Right (ty, cs) -> case runSolve cenv cs of
     Left err -> Left err
     Right subst -> Right $ closeOver $ apply subst ty
 
@@ -101,18 +105,17 @@ runInfer env m = runIdentity $ runExceptT $ evalStateT (runReaderT m env) initIn
 closeOver :: Type -> Scheme
 closeOver = normalize . generalise Env.empty
 
-
 normalize :: Scheme -> Scheme
-normalize (Forall _ body) = Forall (map snd ord) (normtype body)
+normalize (Forall _ (Qual q body)) = Forall (map snd ord) (Qual q $ normtype body)
   where
-    ord = zip (nub $ fv body) (map TV letters)
+    ord = zip (nub $ fv body) (map var letters)
 
     fv (TVar a)   = [a]
-    fv (TArr a b) = fv a ++ fv b
-    fv (TCon _)    = []
+    fv (TApp a b) = fv a ++ fv b
+    fv (TCon _ _)    = []
 
-    normtype (TArr a b) = TArr (normtype a) (normtype b)
-    normtype (TCon a)   = TCon a
+    normtype (TApp a b) = TApp (normtype a) (normtype b)
+    normtype (TCon a k)   = TCon a k
     normtype (TVar a)   =
       case Prelude.lookup a ord of
         Just x -> TVar x
@@ -123,31 +126,32 @@ inEnv (x, sc) m = do
   let scope e = remove e x `extend` (x, sc)
   local scope m
 
-instantiate :: Scheme -> Infer Type -- replace by fresh variables
-instantiate (Forall as t) = do
+instantiate :: Scheme -> Infer (Qual Type) -- replace by fresh variables
+instantiate (Forall as (Qual preds t)) = do
   as' <- mapM (const fresh) as
   let s = Map.fromList $ zip as as'
-  return $ apply s t
+  return $ Qual (apply s preds) (apply s t)
 
 generalise :: Env -> Type -> Scheme
-generalise env t = Forall as t
+generalise env t = Forall as $ Qual [] t
   where as = Set.toList $ ftv env `Set.difference` ftv t
 
 fresh :: Infer Type
 fresh = do
   s <- get
   put s{count = count s + 1}
-  return $ TVar $ TV (letters !! count s)
+  return $ tvar (letters !! count s)
 
 letters :: [String]
 letters = [1..] >>= flip replicateM ['a'..'z']
 
-lookupEnv :: Name -> Infer Type
+lookupEnv :: Name -> Infer (Qual Type)
 lookupEnv x = do
   (TypeEnv env) <- ask
   case Map.lookup x env of
-    Nothing -> throwError $ UnboundVariable (show x)
     Just s -> instantiate s
+    Nothing -> throwError $ UnboundVariable (show x)
+
 
 infer :: Expr -> Infer (Type, [Constraint])
 infer = \case
@@ -155,38 +159,27 @@ infer = \case
   Lit (LBool _) -> return (typeBool, [])
 
   Var x -> do
-      t <- lookupEnv x
-      return (t, [])
+      (Qual p t) <- lookupEnv x
+      return (t, [InClass $ Qual p t])
 
   Lam x e -> do
     tv <- fresh
-    (t, c) <- inEnv (x, Forall [] tv) (infer e)
-    return (tv `TArr` t, c)
+    (t, c) <- inEnv (x, Forall [] (Qual [] tv)) (infer e)
+    return (tv `mkArr` t, c)
 
   App e1 e2 -> do
     (t1, c1) <- infer e1
     (t2, c2) <- infer e2
     tv <- fresh
-    return (tv, c1 ++ c2 ++ [(t1, t2 `TArr` tv)])
-
-  Let x e1 e2 -> do
-    env <- ask
-    (t1, c1) <- infer e1
-    case runSolve c1 of
-      Left e -> throwError e
-      Right sub -> do
-        let sc = generalise (apply sub env) (apply sub t1)
-        (t2, c2) <- inEnv (x, sc) $ local (apply sub) (infer e2)
-        return (t2, c1 ++ c2)
+    return (tv, c1 ++ c2 ++ [Union (t1, t2 `mkArr` tv)])
 
   Fix e1 -> do
     (t1, c1) <- infer e1
     tv <- fresh
-    return (tv, c1 ++ [(tv `TArr` tv, t1)])
+    return (tv, c1 ++ [Union (tv `mkArr` tv, t1)])
 
 type Unifier = (Subst, [Constraint])
 
-type Solve a = ExceptT TypeError (Writer String) a
 
 emptyUnifier :: Unifier
 emptyUnifier = (nullSubst, [])
@@ -195,7 +188,7 @@ unifies :: Type -> Type -> Solve Subst
 unifies t1 t2 | t1 == t2 = return nullSubst
 unifies (TVar v) t = bind v t
 unifies t (TVar v) = bind v t
-unifies (TArr t1 t2) (TArr t3 t4) = unifyMany [t1, t2] [t3, t4]
+unifies (TApp t1 t2) (TApp t3 t4) = unifyMany [t1, t2] [t3, t4]
 unifies t1 t2 = throwError $ UnificationFail t1 t2
 
 unifyMany :: [Type] -> [Type] -> Solve Subst
@@ -210,11 +203,14 @@ solver :: Unifier -> Solve Subst
 solver (su, cs) =
   case cs of
     [] -> return su
-    ((t1, t2): cs1) -> do
+    (Union (t1, t2) : cs1) -> do
       tell $ "current su : " ++ pretty su ++ "\n"
       tell $ pretty t1 ++ " <=> " ++ pretty t2 ++ "\n\n"
       su1 <- unifies t1 t2
       solver (su1 `compose` su, apply su1 cs1)
+    (InClass (Qual [] t) : cs1) -> solver (su, cs1)
+
+
 
 -- tries to unify a and t
 bind :: TVar -> Type -> Solve Subst
@@ -224,3 +220,6 @@ bind a t | t == TVar a = return nullSubst -- bind a t =
 
 occursCheck :: Substituable a => TVar -> a -> Bool
 occursCheck a t = a `Set.member` ftv t
+
+unifyPred :: Pred -> Pred -> Solve Subst
+unifyPred (IsIn i t) (IsIn i' t') | i == i' = unifies t t'
