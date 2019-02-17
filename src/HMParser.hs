@@ -138,15 +138,23 @@ expr = inExpr
 prodDecl :: Parser TypeDecl
 prodDecl = do
   name <- identifier
-  fields <- many (tApp <|> (: []) <$> identifier)
+  fields <- many field
   return $ Or [Prod name fields]
 
-tApp :: Parser [String]
+tApp :: Parser Field
 tApp = do
   char '('
-  args <- many identifier
+  nm <- field
+  args <- many field
   char ')'
-  return args
+  return $ FieldApp nm args
+
+field :: Parser Field
+field = do
+  spaces
+  r <- tApp <|> FieldS <$> identifier
+  spaces
+  return r
 
 inData :: Parser TypeDecl
 inData = mychainl prodDecl orSep

@@ -14,7 +14,9 @@ data Expr
 
 newtype TypeDecl = Or [Prod] deriving (Show, Eq, Ord)
 
-data Prod = Prod{name :: String, fields :: [[String]]} deriving (Show, Eq, Ord)
+data Prod = Prod{name :: String, fields :: [Field]} deriving (Show, Eq, Ord)
+
+data Field = FieldS String | FieldApp Field [Field] deriving (Show, Eq, Ord)
 
 data Lit
   = LInt Integer

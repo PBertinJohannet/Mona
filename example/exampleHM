@@ -11,3 +11,4 @@ let k3 = \f b -> show ((\e -> f) b);
 data In a = In a;
 data Map a b = Map a b | Set Int b a;
 data L a = L (Map a Int) | None;
+data B a c = B (List (b a)) c;

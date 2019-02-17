@@ -142,7 +142,12 @@ inConstructor :: String -> [String] -> Prod -> Type
 inConstructor name tvars (Prod n fs) =
   foldr mkArr
     (mkType name tvars)
-    $ uncurry mkType <$> catMaybes (uncons <$> fs)
+    $ mkField name <$> fs
+
+mkField :: String -> Field -> Type
+mkField name = \case
+  FieldS s -> (TCon s Star)
+  FieldApp f fs -> foldl TApp (mkField name f) $ fmap (mkField name) fs
 
 mkType :: String -> [String] -> Type
 mkType s tvars = foldl TApp (TCon s Star) $ fmap (`TCon` Star) tvars
