@@ -17,96 +17,93 @@ import Control.Arrow
 import Subst
 import qualified Data.Map as Map
 import qualified Data.Set as Set
-import Data.List (nub)
+import Data.List (nub, find)
 import Pretty
 
 
-data Constraint = Union (Type, Type) | InClass (Qual Type); -- a == b
+newtype Union = Union (Type, Type);
 
-instance Pretty Constraint where
-  pretty = \case
-    Union (a, b) -> pretty a ++ " should unify with : " ++ pretty b ++ "\n"
-    InClass q -> pretty q ++ "\n"
+instance Pretty Union where
+  pretty (Union (a, b)) = pretty a ++ " should unify with : " ++ pretty b ++ "\n"
 
-type Constraints = [Constraint]
+type Constraints = ([Union], [Pred])
 
 instance Pretty Constraints where
-  pretty = fmap pretty >>> unwords
+  pretty (a, b) = pretty a ++ " => " ++ pretty b ++ "\n"
 
-instance Substituable Constraint where
-  apply s = \case
-    Union (a, b) -> Union (apply s a, apply s b)
-    InClass q  -> InClass $ apply s q
+union :: (Type, Type) -> Constraints
+union u = ([Union u], [])
+
+instance Substituable Union where
+  apply s (Union (a, b)) = Union (apply s a, apply s b)
   ftv (Union (a, b)) = ftv a `Set.union` ftv b
-  ftv (InClass q) = ftv q
 
 data TypeError
   = UnboundVariable String
   | InfiniteType Type
+  | NotInClass Pred
+  | UnknownClass String
+  | WrongKind String Kind
   | UnificationFail Type Type
   | UnificationMismatch [Type] [Type] deriving (Show, Eq);
 
+instance Pretty TypeError where
+  pretty = \case
+    UnboundVariable s -> "Variable not in scope : "++ s
+    InfiniteType t -> "Cannot create infinite type : "++pretty t
+    NotInClass (IsIn a b) -> pretty b ++ " is not in " ++ a
+    UnknownClass s -> "Unknown class : " ++ s
+    WrongKind s k -> s ++ " has kind : " ++ pretty k
+    UnificationFail t t' -> "Cannot unify : " ++ pretty t ++ " with "++pretty t'
+    UnificationMismatch t t' -> "Cannot unify : " ++ pretty t ++ " with "++pretty t'
+
 type Infer a = (ReaderT Env (StateT InferState (Except TypeError)) a)
 
-type Solve a = (ReaderT ClassEnv (WriterT String (Except TypeError)) a)
+type Solve a = (ReaderT ClassEnv (ExceptT TypeError (Writer String)) a)
+
+type CSolve a = (ReaderT (ClassEnv, Subst) (ExceptT TypeError (Writer String)) a)
 
 newtype InferState = InferState {count :: Int}
 
 initInfer :: InferState
 initInfer = InferState { count = 0 }
 
-runSolve :: ClassEnv -> [Constraint] -> Either TypeError Subst
-runSolve env cs = fmap fst
-  $ runIdentity
-  $ runExceptT
-  $ runWriterT
-  $ runReaderT (solver (nullSubst, cs)) env
+runSolve :: ClassEnv -> Constraints -> ExceptT TypeError (Writer String) ([Pred], Subst)
+runSolve env cs = runReaderT (solver cs) env
 
-runSolveLog :: ClassEnv -> [Constraint] -> WriterT String (Except TypeError) Subst
-runSolveLog env cs = runReaderT (solver (nullSubst, cs)) env
-
-
-inferTopLog :: ClassEnv -> Env -> [(String, Expr)] -> WriterT String (Except TypeError) Env
-inferTopLog _ env [] = return env
-inferTopLog cenv env ((name, ex):xs) = do
+inferTop :: ClassEnv -> Env -> [(String, Expr)] -> ExceptT TypeError (Writer String) Env
+inferTop _ env [] = return env
+inferTop cenv env ((name, ex):xs) = do
   tell $ "infering : " ++ pretty ex ++ "\n"
-  e <- inferExprLog cenv env ex
+  e <- inferExpr cenv env ex
   tell $ "found : " ++ pretty e ++ "\n"
-  inferTopLog cenv (extend env (name, e)) xs
+  inferTop cenv (extend env (name, e)) xs
 
-inferTop :: ClassEnv -> Env -> [(String, Expr)] -> Either TypeError Env
-inferTop cenv env [] = Right env
-inferTop cenv env ((name, ex):xs) = case inferExpr cenv env ex of
-  Left err -> Left err
-  Right ty -> inferTop cenv (extend env (name, ty)) xs
-
-inferExprLog :: ClassEnv -> Env -> Expr -> WriterT String (Except TypeError) Scheme
-inferExprLog cenv env ex = case runInfer env (infer ex) of
+inferExpr :: ClassEnv -> Env -> Expr -> ExceptT TypeError (Writer String) Scheme
+inferExpr cenv env ex = case runInfer env (infer ex) of
   Left err -> throwError err
   Right (ty, cs) -> do
     tell $ "env : \n" ++ pretty env ++ "\n"
     tell $ pretty ty ++ "\n"
     tell $ "constraints : \n"++ pretty cs ++ "\n"
-    subst <- runSolveLog cenv cs
-    tell $ "found subst : " ++ pretty subst
-    return $ closeOver $ apply subst ty
+    (preds, subst) <- runSolve cenv cs
+    tell $ "\nfound final : " ++ pretty preds
+    tell $ "\npreds : " ++ pretty (apply subst preds) ++ "\n"
+    tell $ "ty : " ++ pretty (apply subst ty) ++ "\n"
+    tell $ "after gen : " ++ pretty (generalise Env.empty (apply subst preds) (apply subst ty)) ++ "\n"
+    tell $ "after norm : " ++ pretty (normalize (generalise Env.empty (apply subst preds) (apply subst ty))) ++ "\n"
+    return $ closeOver (apply subst ty) (apply subst preds)
 
-inferExpr :: ClassEnv -> Env -> Expr -> Either TypeError Scheme
-inferExpr cenv env ex = case runInfer env (infer ex) of
-  Left err -> Left err
-  Right (ty, cs) -> case runSolve cenv cs of
-    Left err -> Left err
-    Right subst -> Right $ closeOver $ apply subst ty
-
-runInfer :: Env -> Infer (Type, [Constraint]) -> Either TypeError (Type, [Constraint])
+runInfer :: Env -> Infer (Type, Constraints) -> Either TypeError (Type, Constraints)
 runInfer env m = runIdentity $ runExceptT $ evalStateT (runReaderT m env) initInfer
 
 -- | Canonicalize and return the polymorphic toplevel type.
-closeOver :: Type -> Scheme
-closeOver = normalize . generalise Env.empty
+closeOver :: Type -> [Pred] -> Scheme
+closeOver t p = (normalize . generalise Env.empty p) t
 
 normalize :: Scheme -> Scheme
-normalize (Forall _ (Qual q body)) = Forall (map snd ord) (Qual q $ normtype body)
+normalize (Forall _ (Qual q body)) =
+  Forall (map snd ord) (Qual (q >>= normpred) (normtype body))
   where
     ord = zip (nub $ fv body) (map var letters)
 
@@ -114,10 +111,17 @@ normalize (Forall _ (Qual q body)) = Forall (map snd ord) (Qual q $ normtype bod
     fv (TApp a b) = fv a ++ fv b
     fv (TCon _ _)    = []
 
+    fd a = snd <$> find (\(TV n _, x) -> n == a) ord
+
+    normpred (IsIn n (TVar (TV k _))) = case fd k of
+        Just x -> [IsIn n $ TVar x]
+        Nothing -> []
+    normpred a = error $ "what ? " ++ show a
+
     normtype (TApp a b) = TApp (normtype a) (normtype b)
     normtype (TCon a k)   = TCon a k
-    normtype (TVar a)   =
-      case Prelude.lookup a ord of
+    normtype (TVar (TV a _))   =
+      case fd a of
         Just x -> TVar x
         Nothing -> error "type variable not in signature"
 
@@ -132,8 +136,8 @@ instantiate (Forall as (Qual preds t)) = do
   let s = Map.fromList $ zip as as'
   return $ Qual (apply s preds) (apply s t)
 
-generalise :: Env -> Type -> Scheme
-generalise env t = Forall as $ Qual [] t
+generalise :: Env -> [Pred] -> Type -> Scheme
+generalise env p t = Forall as $ Qual p t
   where as = Set.toList $ ftv env `Set.difference` ftv t
 
 fresh :: Infer Type
@@ -145,6 +149,12 @@ fresh = do
 letters :: [String]
 letters = [1..] >>= flip replicateM ['a'..'z']
 
+noConstraints :: Constraints
+noConstraints = ([], [])
+
+(+-) :: Constraints -> Constraints -> Constraints
+(a, b) +- (a', b') = (a ++ a', b ++ b')
+
 lookupEnv :: Name -> Infer (Qual Type)
 lookupEnv x = do
   (TypeEnv env) <- ask
@@ -153,14 +163,14 @@ lookupEnv x = do
     Nothing -> throwError $ UnboundVariable (show x)
 
 
-infer :: Expr -> Infer (Type, [Constraint])
+infer :: Expr -> Infer (Type, Constraints)
 infer = \case
-  Lit (LInt _) -> return (typeInt, [])
-  Lit (LBool _) -> return (typeBool, [])
+  Lit (LInt _) -> return (typeInt, noConstraints)
+  Lit (LBool _) -> return (typeBool, noConstraints)
 
   Var x -> do
       (Qual p t) <- lookupEnv x
-      return (t, [InClass $ Qual p t])
+      return (t, ([], p))
 
   Lam x e -> do
     tv <- fresh
@@ -171,15 +181,14 @@ infer = \case
     (t1, c1) <- infer e1
     (t2, c2) <- infer e2
     tv <- fresh
-    return (tv, c1 ++ c2 ++ [Union (t1, t2 `mkArr` tv)])
+    return (tv, c1 +- c2 +- union (t1, t2 `mkArr` tv))
 
   Fix e1 -> do
     (t1, c1) <- infer e1
     tv <- fresh
-    return (tv, c1 ++ [Union (tv `mkArr` tv, t1)])
+    return (tv, c1 +- union (tv `mkArr` tv, t1))
 
-type Unifier = (Subst, [Constraint])
-
+type Unifier = (Subst, [Union])
 
 emptyUnifier :: Unifier
 emptyUnifier = (nullSubst, [])
@@ -199,18 +208,57 @@ unifyMany (t1 : ts1) (t2 : ts2) = do
   return $ s2 `compose` s1
 unifyMany t1 t2 = throwError $ UnificationMismatch t1 t2
 
-solver :: Unifier -> Solve Subst
-solver (su, cs) =
+solver :: Constraints -> Solve ([Pred], Subst)
+solver (unions, ps) = do
+  sub <- unionSolve (nullSubst, unions)
+  preds <- withReaderT (\e -> (e, sub)) (classSolve $ ClassSolver [] (apply sub ps))
+  tell $ "found preds : "++ pretty preds
+  return (preds, sub)
+
+
+unionSolve :: Unifier -> Solve Subst
+unionSolve (su, cs) =
   case cs of
     [] -> return su
-    (Union (t1, t2) : cs1) -> do
-      tell $ "current su : " ++ pretty su ++ "\n"
+    Union (t1, t2) : cs1 -> do
       tell $ pretty t1 ++ " <=> " ++ pretty t2 ++ "\n\n"
       su1 <- unifies t1 t2
-      solver (su1 `compose` su, apply su1 cs1)
-    (InClass (Qual [] t) : cs1) -> solver (su, cs1)
+      tell $ pretty su1
+      unionSolve (su1 `compose` su, apply su1 cs1)
 
+data ClassSolver = ClassSolver{found :: [Pred], remain :: [Pred]};
 
+classSolve :: ClassSolver -> CSolve [Pred]
+classSolve = \case
+  ClassSolver founds [] -> return founds
+  ClassSolver founds (p:ps) -> do
+    preds <- solvePred p
+    tell $ " found preds : " ++ pretty preds
+    classSolve $ ClassSolver (founds ++ preds) ps
+
+solvePred :: Pred -> CSolve [Pred]
+solvePred (IsIn n t) = do
+  (ClassEnv cenv, s) <- ask
+  tell $ "solving : " ++ pretty t ++ " is " ++ n ++ "\n"
+  case Map.lookup n cenv of
+    Nothing -> throwError $ UnknownClass n
+    Just cls -> isIn n (apply s cls) t
+
+isIn :: String -> Class -> Type -> CSolve [Pred]
+isIn cname (m, insts) = \case
+  TVar t -> return [IsIn cname $ TVar t]
+  t -> satisfyInsts (IsIn cname t) insts
+
+satisfyInsts :: Pred -> [Inst] -> CSolve [Pred]
+satisfyInsts s [i] = satisfyInst s i
+satisfyInsts s (i:is) = satisfyInst s i `catchError` \e -> satisfyInsts s is
+
+satisfyInst :: Pred -> Inst -> CSolve [Pred]
+satisfyInst t (Qual ps t') = do
+  tell $ "sub goal : " ++ pretty t ++ " ::: " ++ pretty (Qual ps t') ++ "\n"
+  if t == t'
+  then classSolve $ ClassSolver [] ps
+  else throwError $ NotInClass t
 
 -- tries to unify a and t
 bind :: TVar -> Type -> Solve Subst

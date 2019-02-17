@@ -16,27 +16,44 @@ import Text.Parsec (ParseError)
 import Pretty
 import Control.Monad.Writer
 import Control.Monad.Except
+import Control.Monad.State
 
 -- (((flip) (:) [1]) 2)
-
 
 (<&>) = flip fmap
 
 main = (getArgs <&> head >>= readFile) <&> run >>= putStrLn
 
+data PassErr = TypeError TypeError | DeclErr DeclErr;
+
+instance Pretty PassErr where
+  pretty = \case
+    TypeError t -> "TypeError : " ++ pretty t
+    DeclErr d -> "DeclarationError : " ++ pretty d
+
 run :: String -> String
 run = L.pack
   >>> parseModule "ok"
-  >>> fmap (Infer.inferTopLog baseClasses baseEnv >>> runWriterT)
+  >>> fmap (passes >>> runExceptT >>> runWriter)
   >>> debug --debug . fmap (
 
-instance Pretty [(String, Expr)] where
-  pretty = fmap pretty' >>> unwords
-    where pretty' (s, e) = s ++ " : " ++ pretty e ++ "\n"
+passes :: [(String, Statement)] -> ExceptT PassErr (Writer String) Env
+passes l = do
+  (exprs, env) <- withExceptT DeclErr $ runTypeDecls baseEnv l
+  env1 <- withExceptT TypeError $ inferTop baseClasses env exprs
+  return env1
+  -- >>> flip runStateT baseEnv
+  -- >>> withExceptT DeclErr
+--  >>> ((DeclErr +++ id) &&& id)
+  -- >>> _ok
 
-debug :: Either ParseError (Except Infer.TypeError (Env, String)) -> String
+
+instance Pretty (String, Expr) where
+  pretty (s, e) = s ++ " : " ++ pretty e ++ "\n"
+
+debug :: Either ParseError (Either PassErr Env, String) -> String
 debug = \case
   Left perr -> "ParseError : " ++ show perr
-  Right sol -> case runExcept sol of
-    Left terr -> "TypeError : " ++ show terr
-    Right (env, s) -> s ++ "\n" ++ pretty env
+  Right (r, s) -> s ++ "\n" ++ case r of
+    Left terr -> "TypeError : " ++ pretty terr
+    Right env -> pretty env

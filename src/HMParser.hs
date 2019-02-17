@@ -1,7 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module HMParser (
-  parseExpr,
   parseModule
 ) where
 
@@ -15,6 +14,8 @@ import qualified Data.Text.Lazy as L
 
 import HMLexer
 import Syntax
+
+import Control.Arrow
 
 integer :: Parser Integer
 integer = Tok.integer lexer
@@ -100,7 +101,7 @@ fromOp (e:es) = e
 inExpr :: Parser Expr
 inExpr = mychainl aexp parseOperation
 
-mychainlfirst :: Parser Expr -> (Expr -> Expr) -> Parser (Expr -> Expr -> Expr) -> Parser Expr
+mychainlfirst :: Parser a -> (a -> a) -> Parser (a -> a -> a) -> Parser a
 mychainlfirst p f op = do {a <- f <$> p; rest a}
   where rest a = (do f <- op
                      b <- p
@@ -108,7 +109,7 @@ mychainlfirst p f op = do {a <- f <$> p; rest a}
                  <|> return a
 
 
-mychainl :: Parser Expr -> Parser (Expr -> Expr -> Expr) -> Parser Expr
+mychainl :: Parser a -> Parser (a -> a -> a) -> Parser a
 mychainl p = mychainlfirst p id
 
 parseOperation =
@@ -134,7 +135,30 @@ makeOp o a = App (App (Var o) a)
 expr :: Parser Expr
 expr = inExpr
 
-type Binding = (String, Expr)
+prodDecl :: Parser TypeDecl
+prodDecl = do
+  name <- identifier
+  fields <- many (tApp <|> (: []) <$> identifier)
+  return $ Or [Prod name fields]
+
+tApp :: Parser [String]
+tApp = do
+  char '('
+  args <- many identifier
+  char ')'
+  return args
+
+inData :: Parser TypeDecl
+inData = mychainl prodDecl orSep
+
+orSep :: Parser (TypeDecl -> TypeDecl -> TypeDecl)
+orSep = do
+  spaces
+  string "|"
+  spaces
+  return $ \(Or a) (Or a') -> Or (a ++ a')
+
+type Binding = (String, Statement)
 
 letdecl :: Parser Binding
 letdecl = do
@@ -143,15 +167,19 @@ letdecl = do
   args <- many identifier
   reservedOp "="
   body <- expr
-  return (name, foldr Lam body args)
+  return (name, Expr $ foldr Lam body args)
 
-val :: Parser Binding
-val = do
-  ex <- expr
-  return ("it", ex)
+typedecl :: Parser Binding
+typedecl = do
+  reserved "data"
+  name <- identifier
+  tvars <- many identifier
+  reservedOp "="
+  body <- inData
+  return (name, TypeDecl tvars body)
 
 decl :: Parser Binding
-decl = letdecl <|> val
+decl = letdecl <|> typedecl
 
 top :: Parser Binding
 top = do
@@ -162,8 +190,5 @@ top = do
 modl ::  Parser [Binding]
 modl = many top
 
-parseExpr :: L.Text -> Either ParseError Expr
-parseExpr = parse (contents expr) "<stdin>"
-
-parseModule ::  FilePath -> L.Text -> Either ParseError [(String, Expr)]
+parseModule ::  FilePath -> L.Text -> Either ParseError [Binding]
 parseModule = parse (contents modl)

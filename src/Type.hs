@@ -35,6 +35,7 @@ tvar s = TVar $ var s
 typeInt, typeBool, typeList :: Type
 typeInt  = TCon "Int" Star
 typeBool = TCon "Bool" Star
+typeChar = TCon "Char" Star
 typeList = TCon "List" $ Kfun Star Star
 tArr = TCon "(->)" $ Kfun Star (Kfun Star Star)
 
@@ -81,3 +82,11 @@ instance Pretty Type where
       -> "(" ++ pretty a ++ " -> " ++ pretty b ++ ")"
     TApp (TCon "List" _) a -> "[" ++ pretty a ++ "]"
     TApp a b -> "(" ++ pretty a ++ " " ++ pretty b ++ ")"
+
+instance Pretty Kind where
+  pretty = \case
+    Star -> "*"
+    Kfun Star Star -> "* -> *"
+    Kfun Star k -> "* -> " ++ pretty k
+    Kfun k Star -> pretty k ++ " -> *"
+    Kfun k k' -> pretty k ++ " -> " ++ pretty k'

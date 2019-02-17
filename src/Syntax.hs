@@ -11,6 +11,11 @@ data Expr
   | Fix Expr
   deriving (Show, Eq, Ord)
 
+
+newtype TypeDecl = Or [Prod] deriving (Show, Eq, Ord)
+
+data Prod = Prod{name :: String, fields :: [[String]]} deriving (Show, Eq, Ord)
+
 data Lit
   = LInt Integer
   | LBool Bool
@@ -18,7 +23,10 @@ data Lit
 
 data Program = Program [Decl] Expr deriving Eq
 
-type Decl = (String, Expr)
+type Decl = (String, Statement)
+type ExprDecl = (String, Expr)
+
+data Statement = Expr Expr | TypeDecl [String] TypeDecl deriving (Show, Eq, Ord);
 
 instance Pretty Expr where
   pretty e = "(" ++ (case e of

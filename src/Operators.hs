@@ -23,10 +23,15 @@ toFunc = \case
 
 allOps :: [(Name, Scheme)]
 allOps  = [
+  ("show", showOp),
   ("[]", emptyList),
   ("++", listConcat),
   (":", listOp),
   ("if", ifOp)] ++ ops
+
+showOp :: Scheme
+showOp = Forall [var "a"] $ Qual [IsIn "Show" a] $ a `mkArr` mkList typeChar
+  where a = tvar "a"
 
 emptyList :: Scheme
 emptyList = Forall [var "a"] $ Qual []  $ mkList $ tvar "a"
@@ -53,7 +58,13 @@ allClasses = [
        Qual [] $ IsIn "Ord" typeBool,
        Qual [] $ IsIn "Ord" typeInt,
        Qual [IsIn "Ord" $ tvar "a"] $ IsIn "Ord" $ mkList $ tvar "a"
-       ]))]
+       ])),
+  ("Show", ([],
+      [
+      Qual [] $ IsIn "Show" typeBool,
+      Qual [] $ IsIn "Show" typeInt,
+      Qual [IsIn "Show" $ tvar "a"] $ IsIn "Show" $ mkList $ tvar "a"
+      ]))]
 
 -- (bool -> (a -> (a -> a)))
 
