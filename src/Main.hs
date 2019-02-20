@@ -17,14 +17,14 @@ import Pretty
 import Control.Monad.Writer
 import Control.Monad.Except
 import Control.Monad.State
-
+import InterpretTypes
 -- (((flip) (:) [1]) 2)
 
 (<&>) = flip fmap
 
 main = (getArgs <&> head >>= readFile) <&> run >>= putStrLn
 
-data PassErr = TypeError TypeError | DeclErr DeclErr;
+data PassErr = TypeError TypeError | DeclErr DeclErr | IntError ();
 
 instance Pretty PassErr where
   pretty = \case
@@ -33,25 +33,41 @@ instance Pretty PassErr where
 
 run :: String -> String
 run = L.pack
-  >>> parseModule "ok"
+  >>> parseModule "exampleHM"
   >>> fmap (passes >>> runExceptT >>> runWriter)
   >>> debug --debug . fmap (
 
-passes :: [(String, Statement)] -> ExceptT PassErr (Writer String) Env
+sepDecls :: [Decl] -> ([ExprDecl], [(String, [String], Expr)])
+sepDecls [] = ([], [])
+sepDecls (d:ds) =
+  let (vars, datas) = sepDecls ds in
+  case d of
+    (s, TypeDecl tvars e) -> (vars, (s, tvars, e): datas)
+    (s, Expr e) -> ((s, e): vars, datas)
+
+instance Pretty (String, [String], Expr) where
+  pretty (name, tvars, ex) = "type " ++ name ++ " " ++ unwords tvars ++ " = " ++ pretty ex ++ "\n"
+
+passes :: [(String, Statement)] -> ExceptT PassErr (Writer String) Envs
 passes l = do
-  (exprs, env) <- withExceptT DeclErr $ runTypeDecls baseEnv l
-  env1 <- withExceptT TypeError $ inferTop baseClasses env exprs
-  return env1
+  let (exprs, datas) = sepDecls l
+  tell $ "datas : \n" ++ pretty datas
+  env <- withExceptT TypeError $ inferDecl baseEnvs datas
+  rs <- withExceptT IntError $ interpret datas env
+  --tell $ pretty env
+  --tell $ pretty exprs
+  withExceptT TypeError $ inferTop env exprs
+  --
   -- >>> flip runStateT baseEnv
   -- >>> withExceptT DeclErr
---  >>> ((DeclErr +++ id) &&& id)
+  --  >>> ((DeclErr +++ id) &&& id)
   -- >>> _ok
 
 
 instance Pretty (String, Expr) where
   pretty (s, e) = s ++ " : " ++ pretty e ++ "\n"
 
-debug :: Either ParseError (Either PassErr Env, String) -> String
+debug :: Either ParseError (Either PassErr Envs, String) -> String
 debug = \case
   Left perr -> "ParseError : " ++ show perr
   Right (r, s) -> s ++ "\n" ++ case r of

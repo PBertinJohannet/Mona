@@ -17,6 +17,26 @@ import Syntax
 
 import Control.Arrow
 
+
+-- returns the transformed function.
+pat :: Parser (Expr -> Expr)
+pat = patternId <|> patternParen
+
+patternId :: Parser (Expr -> Expr)
+patternId = do
+  ident <- identifier
+  return $ \e -> Lam ident e
+
+patternParen :: Parser (Expr -> Expr)
+patternParen = do
+  spaces
+  char '('
+  patName <- identifier
+  patterns <- many pat
+  char ')'
+  spaces
+  return (App (Var $ "~" ++ patName) . foldr (.) id patterns)
+
 integer :: Parser Integer
 integer = Tok.integer lexer
 
@@ -38,6 +58,12 @@ lst = do
   return e
   where putIn a = App (App (Var ":") a) $ Var "[]"
 
+emptylst :: Parser Expr
+emptylst = do
+  char '['
+  char ']'
+  return $ Var "[]"
+
 inList :: Parser (Expr -> Expr -> Expr)
 inList =
   do spaces
@@ -58,10 +84,10 @@ fix = do
 lambda :: Parser Expr
 lambda = do
   reservedOp "\\"
-  args <- many identifier
+  args <- many pat
   reservedOp "->"
   body <- expr
-  return $ foldr Lam body args
+  return $ foldr (.) id args body
 
 letin :: Parser Expr
 letin = do
@@ -93,7 +119,8 @@ aexp =
   <|> letin
   <|> lambda
   <|> variable
-  <|> lst
+  <|> try lst
+  <|> emptylst
 
 fromOp :: [Expr] -> Expr
 fromOp (e:es) = e
@@ -135,36 +162,12 @@ makeOp o a = App (App (Var o) a)
 expr :: Parser Expr
 expr = inExpr
 
-prodDecl :: Parser TypeDecl
-prodDecl = do
-  name <- identifier
-  fields <- many field
-  return $ Or [Prod name fields]
-
-tApp :: Parser Field
-tApp = do
-  char '('
-  nm <- field
-  args <- many field
-  char ')'
-  return $ FieldApp nm args
-
-field :: Parser Field
-field = do
+inSpaces :: Parser a -> Parser a
+inSpaces a = do
   spaces
-  r <- tApp <|> FieldS <$> identifier
+  x <- a
   spaces
-  return r
-
-inData :: Parser TypeDecl
-inData = mychainl prodDecl orSep
-
-orSep :: Parser (TypeDecl -> TypeDecl -> TypeDecl)
-orSep = do
-  spaces
-  string "|"
-  spaces
-  return $ \(Or a) (Or a') -> Or (a ++ a')
+  return x
 
 type Binding = (String, Statement)
 
@@ -183,8 +186,12 @@ typedecl = do
   name <- identifier
   tvars <- many identifier
   reservedOp "="
-  body <- inData
-  return (name, TypeDecl tvars body)
+  body <- sepBy constructor $ inSpaces (char '|')
+  return (name, TypeDecl tvars $ desugarData name tvars $ getCons name <$> body)
+
+-- given MF a | MFW b returns (|) (\MF -> a) (\MFW -> b)
+constructor :: Parser Expr
+constructor = option (Var "()") expr
 
 decl :: Parser Binding
 decl = letdecl <|> typedecl

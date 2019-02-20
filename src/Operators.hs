@@ -4,7 +4,8 @@ module Operators (
   toFunc,
   Binop(..),
   allOps,
-  allClasses
+  allClasses,
+  allKinds
   ) where
 
 import Type
@@ -65,6 +66,16 @@ allClasses = [
       Qual [] $ IsIn "Show" typeInt,
       Qual [IsIn "Show" $ tvar "a"] $ IsIn "Show" $ mkList $ tvar "a"
       ]))]
+
+allKinds :: [(String, Scheme)]
+allKinds = [
+    ("()", Forall [] $ Qual [] typeStar),
+    ("List", Forall [] $ Qual [] $ typeStar `mkArr` typeStar),
+    ("Int", Forall [] $ Qual [] typeStar),
+    ("|", Forall [var "a"] $ Qual [] $ tvar "a" `mkArr` (tvar "a" `mkArr` tvar "a")),
+    ("Bool", Forall [] $ Qual [] typeStar),
+    ("Char", Forall [] $ Qual [] typeStar)
+    ]
 
 -- (bool -> (a -> (a -> a)))
 

@@ -21,7 +21,7 @@ import Data.List (nub, find)
 import Pretty
 
 
-newtype Union = Union (Type, Type);
+newtype Union = Union (Type, Type) deriving Show;
 
 instance Pretty Union where
   pretty (Union (a, b)) = pretty a ++ " should unify with : " ++ pretty b ++ "\n"
@@ -71,27 +71,26 @@ initInfer = InferState { count = 0 }
 runSolve :: ClassEnv -> Constraints -> ExceptT TypeError (Writer String) ([Pred], Subst)
 runSolve env cs = runReaderT (solver cs) env
 
-inferTop :: ClassEnv -> Env -> [(String, Expr)] -> ExceptT TypeError (Writer String) Env
-inferTop _ env [] = return env
-inferTop cenv env ((name, ex):xs) = do
+inferDecl :: Envs -> [(String, [String], Expr)] -> ExceptT TypeError (Writer String) Envs
+inferDecl env [] = return env
+inferDecl (Envs d ev cenv) ((name, _, ex):xs) = do
+  e <- inferExpr cenv d ex
+  inferDecl (Envs (extend d (name, e)) ev cenv) xs
+
+
+inferTop :: Envs -> [(String, Expr)] -> ExceptT TypeError (Writer String) Envs
+inferTop env [] = return env
+inferTop (Envs d env cenv) ((name, ex):xs) = do
   tell $ "infering : " ++ pretty ex ++ "\n"
   e <- inferExpr cenv env ex
   tell $ "found : " ++ pretty e ++ "\n"
-  inferTop cenv (extend env (name, e)) xs
+  inferTop (Envs d (extend env (name, e)) cenv) xs
 
 inferExpr :: ClassEnv -> Env -> Expr -> ExceptT TypeError (Writer String) Scheme
 inferExpr cenv env ex = case runInfer env (infer ex) of
   Left err -> throwError err
   Right (ty, cs) -> do
-    tell $ "env : \n" ++ pretty env ++ "\n"
-    tell $ pretty ty ++ "\n"
-    tell $ "constraints : \n"++ pretty cs ++ "\n"
     (preds, subst) <- runSolve cenv cs
-    tell $ "\nfound final : " ++ pretty preds
-    tell $ "\npreds : " ++ pretty (apply subst preds) ++ "\n"
-    tell $ "ty : " ++ pretty (apply subst ty) ++ "\n"
-    tell $ "after gen : " ++ pretty (generalise Env.empty (apply subst preds) (apply subst ty)) ++ "\n"
-    tell $ "after norm : " ++ pretty (normalize (generalise Env.empty (apply subst preds) (apply subst ty))) ++ "\n"
     return $ closeOver (apply subst ty) (apply subst preds)
 
 runInfer :: Env -> Infer (Type, Constraints) -> Either TypeError (Type, Constraints)
@@ -146,8 +145,6 @@ fresh = do
   put s{count = count s + 1}
   return $ tvar (letters !! count s)
 
-letters :: [String]
-letters = [1..] >>= flip replicateM ['a'..'z']
 
 noConstraints :: Constraints
 noConstraints = ([], [])
@@ -160,7 +157,7 @@ lookupEnv x = do
   (TypeEnv env) <- ask
   case Map.lookup x env of
     Just s -> instantiate s
-    Nothing -> throwError $ UnboundVariable (show x)
+    Nothing -> throwError $ UnboundVariable $ show x ++ " " ++ pretty (TypeEnv env)
 
 
 infer :: Expr -> Infer (Type, Constraints)
@@ -212,7 +209,6 @@ solver :: Constraints -> Solve ([Pred], Subst)
 solver (unions, ps) = do
   sub <- unionSolve (nullSubst, unions)
   preds <- withReaderT (\e -> (e, sub)) (classSolve $ ClassSolver [] (apply sub ps))
-  tell $ "found preds : "++ pretty preds
   return (preds, sub)
 
 
@@ -221,9 +217,7 @@ unionSolve (su, cs) =
   case cs of
     [] -> return su
     Union (t1, t2) : cs1 -> do
-      tell $ pretty t1 ++ " <=> " ++ pretty t2 ++ "\n\n"
       su1 <- unifies t1 t2
-      tell $ pretty su1
       unionSolve (su1 `compose` su, apply su1 cs1)
 
 data ClassSolver = ClassSolver{found :: [Pred], remain :: [Pred]};
@@ -233,13 +227,11 @@ classSolve = \case
   ClassSolver founds [] -> return founds
   ClassSolver founds (p:ps) -> do
     preds <- solvePred p
-    tell $ " found preds : " ++ pretty preds
     classSolve $ ClassSolver (founds ++ preds) ps
 
 solvePred :: Pred -> CSolve [Pred]
 solvePred (IsIn n t) = do
   (ClassEnv cenv, s) <- ask
-  tell $ "solving : " ++ pretty t ++ " is " ++ n ++ "\n"
   case Map.lookup n cenv of
     Nothing -> throwError $ UnknownClass n
     Just cls -> isIn n (apply s cls) t
@@ -254,8 +246,7 @@ satisfyInsts s [i] = satisfyInst s i
 satisfyInsts s (i:is) = satisfyInst s i `catchError` \e -> satisfyInsts s is
 
 satisfyInst :: Pred -> Inst -> CSolve [Pred]
-satisfyInst t (Qual ps t') = do
-  tell $ "sub goal : " ++ pretty t ++ " ::: " ++ pretty (Qual ps t') ++ "\n"
+satisfyInst t (Qual ps t') =
   if t == t'
   then classSolve $ ClassSolver [] ps
   else throwError $ NotInClass t

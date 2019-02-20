@@ -1,4 +1,6 @@
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE FlexibleInstances #-}
 
 module Type where
 import Pretty
@@ -39,6 +41,10 @@ typeChar = TCon "Char" Star
 typeList = TCon "List" $ Kfun Star Star
 tArr = TCon "(->)" $ Kfun Star (Kfun Star Star)
 
+-- used to resolve kinds
+typeStar :: Type
+typeStar = TCon "Star" Star
+
 mkArr :: Type -> Type -> Type
 mkArr a = TApp (TApp tArr a)
 
@@ -57,6 +63,9 @@ instance HasKind Type where
     TCon s k -> k
     TApp a b -> case getKind a of
       Kfun _ k -> k
+
+instance Pretty Class where
+  pretty = show
 
 instance Pretty Pred where
   pretty (IsIn i t) = "(" ++ i ++ " " ++ pretty t ++ ")"
@@ -77,16 +86,18 @@ instance Pretty TVar where
 instance Pretty Type where
   pretty = \case
     TVar v -> pretty v
-    TCon s k -> s
-    TApp (TApp (TCon "(->)" _) a) b
-      -> "(" ++ pretty a ++ " -> " ++ pretty b ++ ")"
+    TCon s k -> s ++ " : " ++ pretty k
+    TApp (TApp (TCon "(->)" _) a) b -> case a of
+      TApp (TApp (TCon "(->)" _) _) _ ->"(" ++ pretty a ++ ") -> " ++ pretty b
+      a -> pretty a ++ " -> " ++ pretty b
     TApp (TCon "List" _) a -> "[" ++ pretty a ++ "]"
     TApp a b -> "(" ++ pretty a ++ " " ++ pretty b ++ ")"
+
+-- a b c
 
 instance Pretty Kind where
   pretty = \case
     Star -> "*"
     Kfun Star Star -> "* -> *"
     Kfun Star k -> "* -> " ++ pretty k
-    Kfun k Star -> pretty k ++ " -> *"
-    Kfun k k' -> pretty k ++ " -> " ++ pretty k'
+    Kfun k k' -> "(" ++ pretty k ++ ") -> " ++ pretty k'
