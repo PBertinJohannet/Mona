@@ -12,6 +12,7 @@ import Control.Monad.Writer
 import Control.Monad.Reader
 import Control.Monad.Except
 import qualified Data.Map as Map
+import Control.Arrow
 import Data.Maybe
 import Infer
 import Data.List
@@ -24,39 +25,39 @@ data UK = UK{
   tcons :: Type,
   tp :: Type,
   kd :: Kind,
+  patterns :: [(String, Scheme)],
   consts :: [(String, Scheme)]};
 
 instance Pretty (String, Scheme) where
-  pretty (s, Forall _ (Qual _ t)) = s ++ " = " ++ showKind t ++ "\n"
+  pretty (s, t) = s ++ " = " ++ showKind t ++ "\n"
 
 instance Pretty UK where
-  pretty (UK tname tvars tcons tp kd cst) =
+  pretty (UK tname tvars tcons tp kd pats cst) =
     tname ++ " : " ++ pretty kd
     ++ "\nconstructing : " ++ pretty tcons
     ++ "\n of type  : " ++ pretty tp
     ++ "\n with tvars : " ++ unwords (showKind <$> tvars)
-    ++ "\n and constructors : \n" ++ pretty cst ++ "\n"
+    ++ "\n constructors : \n" ++ pretty cst ++ "\n"
+    ++ "\n and patterns : \n" ++ pretty pats ++ "\n"
 
 interpret :: [(String, [String], Expr)] -> Envs -> ExceptT TypeError (Writer String) Envs
 interpret ds env = foldM (flip runInterpret) env ds
 
 runInterpret :: (String, [String], Expr) -> Envs -> ExceptT TypeError (Writer String) Envs
 runInterpret (s, tvars, e) (Envs d v cenv) = do
-  tell $ "infering : " ++ pretty e ++ "\n"
   Forall _ (Qual _ t) <- inferExpr cenv d e
-  tell $ "infered : " ++ pretty t ++ "\n"
+  tell $ "infered : " ++ showKind t ++ "\n"
   runReaderT (interpretTop (Envs d v cenv) s tvars e t) d
 
 interpretTop :: Envs -> String -> [String] -> Expr -> Type -> Interpret Envs
 interpretTop (Envs dat e cenv) name tvars expr inferedType = do
   (env, expr1) <- flattenArgs name expr inferedType
-  tell $ "env : \n" ++ pretty env ++"\n"
   calls <- apply expr1
   uk <- local (const env) $ createType name tvars calls
-  tell $ "created : " ++ pretty uk ++ "\n"
+  tell $ "created : \n" ++ pretty uk ++ "\n"
   return $ Envs
     (extend dat (name, Forall (var <$> tvars) $ Qual [] (tp uk)))
-    (extends e $ consts uk)
+    (extends e $ consts uk ++ patterns uk)
     cenv
 
 findTV :: String -> Interpret TVar
@@ -68,16 +69,17 @@ createType :: String -> [String] -> [Expr] -> Interpret UK
 createType s tvars constructs = do
   vs <- mapM findKind tvars
   tvs <- mapM findTV tvars
-  let tc =  foldl TApp (tvar s) (tvar <$> tvars)
+  let kind = foldr Kfun Star vs
+  let tc =  foldl TApp (TCon s kind) (tvar <$> tvars)
   let schem = Forall tvs $ Qual [] tc
-  cts <- mapM (makeCons tc tvs) constructs
-  tell $ "constructs exprs : " ++ pretty constructs ++ "\n"
+  (cts, pats) <- unzip <$> mapM (makeCons tc tvs) constructs
   return UK {
       tname = s,
-      kd = foldr Kfun Star vs,
+      kd = kind,
       tcons = tc,
       tp = foldr mkArr (TVar $ TV "a" Star) (toKindVar <$> tvs),
       tvars = tvs,
+      patterns = pats,
       consts = cts
     }
 
@@ -91,6 +93,12 @@ kindToVar = \case
 
 nextFresh :: [String] -> String
 nextFresh tvars = let Just a = find (`notElem` tvars) letters in a
+
+nextVar :: [TVar] -> Type
+nextVar = fmap (\(TV n _) -> n) >>> nextFresh >>> tvar
+
+nextTV :: [TVar] -> TVar
+nextTV = fmap (\(TV n _) -> n) >>> nextFresh >>> var
 
 findKind :: String -> Interpret Kind
 findKind s = do
@@ -127,11 +135,18 @@ apply expr = do
     k -> return [k]
 
 
-makeCons :: Type -> [TVar] -> Expr -> Interpret (String, Scheme)
+makeCons :: Type -> [TVar] -> Expr -> Interpret ((String, Scheme), (String, Scheme))
 makeCons baseT tvars expr = do
   (c:argsTp) <- mapM (toType baseT tvars) $ uncurryCall expr
-  return (pretty c,
-    Forall tvars $ Qual [] (simplifyUnit $ foldr mkArr baseT argsTp))
+  return ((pretty c,
+    Forall tvars $ Qual [] (simplifyUnit $ foldr mkArr baseT argsTp)),
+    ("~" ++ pretty c,
+    Forall (ret:tvars) $ Qual [] (simplifyUnit $ toPat argsTp)))
+    where --
+      toPat argsTp = foldr mkArr retv argsTp `mkArr` (baseT `mkArr` retv)
+      retv = nextVar tvars
+      ret = nextTV tvars
+
 
 toType :: Type -> [TVar] -> Expr -> Interpret Type
 toType baseT tvars e = do
@@ -141,7 +156,9 @@ toType baseT tvars e = do
         a1 <- toType baseT tvars a
         b1 <- toType baseT tvars b
         return $ TApp a1 b1
-      Var v -> return $ maybe (TCon v Star) TVar (find (\(TV n k) -> n == v) tvars)
+      Var v -> do
+        k <- findKind v
+        return $ maybe (TCon v k) TVar (find (\(TV n k) -> n == v) tvars)
       Fix e -> do
         e1 <- toType baseT tvars e
         return $ TApp e1 baseT
@@ -152,13 +169,3 @@ simplifyUnit = \case
   TApp (TApp (TCon "(->)" _) (TCon "()" _)) b -> b
   TApp a b -> TApp (simplifyUnit a) b
   e -> e
-
-
-
-{-
-  = Var v
-  | App Expr Expr
-  | Lam Name Expr
-  | Lit Lit
-  | Fix Expr
--}

@@ -1,4 +1,10 @@
-data Ok = Ok Int | None;
+data Prod a b = P a b;
+data Maybe a = Nil | Just a;
+data App f a = A (f a);
+data Inl a = Inl (List a);
+data Cmp a = Cmp (App Maybe a);
+data Nat = N (fix Maybe);
+data Lam = L (\e -> Maybe e) | None;
 let flip = \f a b -> f b a;
 let facf = \f a -> if a == 0 then a else (f a);
 let o = \l -> l + 1;

@@ -52,16 +52,11 @@ passes :: [(String, Statement)] -> ExceptT PassErr (Writer String) Envs
 passes l = do
   let (exprs, datas) = sepDecls l
   tell $ "datas : \n" ++ pretty datas
+  tell $ "exprs : \n" ++ pretty exprs
   env <- withExceptT TypeError $ interpret datas baseEnvs
   --tell $ pretty env
   --tell $ pretty exprs
   withExceptT TypeError $ inferTop env exprs
-  --
-  -- >>> flip runStateT baseEnv
-  -- >>> withExceptT DeclErr
-  --  >>> ((DeclErr +++ id) &&& id)
-  -- >>> _ok
-
 
 instance Pretty (String, Expr) where
   pretty (s, e) = s ++ " : " ++ pretty e ++ "\n"

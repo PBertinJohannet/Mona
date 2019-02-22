@@ -102,19 +102,22 @@ class ShowKind a where
   showKind :: a -> String
 
 instance ShowKind Type where
-  showKind =  \case
-    TVar v -> pretty v
+  showKind = \case
+    TVar v -> showKind v
     TCon s k -> s ++ " (" ++ pretty k ++ ")"
     TApp (TApp (TCon "(->)" _) a) b -> case a of
       TApp (TApp (TCon "(->)" _) _) _ ->"(" ++ showKind a ++ ") -> " ++ showKind b
-      a -> pretty a ++ " -> " ++ showKind b
+      a -> showKind a ++ " -> " ++ showKind b
     TApp (TCon "List" _) a -> "[" ++ showKind a ++ "]"
     TApp a b -> "(" ++ showKind a ++ " " ++ showKind b ++ ")"
 
 instance ShowKind TVar where
   showKind (TV v k) = v ++ "("++ pretty k ++")"
 
--- a b c
+instance ShowKind Scheme where
+  showKind = \case
+    Forall [] (Qual q tp) -> pretty q ++ " => " ++ showKind tp
+    Forall t (Qual q tp) -> "forall " ++ unwords (fmap showKind t) ++ " . "++ pretty q ++ " => " ++ showKind tp
 
 instance Pretty Kind where
   pretty = \case

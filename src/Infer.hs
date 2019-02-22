@@ -85,13 +85,15 @@ inferTop env [] = return env
 inferTop (Envs d env cenv) ((name, ex):xs) = do
   tell $ "infering : " ++ pretty ex ++ "\n"
   e <- inferExpr cenv env ex
-  tell $ "found : " ++ pretty e ++ "\n"
+  tell $ "found : " ++ showKind e ++ "\n\n"
   inferTop (Envs d (extend env (name, e)) cenv) xs
 
 inferExpr :: ClassEnv -> Env -> Expr -> ExceptT TypeError (Writer String) Scheme
 inferExpr cenv env ex = case runInfer env (infer ex) of
   Left err -> throwError err
   Right (ty, cs) -> do
+    tell $ "ex : " ++ pretty ex ++ "\n"
+    tell $ "ty : " ++ pretty ty ++ "\n"
     (preds, subst) <- runSolve cenv cs
     return $ closeOver (apply subst ty) (apply subst preds)
 
@@ -166,7 +168,7 @@ lookupEnv x = do
   (TypeEnv env) <- ask
   case Map.lookup x env of
     Just s -> instantiate s
-    Nothing -> throwError $ UnboundVariable $ show x ++ " " ++ pretty (TypeEnv env)
+    Nothing -> throwError $ UnboundVariable $ show x
 
 inferEq :: Expr -> Scheme -> Infer (Type, Constraints)
 inferEq e t0 = do
@@ -209,7 +211,8 @@ unifies t1 t2 | t1 == t2 = return nullSubst
 unifies (TVar v) t = bind v t
 unifies t (TVar v) = bind v t
 unifies (TApp t1 t2) (TApp t3 t4) = unifyMany [t1, t2] [t3, t4]
-unifies t1 t2 = throwError $ UnificationFail t1 t2
+unifies t1 t2 = do
+  throwError $ UnificationFail t1 t2
 
 unifyMany :: [Type] -> [Type] -> Solve Subst
 unifyMany [] [] = return nullSubst
