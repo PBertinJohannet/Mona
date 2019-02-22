@@ -45,6 +45,7 @@ data TypeError
   | UnknownClass String
   | WrongKind String Kind
   | UnificationFail Type Type
+  | UnknownCommand String
   | UnificationMismatch [Type] [Type] deriving (Show, Eq);
 
 instance Pretty TypeError where
@@ -52,6 +53,7 @@ instance Pretty TypeError where
     UnboundVariable s -> "Variable not in scope : "++ s
     InfiniteType t -> "Cannot create infinite type : "++pretty t
     NotInClass (IsIn a b) -> pretty b ++ " is not in " ++ a
+    UnknownCommand s -> "Unknown command : " ++ s
     UnknownClass s -> "Unknown class : " ++ s
     WrongKind s k -> s ++ " has kind : " ++ pretty k
     UnificationFail t t' -> "Cannot unify : " ++ pretty t ++ " with "++pretty t'
@@ -88,6 +90,13 @@ inferTop (Envs d env cenv) ((name, ex):xs) = do
 
 inferExpr :: ClassEnv -> Env -> Expr -> ExceptT TypeError (Writer String) Scheme
 inferExpr cenv env ex = case runInfer env (infer ex) of
+  Left err -> throwError err
+  Right (ty, cs) -> do
+    (preds, subst) <- runSolve cenv cs
+    return $ closeOver (apply subst ty) (apply subst preds)
+
+inferExprT :: ClassEnv -> Env -> Expr -> Scheme -> ExceptT TypeError (Writer String) Scheme
+inferExprT cenv env ex tp = case runInfer env (inferEq ex tp) of
   Left err -> throwError err
   Right (ty, cs) -> do
     (preds, subst) <- runSolve cenv cs
@@ -159,6 +168,11 @@ lookupEnv x = do
     Just s -> instantiate s
     Nothing -> throwError $ UnboundVariable $ show x ++ " " ++ pretty (TypeEnv env)
 
+inferEq :: Expr -> Scheme -> Infer (Type, Constraints)
+inferEq e t0 = do
+  Qual q t1 <- instantiate t0
+  (t2, c) <- infer e
+  return (t1, ([], q) +- union (t1, t2))
 
 infer :: Expr -> Infer (Type, Constraints)
 infer = \case

@@ -24,7 +24,7 @@ import InterpretTypes
 
 main = (getArgs <&> head >>= readFile) <&> run >>= putStrLn
 
-data PassErr = TypeError TypeError | DeclErr DeclErr | IntError ();
+data PassErr = TypeError TypeError | DeclErr DeclErr;
 
 instance Pretty PassErr where
   pretty = \case
@@ -52,8 +52,7 @@ passes :: [(String, Statement)] -> ExceptT PassErr (Writer String) Envs
 passes l = do
   let (exprs, datas) = sepDecls l
   tell $ "datas : \n" ++ pretty datas
-  env <- withExceptT TypeError $ inferDecl baseEnvs datas
-  rs <- withExceptT IntError $ interpret datas env
+  env <- withExceptT TypeError $ interpret datas baseEnvs
   --tell $ pretty env
   --tell $ pretty exprs
   withExceptT TypeError $ inferTop env exprs

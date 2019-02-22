@@ -53,6 +53,16 @@ mapLeft f = \case
   App a b -> App (mapLeft f a) b
   e -> f e
 
+-- apply a function to the leftmost element of a succession of applications.
+leftMost :: Expr -> Expr
+leftMost = \case
+  App a b -> leftMost a
+  e -> e
+
+uncurryCall :: Expr -> [Expr]
+uncurryCall = \case
+  App a b -> uncurryCall a ++ [b]
+  e -> [e]
 
 instance Pretty Expr where
   pretty e = "(" ++ (case e of

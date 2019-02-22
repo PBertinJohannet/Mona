@@ -51,6 +51,11 @@ mkArr a = TApp (TApp tArr a)
 mkList :: Type -> Type
 mkList = TApp typeList
 
+setReturn :: Type -> Type -> Type
+setReturn = \case
+  TApp (TApp (TCon "(->)" k) a) b -> TApp (TApp (TCon "(->)" k) a) . setReturn b
+  _ -> id
+
 class HasKind a where
   getKind :: a -> Kind
 
@@ -86,12 +91,28 @@ instance Pretty TVar where
 instance Pretty Type where
   pretty = \case
     TVar v -> pretty v
-    TCon s k -> s ++ " : " ++ pretty k
+    TCon s k -> s -- ++ " : " ++ pretty k
     TApp (TApp (TCon "(->)" _) a) b -> case a of
       TApp (TApp (TCon "(->)" _) _) _ ->"(" ++ pretty a ++ ") -> " ++ pretty b
       a -> pretty a ++ " -> " ++ pretty b
     TApp (TCon "List" _) a -> "[" ++ pretty a ++ "]"
     TApp a b -> "(" ++ pretty a ++ " " ++ pretty b ++ ")"
+
+class ShowKind a where
+  showKind :: a -> String
+
+instance ShowKind Type where
+  showKind =  \case
+    TVar v -> pretty v
+    TCon s k -> s ++ " (" ++ pretty k ++ ")"
+    TApp (TApp (TCon "(->)" _) a) b -> case a of
+      TApp (TApp (TCon "(->)" _) _) _ ->"(" ++ showKind a ++ ") -> " ++ showKind b
+      a -> pretty a ++ " -> " ++ showKind b
+    TApp (TCon "List" _) a -> "[" ++ showKind a ++ "]"
+    TApp a b -> "(" ++ showKind a ++ " " ++ showKind b ++ ")"
+
+instance ShowKind TVar where
+  showKind (TV v k) = v ++ "("++ pretty k ++")"
 
 -- a b c
 

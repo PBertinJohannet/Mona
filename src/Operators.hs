@@ -69,12 +69,11 @@ allClasses = [
 
 allKinds :: [(String, Scheme)]
 allKinds = [
-    ("()", Forall [] $ Qual [] typeStar),
-    ("List", Forall [] $ Qual [] $ typeStar `mkArr` typeStar),
-    ("Int", Forall [] $ Qual [] typeStar),
+    ("List", Forall [var "a"] $ Qual [] $ tvar "a" `mkArr` tvar "a"),
+    ("Int", Forall [] $ Qual [] $ tvar "a"),
     ("|", Forall [var "a"] $ Qual [] $ tvar "a" `mkArr` (tvar "a" `mkArr` tvar "a")),
-    ("Bool", Forall [] $ Qual [] typeStar),
-    ("Char", Forall [] $ Qual [] typeStar)
+    ("Bool", Forall [] $ Qual [] $ tvar "a"),
+    ("Char", Forall [] $ Qual [] $ tvar "a")
     ]
 
 -- (bool -> (a -> (a -> a)))
