@@ -30,23 +30,6 @@ type ExprDecl = (String, Expr)
 
 data Statement = Expr Expr | TypeDecl [String] Expr deriving (Show, Eq, Ord);
 
-desugarData :: String -> [String] -> [(String, Expr)] -> Expr
-desugarData name idents cts =
-  let (names, c:cs) = unzip cts in
-  let body = foldr (App . App (Var "|")) c cs in
-  foldr Lam body $ idents ++ names
-
-getCons :: String -> Expr -> (String, Expr)
-getCons s e = (extractCons s e, e)
-
-extractCons :: String -> Expr -> String
-extractCons s = \case
-  Lam a e -> extractCons s e
-  App a b -> extractCons s a
-  Var v -> v
-  Fix f -> s
-  Lit l -> show l
-
 -- apply a function to the leftmost element of a succession of applications.
 mapLeft :: (Expr -> Expr) -> Expr -> Expr
 mapLeft f = \case
@@ -59,6 +42,9 @@ leftMost = \case
   App a b -> leftMost a
   e -> e
 
+leftMostVar :: Expr -> String
+leftMostVar e = let Var v = leftMost e in v
+
 uncurryCall :: Expr -> [Expr]
 uncurryCall = \case
   App a b -> uncurryCall a ++ [b]
@@ -67,6 +53,7 @@ uncurryCall = \case
 instance Pretty Expr where
   pretty e = "(" ++ (case e of
     Var n -> n
+    App (App (Var "|") a) b -> pretty a ++ " | " ++ pretty b
     App a b -> pretty a ++ " " ++ pretty b
     Lam n e -> "\\"++ n ++ " -> " ++ pretty e
     Lit l -> show l

@@ -147,6 +147,8 @@ parseOperation =
            <|> string "=="
            <|> string "*"
            <|> string ":"
+           <|> string "|"
+           <|> string "."
            <|> string ""
      spaces
      return $ case symbol of
@@ -186,12 +188,16 @@ typedecl = do
   name <- identifier
   tvars <- many identifier
   reservedOp "="
-  body <- sepBy constructor $ inSpaces (char '|')
-  return (name, TypeDecl tvars $ desugarData name tvars $ getCons name <$> body)
+  body <- expr
+  return (name, TypeDecl tvars body)
 
--- given MF a | MFW b returns (|) (\MF -> a) (\MFW -> b)
 constructor :: Parser Expr
-constructor = option (Var "()") expr
+constructor = do
+  name <- identifier
+  e <- option (Var "") expr
+  return $ case e of
+    Var "" -> Var name
+    e -> App (Var name) e
 
 decl :: Parser Binding
 decl = letdecl <|> typedecl

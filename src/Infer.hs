@@ -85,15 +85,12 @@ inferTop env [] = return env
 inferTop (Envs d env cenv) ((name, ex):xs) = do
   tell $ "infering : " ++ pretty ex ++ "\n"
   e <- inferExpr cenv env ex
-  tell $ "found : " ++ showKind e ++ "\n\n"
   inferTop (Envs d (extend env (name, e)) cenv) xs
 
 inferExpr :: ClassEnv -> Env -> Expr -> ExceptT TypeError (Writer String) Scheme
 inferExpr cenv env ex = case runInfer env (infer ex) of
   Left err -> throwError err
   Right (ty, cs) -> do
-    tell $ "ex : " ++ pretty ex ++ "\n"
-    tell $ "ty : " ++ pretty ty ++ "\n"
     (preds, subst) <- runSolve cenv cs
     return $ closeOver (apply subst ty) (apply subst preds)
 
@@ -115,7 +112,7 @@ normalize :: Scheme -> Scheme
 normalize (Forall _ (Qual q body)) =
   Forall (map snd ord) (Qual (q >>= normpred) (normtype body))
   where
-    ord = zip (nub $ fv body) (map var letters)
+    ord = zip (nub $ fv body) (map var lettersSim)
 
     fv (TVar a)   = [a]
     fv (TApp a b) = fv a ++ fv b

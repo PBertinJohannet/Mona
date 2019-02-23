@@ -45,6 +45,8 @@ sepDecls (d:ds) =
     (s, TypeDecl tvars e) -> (vars, (s, tvars, e): datas)
     (s, Expr e) -> ((s, e): vars, datas)
 
+
+
 instance Pretty (String, [String], Expr) where
   pretty (name, tvars, ex) = "type " ++ name ++ " " ++ unwords tvars ++ " = " ++ pretty ex ++ "\n"
 

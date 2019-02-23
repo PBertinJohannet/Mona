@@ -20,6 +20,7 @@ module Env (
   DeclErr,
   baseEnvs,
   letters,
+  lettersSim,
 ) where
 
 import Prelude hiding (lookup)
@@ -45,7 +46,10 @@ import Data.Maybe (catMaybes)
 -------------------------------------------------------------------------------
 
 letters :: [String]
-letters = [1..] >>= flip replicateM ['a'..'z']
+letters = ('\'':) <$> lettersSim
+
+lettersSim :: [String]
+lettersSim = [1..] >>= flip replicateM ['a'..'z']
 
 newtype ClassEnv = ClassEnv {classes :: Map.Map Name Class} deriving (Eq, Show)
 

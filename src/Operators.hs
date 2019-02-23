@@ -83,4 +83,7 @@ ops = fmap (\(name, (a, b, c)) -> (name, Forall [] $ Qual []  $ a `mkArr` (b `mk
   [("+", (typeInt, typeInt, typeInt)),
   ("*", (typeInt, typeInt, typeInt)),
   ("-", (typeInt, typeInt, typeInt)),
+  (".", (tvar "b" `mkArr` tvar "c",
+        tvar "a" `mkArr` tvar "b",
+        tvar "a" `mkArr` tvar "c")),
   ("==", (typeInt, typeInt, typeBool))]

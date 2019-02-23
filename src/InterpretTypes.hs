@@ -1,6 +1,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE DeriveFunctor #-}
 
 module InterpretTypes where
 import Pretty
@@ -45,14 +46,14 @@ interpret ds env = foldM (flip runInterpret) env ds
 
 runInterpret :: (String, [String], Expr) -> Envs -> ExceptT TypeError (Writer String) Envs
 runInterpret (s, tvars, e) (Envs d v cenv) = do
-  Forall _ (Qual _ t) <- inferExpr cenv d e
-  tell $ "infered : " ++ showKind t ++ "\n"
-  runReaderT (interpretTop (Envs d v cenv) s tvars e t) d
+  let (toInfer, baseConsts, additionalConsts) = desugar tvars e
+  tell $ "base : " ++ pretty baseConsts ++ "\n"
+  Forall _ (Qual _ t) <- inferExpr cenv d toInfer
+  runReaderT (interpretTop (Envs d v cenv) s tvars toInfer t baseConsts) d
 
-interpretTop :: Envs -> String -> [String] -> Expr -> Type -> Interpret Envs
-interpretTop (Envs dat e cenv) name tvars expr inferedType = do
+interpretTop :: Envs -> String -> [String] -> Expr -> Type -> [Expr] -> Interpret Envs
+interpretTop (Envs dat e cenv) name tvars expr inferedType calls = do
   (env, expr1) <- flattenArgs name expr inferedType
-  calls <- apply expr1
   uk <- local (const env) $ createType name tvars calls
   tell $ "created : \n" ++ pretty uk ++ "\n"
   return $ Envs
@@ -92,7 +93,7 @@ kindToVar = \case
   Star -> tvar "a"
 
 nextFresh :: [String] -> String
-nextFresh tvars = let Just a = find (`notElem` tvars) letters in a
+nextFresh tvars = let Just a = find (`notElem` tvars) lettersSim in a
 
 nextVar :: [TVar] -> Type
 nextVar = fmap (\(TV n _) -> n) >>> nextFresh >>> tvar
@@ -103,8 +104,9 @@ nextTV = fmap (\(TV n _) -> n) >>> nextFresh >>> var
 findKind :: String -> Interpret Kind
 findKind s = do
   env <- ask
-  let Just (Forall _ (Qual _ tp)) = Env.lookup s env
-  return $ extractKind tp
+  return $ case Env.lookup s env of
+    Just (Forall _ (Qual _ t)) -> extractKind t
+    Nothing -> Star
 
 extractKind :: Type -> Kind
 extractKind = \case
@@ -125,15 +127,50 @@ flattenArgs name expr tp = do
       return (mconcat [env1, env, env2], e2)
     _ -> return (env, expr)
 
-apply :: Expr -> Interpret [Expr]
-apply expr = do
-  env <- ask
-  case expr of
-    App (App (Var "|") a) b -> do
-      b1 <- apply b
-      return $ a:b1
-    k -> return [k]
 
+extractCons :: Expr -> [String]
+extractCons = \case
+  App (App (Var "|") a) b -> extractCons b ++ extractCons a
+  App (App (Var "+") a) b -> extractCons b ++ extractCons a
+  App a b -> extractCons a
+  Lam n e -> extractCons e
+  Var v -> [v]
+  Lit l -> ["uh uh"]
+  Fix e -> extractCons e
+
+data ConsDeclF a = Or a | Plus a  deriving (Show, Functor);
+type ConsDecl = ConsDeclF Expr;
+
+instance Pretty ConsDecl where
+  pretty = \case
+    Plus a -> "Plus " ++ pretty a
+    Or a -> "Or " ++ pretty a
+
+
+getBaseConsts :: [ConsDecl] -> ([Expr], [Expr])
+getBaseConsts = \case
+  [] -> ([], [])
+  (a:as) -> let (os, ps) = getBaseConsts as in case a of
+    (Plus p) -> (os, p:ps)
+    (Or o) -> (o:os, ps)
+
+-- removes the (+) operations
+desugar :: [String] -> Expr -> (Expr, [Expr], [Expr])
+desugar tvars expr =
+  let callw = uncurry (:) $ sepCalls Or expr in
+  let (b:bs, additionals) = getBaseConsts callw in
+  let e = foldr (App . App (Var "|")) b bs in
+  let e1 = foldr Lam e (extractCons e) in
+  let toInfer = foldr Lam e1 tvars in
+  (toInfer, b:bs, additionals)
+
+-- expr found + remaining expr.
+sepCalls :: (Expr -> ConsDecl) -> Expr -> (ConsDecl, [ConsDecl])
+sepCalls tp = \case
+  App (App (Var "|") a) b -> (Or b, uncurry (:) $ sepCalls tp a)
+  App (App (Var "+") a) b -> (Plus b, uncurry (:) $ sepCalls tp a)
+  App a b -> let (remain, res) = sepCalls tp a in ((`App` b) <$> remain, res)
+  e -> (tp e, [])
 
 makeCons :: Type -> [TVar] -> Expr -> Interpret ((String, Scheme), (String, Scheme))
 makeCons baseT tvars expr = do

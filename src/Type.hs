@@ -96,7 +96,8 @@ instance Pretty Type where
       TApp (TApp (TCon "(->)" _) _) _ ->"(" ++ pretty a ++ ") -> " ++ pretty b
       a -> pretty a ++ " -> " ++ pretty b
     TApp (TCon "List" _) a -> "[" ++ pretty a ++ "]"
-    TApp a b -> "(" ++ pretty a ++ " " ++ pretty b ++ ")"
+    TApp a b@(TApp (TApp (TCon "(->)" _) _) _) -> pretty a ++ " (" ++ pretty b ++ ")"
+    TApp a b -> pretty a ++ " " ++ pretty b
 
 class ShowKind a where
   showKind :: a -> String
@@ -109,7 +110,7 @@ instance ShowKind Type where
       TApp (TApp (TCon "(->)" _) _) _ ->"(" ++ showKind a ++ ") -> " ++ showKind b
       a -> showKind a ++ " -> " ++ showKind b
     TApp (TCon "List" _) a -> "[" ++ showKind a ++ "]"
-    TApp a b -> "(" ++ showKind a ++ " " ++ showKind b ++ ")"
+    TApp a b -> showKind a ++ " (" ++ showKind b ++ ")"
 
 instance ShowKind TVar where
   showKind (TV v k) = v ++ "("++ pretty k ++")"
