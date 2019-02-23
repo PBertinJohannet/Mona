@@ -221,6 +221,7 @@ unifyMany t1 t2 = throwError $ UnificationMismatch t1 t2
 
 solver :: Constraints -> Solve ([Pred], Subst)
 solver (unions, ps) = do
+  tell $ "solve : \n" ++ pretty unions ++ "\n"
   sub <- unionSolve (nullSubst, unions)
   preds <- withReaderT (\e -> (e, sub)) (classSolve $ ClassSolver [] (apply sub ps))
   return (preds, sub)

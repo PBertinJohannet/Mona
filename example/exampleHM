@@ -1,6 +1,5 @@
-data Maybe a = Nil | Just a;
-data Option a = Some (Maybe a) | None + JS Some(Just);
-data Prod = P Int Char;
-let ass = \(P i c) -> show i ++ [c];
-let ass2 = \(Just (P i c)) (Just k) -> show i ++ [c] ++ k;
-let JS = Just . P;
+data ListF f a = EndF | ConsF a (f a);
+data Prod a b = Prod a b + Fst \a b c -> (Prod (Prod a b) c);
+data List a  = List ((fix ListF) a)
+  + Cons (\a b -> List(ConsF a b))
+  + End List(EndF);

@@ -50,6 +50,11 @@ uncurryCall = \case
   App a b -> uncurryCall a ++ [b]
   e -> [e]
 
+sepCallee :: Expr -> (String, Expr)
+sepCallee = \case
+  App (Var a) b -> (a, b)
+  App a b -> let (n, e) = sepCallee a in (n, App e b)
+
 instance Pretty Expr where
   pretty e = "(" ++ (case e of
     Var n -> n

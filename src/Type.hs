@@ -56,6 +56,16 @@ setReturn = \case
   TApp (TApp (TCon "(->)" k) a) b -> TApp (TApp (TCon "(->)" k) a) . setReturn b
   _ -> id
 
+getReturn :: Type -> Type
+getReturn = \case
+  TApp (TApp (TCon "(->)" k) a) b -> getReturn b
+  e -> e
+
+unapply :: Type -> Type
+unapply = \case
+  TApp a b -> a
+  e -> e
+
 class HasKind a where
   getKind :: a -> Kind
 
@@ -113,7 +123,7 @@ instance ShowKind Type where
     TApp a b -> showKind a ++ " (" ++ showKind b ++ ")"
 
 instance ShowKind TVar where
-  showKind (TV v k) = v ++ "("++ pretty k ++")"
+  showKind (TV v k) = v ++ "{"++ pretty k ++"}"
 
 instance ShowKind Scheme where
   showKind = \case

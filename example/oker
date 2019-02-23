@@ -31,8 +31,6 @@ let k2 = \f -> show (f + 1);
 let i = \k -> show [k];
 let v = \f b -> show (f b);
 let k3 = \f b -> show ((\e -> f) b);
-data ListF f a = EndF | ConsF a (f a);
-data List a = List ((fix ListF) a) + Cons List(ConsF) + End List(EndF);
 let inL a = [a];
 let ot = \(Just a) -> a;
 let out = \(Just a) -> inL a;
@@ -41,5 +39,7 @@ let fromNat f = \(Nat (Just a)) -> 1 + (f a);
 let toInt = fix fromNat;
 let fromInt f a = if a == 0 then Nat Nil else Nat (Just (f (a-1)));
 let toNat = fix fromInt;
-
-(\P -> (((P) (LInt 1)) (LInt 2)))
+data Prod a b = Prod a b + Fst \a b c -> (Prod (Prod a b) c);
+data List a  = List ((fix ListF) a)
+  + Cons (\a b -> List(ConsF a b))
+  + End List(EndF);

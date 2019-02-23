@@ -48,8 +48,10 @@ runInterpret :: (String, [String], Expr) -> Envs -> ExceptT TypeError (Writer St
 runInterpret (s, tvars, e) (Envs d v cenv) = do
   let (toInfer, baseConsts, additionalConsts) = desugar tvars e
   tell $ "base : " ++ pretty baseConsts ++ "\n"
+  tell $ "additionals : " ++ pretty additionalConsts ++ "\n"
   Forall _ (Qual _ t) <- inferExpr cenv d toInfer
-  runReaderT (interpretTop (Envs d v cenv) s tvars toInfer t baseConsts) d
+  envs <- runReaderT (interpretTop (Envs d v cenv) s tvars toInfer t baseConsts) d
+  foldM addCustomCons envs additionalConsts
 
 interpretTop :: Envs -> String -> [String] -> Expr -> Type -> [Expr] -> Interpret Envs
 interpretTop (Envs dat e cenv) name tvars expr inferedType calls = do
@@ -61,6 +63,22 @@ interpretTop (Envs dat e cenv) name tvars expr inferedType calls = do
     (extends e $ consts uk ++ patterns uk)
     cenv
 
+addCustomCons :: Envs -> Expr -> ExceptT TypeError (Writer String) Envs
+addCustomCons (Envs dat val cls) ex = do
+  let (name, e) = sepCallee ex
+  tell $ "got : " ++ pretty e ++ "\n"
+  infcons <- inferExpr cls val e
+  tell $ "infered : " ++ pretty infcons ++ "\n"
+  let infpat = consToPat infcons
+  return $ Envs dat (val `extends` [(name, infcons), ("~"++name, infpat)]) cls
+
+consToPat :: Scheme -> Scheme
+consToPat(Forall tvars (Qual q tp)) = Forall (ret:tvars) (Qual q tp1)
+  where
+    tp1 = setReturn tp retv `mkArr` (getReturn tp `mkArr` retv)
+    retv = nextVar tvars
+    ret = nextTV tvars
+
 findTV :: String -> Interpret TVar
 findTV s = do
   k <- findKind s
@@ -71,7 +89,7 @@ createType s tvars constructs = do
   vs <- mapM findKind tvars
   tvs <- mapM findTV tvars
   let kind = foldr Kfun Star vs
-  let tc =  foldl TApp (TCon s kind) (tvar <$> tvars)
+  let tc =  foldl TApp (TCon s kind) (TVar <$> tvs)
   let schem = Forall tvs $ Qual [] tc
   (cts, pats) <- unzip <$> mapM (makeCons tc tvs) constructs
   return UK {
@@ -174,16 +192,16 @@ sepCalls tp = \case
 
 makeCons :: Type -> [TVar] -> Expr -> Interpret ((String, Scheme), (String, Scheme))
 makeCons baseT tvars expr = do
+  tell $ "baseT is : " ++ showKind baseT ++ "\n"
   (c:argsTp) <- mapM (toType baseT tvars) $ uncurryCall expr
   return ((pretty c,
     Forall tvars $ Qual [] (simplifyUnit $ foldr mkArr baseT argsTp)),
     ("~" ++ pretty c,
     Forall (ret:tvars) $ Qual [] (simplifyUnit $ toPat argsTp)))
-    where --
+    where
       toPat argsTp = foldr mkArr retv argsTp `mkArr` (baseT `mkArr` retv)
       retv = nextVar tvars
       ret = nextTV tvars
-
 
 toType :: Type -> [TVar] -> Expr -> Interpret Type
 toType baseT tvars e = do
@@ -198,7 +216,7 @@ toType baseT tvars e = do
         return $ maybe (TCon v k) TVar (find (\(TV n k) -> n == v) tvars)
       Fix e -> do
         e1 <- toType baseT tvars e
-        return $ TApp e1 baseT
+        return $ TApp e1 $ unapply baseT
       Lam n e -> toType baseT tvars e
 
 simplifyUnit :: Type -> Type
