@@ -10,7 +10,8 @@ data Expr
   = Var Name
   | App Expr Expr
   | Lam Name Expr
-  | Lit Lit
+  | Lit Integer
+  | Case Expr [Expr]
   | Fix Expr
   deriving (Show, Eq, Ord)
 
@@ -63,4 +64,5 @@ instance Pretty Expr where
     Lam n e -> "\\"++ n ++ " -> " ++ pretty e
     Lit l -> show l
     Fix e -> "fix " ++ pretty e
+    Case e ex -> "case " ++ pretty e ++ " of " ++ unlines (pretty <$> ex) 
     ) ++ ")"

@@ -48,7 +48,7 @@ variable = do
 number :: Parser Expr
 number = do
   n <- integer
-  return (Lit (LInt (fromIntegral n)))
+  return (Lit (fromIntegral n))
 
 lst :: Parser Expr
 lst = do
@@ -71,10 +71,6 @@ inList =
      spaces
      return $ \a b -> App (App (App (Var "flip") (Var ":")) a) b
 
-bool :: Parser Expr
-bool = (reserved "True" >> return (Lit (LBool True)))
-    <|> (reserved "False" >> return (Lit (LBool False)))
-
 fix :: Parser Expr
 fix = do
   reservedOp "fix"
@@ -84,6 +80,10 @@ fix = do
 lambda :: Parser Expr
 lambda = do
   reservedOp "\\"
+  inLambda
+
+inLambda :: Parser Expr
+inLambda = do
   args <- many pat
   reservedOp "->"
   body <- expr
@@ -112,7 +112,6 @@ ifthen = do
 aexp :: Parser Expr
 aexp =
    parens expr
-  <|> bool
   <|> number
   <|> ifthen
   <|> fix
@@ -121,6 +120,16 @@ aexp =
   <|> variable
   <|> try lst
   <|> emptylst
+  <|> caseof
+
+caseof :: Parser Expr
+caseof = do
+  reserved "case"
+  e1 <- aexp
+  reserved "of"
+  cases <- sepBy inLambda $ char ','
+  return $ Case e1 cases
+
 
 fromOp :: [Expr] -> Expr
 fromOp (e:es) = e

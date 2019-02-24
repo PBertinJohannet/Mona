@@ -41,7 +41,7 @@ instance Substituable Union where
 data TypeError
   = UnboundVariable String
   | InfiniteType Type
-  | NotInClass Pred
+  | NotInClass String Type
   | UnknownClass String
   | WrongKind String Kind
   | UnificationFail Type Type
@@ -52,7 +52,7 @@ instance Pretty TypeError where
   pretty = \case
     UnboundVariable s -> "Variable not in scope : "++ s
     InfiniteType t -> "Cannot create infinite type : "++pretty t
-    NotInClass (IsIn a b) -> pretty b ++ " is not in " ++ a
+    NotInClass a b -> pretty b ++ " is not in " ++ a
     UnknownCommand s -> "Unknown command : " ++ s
     UnknownClass s -> "Unknown class : " ++ s
     WrongKind s k -> s ++ " has kind : " ++ pretty k
@@ -63,7 +63,7 @@ type Infer a = (ReaderT Env (StateT InferState (Except TypeError)) a)
 
 type Solve a = (ReaderT ClassEnv (ExceptT TypeError (Writer String)) a)
 
-type CSolve a = (ReaderT (ClassEnv, Subst) (ExceptT TypeError (Writer String)) a)
+type CSolve a = (ReaderT ClassEnv (ExceptT TypeError (Writer String)) a)
 
 newtype InferState = InferState {count :: Int}
 
@@ -157,9 +157,6 @@ fresh = do
 noConstraints :: Constraints
 noConstraints = ([], [])
 
-(+-) :: Constraints -> Constraints -> Constraints
-(a, b) +- (a', b') = (a ++ a', b ++ b')
-
 lookupEnv :: Name -> Infer (Qual Type)
 lookupEnv x = do
   (TypeEnv env) <- ask
@@ -171,16 +168,22 @@ inferEq :: Expr -> Scheme -> Infer (Type, Constraints)
 inferEq e t0 = do
   Qual q t1 <- instantiate t0
   (t2, c) <- infer e
-  return (t1, ([], q) +- union (t1, t2))
+  return (t1, ([], q) <> union (t1, t2))
 
 infer :: Expr -> Infer (Type, Constraints)
 infer = \case
-  Lit (LInt _) -> return (typeInt, noConstraints)
-  Lit (LBool _) -> return (typeBool, noConstraints)
+  Lit _ -> return (typeInt, noConstraints)
+
+  Case e ex -> do
+    (sourceT, c1) <- infer e
+    (t:ts, cs) <- unzip <$> mapM infer ex
+    let exprEq = mconcat $ curry union t <$> ts
+    destT <- fresh
+    return (destT, mconcat cs <> union (t, sourceT `mkArr` destT) <> exprEq)
 
   Var x -> do
-      (Qual p t) <- lookupEnv x
-      return (t, ([], p))
+    (Qual p t) <- lookupEnv x
+    return (t, ([], p))
 
   Lam x e -> do
     tv <- fresh
@@ -191,12 +194,12 @@ infer = \case
     (t1, c1) <- infer e1
     (t2, c2) <- infer e2
     tv <- fresh
-    return (tv, c1 +- c2 +- union (t1, t2 `mkArr` tv))
+    return (tv, c1 <> c2 <> union (t1, t2 `mkArr` tv))
 
   Fix e1 -> do
     (t1, c1) <- infer e1
     tv <- fresh
-    return (tv, c1 +- union (tv `mkArr` tv, t1))
+    return (tv, c1 <> union (tv `mkArr` tv, t1))
 
 type Unifier = (Subst, [Union])
 
@@ -208,8 +211,7 @@ unifies t1 t2 | t1 == t2 = return nullSubst
 unifies (TVar v) t = bind v t
 unifies t (TVar v) = bind v t
 unifies (TApp t1 t2) (TApp t3 t4) = unifyMany [t1, t2] [t3, t4]
-unifies t1 t2 = do
-  throwError $ UnificationFail t1 t2
+unifies t1 t2 = throwError $ UnificationFail t1 t2
 
 unifyMany :: [Type] -> [Type] -> Solve Subst
 unifyMany [] [] = return nullSubst
@@ -221,9 +223,9 @@ unifyMany t1 t2 = throwError $ UnificationMismatch t1 t2
 
 solver :: Constraints -> Solve ([Pred], Subst)
 solver (unions, ps) = do
-  tell $ "solve : \n" ++ pretty unions ++ "\n"
   sub <- unionSolve (nullSubst, unions)
-  preds <- withReaderT (\e -> (e, sub)) (classSolve $ ClassSolver [] (apply sub ps))
+  tell $ "solve : \n" ++ pretty ps ++ "\n"
+  preds <- classSolve $ ClassSolver [] (apply sub ps)
   return (preds, sub)
 
 
@@ -246,10 +248,10 @@ classSolve = \case
 
 solvePred :: Pred -> CSolve [Pred]
 solvePred (IsIn n t) = do
-  (ClassEnv cenv, s) <- ask
+  ClassEnv cenv <- ask
   case Map.lookup n cenv of
     Nothing -> throwError $ UnknownClass n
-    Just cls -> isIn n (apply s cls) t
+    Just cls -> isIn n cls t
 
 isIn :: String -> Class -> Type -> CSolve [Pred]
 isIn cname (m, insts) = \case
@@ -261,10 +263,9 @@ satisfyInsts s [i] = satisfyInst s i
 satisfyInsts s (i:is) = satisfyInst s i `catchError` \e -> satisfyInsts s is
 
 satisfyInst :: Pred -> Inst -> CSolve [Pred]
-satisfyInst t (Qual ps t') =
-  if t == t'
-  then classSolve $ ClassSolver [] ps
-  else throwError $ NotInClass t
+satisfyInst (IsIn c t) (Qual ps (IsIn _ t')) = do
+  s <- unifies t' t `catchError` const (throwError $ NotInClass c t)
+  return $ apply s ps
 
 -- tries to unify a and t
 bind :: TVar -> Type -> Solve Subst

@@ -51,7 +51,7 @@ runInterpret (s, tvars, e) (Envs d v cenv) = do
   tell $ "additionals : " ++ pretty additionalConsts ++ "\n"
   Forall _ (Qual _ t) <- inferExpr cenv d toInfer
   envs <- runReaderT (interpretTop (Envs d v cenv) s tvars toInfer t baseConsts) d
-  foldM addCustomCons envs additionalConsts
+  foldM addCustomCons envs (reverse additionalConsts)
 
 interpretTop :: Envs -> String -> [String] -> Expr -> Type -> [Expr] -> Interpret Envs
 interpretTop (Envs dat e cenv) name tvars expr inferedType calls = do
