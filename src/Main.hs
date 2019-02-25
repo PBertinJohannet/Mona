@@ -37,22 +37,22 @@ run = L.pack
   >>> fmap (passes >>> runExceptT >>> runWriter)
   >>> debug --debug . fmap (
 
-sepDecls :: [Decl] -> ([ExprDecl], [(String, [String], Expr)])
-sepDecls [] = ([], [])
+sepDecls :: [Decl] -> ([ExprDecl], [(String, [String], Expr)], String)
+sepDecls [] = ([], [], [])
 sepDecls (d:ds) =
-  let (vars, datas) = sepDecls ds in
+  let (vars, datas, sigs) = sepDecls ds in
   case d of
-    (s, TypeDecl tvars e) -> (vars, (s, tvars, e): datas)
-    (s, Expr e) -> ((s, e): vars, datas)
-
-
+    (s, TypeDecl tvars e) -> (vars, (s, tvars, e): datas, sigs)
+    (s, Expr e) -> ((s, e): vars, datas, sigs)
+    (s, Sig e) -> (vars, datas, sigs ++ pretty e)
 
 instance Pretty (String, [String], Expr) where
   pretty (name, tvars, ex) = "type " ++ name ++ " " ++ unwords tvars ++ " = " ++ pretty ex ++ "\n"
 
 passes :: [(String, Statement)] -> ExceptT PassErr (Writer String) Envs
 passes l = do
-  let (exprs, datas) = sepDecls l
+  let (exprs, datas, sigs) = sepDecls l
+  tell $ "sigs : \n" ++ sigs ++ "\n"
   tell $ "datas : \n" ++ pretty datas
   tell $ "exprs : \n" ++ pretty exprs
   env <- withExceptT TypeError $ interpret datas baseEnvs

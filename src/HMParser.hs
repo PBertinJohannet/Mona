@@ -14,6 +14,7 @@ import qualified Data.Text.Lazy as L
 
 import HMLexer
 import Syntax
+import Type
 
 import Control.Arrow
 
@@ -109,6 +110,8 @@ ifthen = do
   fl <- expr
   return (App (App (App (Var "if") cond) tr) fl)
 
+
+
 aexp :: Parser Expr
 aexp =
    parens expr
@@ -180,7 +183,63 @@ inSpaces a = do
   spaces
   return x
 
+parsePred :: Parser Pred
+parsePred = do
+  cls <- identifier
+  tp <- parseType
+  return $ IsIn cls tp
+
+parseType :: Parser Type
+parseType = mychainl ((tvar <$> identifier) <|> inParen parseType) parseArrow
+
+inParen :: Parser a -> Parser a
+inParen p = do
+  char '('
+  r <- p
+  char ')'
+  return r
+
+parseArrow :: Parser (Type -> Type -> Type)
+parseArrow = do
+  spaces
+  symbol <- string "->"
+       <|> string ""
+  spaces
+  return $ case symbol of
+   "" -> TApp
+   s_ -> mkArr
+
+parseForall :: Parser [TVar]
+parseForall = do
+  spaces
+  reserved "forall"
+  spaces
+  names <- many identifier
+  reservedOp "."
+  return $ var <$> names
+
+parseScheme :: Parser Scheme
+parseScheme = do
+  fall <- option [] parseForall
+  preds <- try parsePreds <|> return []
+  tp <- parseType
+  return $ Forall fall $ Qual preds tp
+
+parsePreds :: Parser [Pred]
+parsePreds = do
+  preds <- sepBy parsePred $ reservedOp ","
+  reservedOp "=>"
+  return preds
+
 type Binding = (String, Statement)
+
+sig :: Parser Binding
+sig = do
+  reserved "sig"
+  name <- identifier
+  reservedOp "="
+  body <- parseScheme
+  return (name, Sig body)
 
 letdecl :: Parser Binding
 letdecl = do
@@ -190,6 +249,16 @@ letdecl = do
   reservedOp "="
   body <- expr
   return (name, Expr $ foldr Lam body args)
+
+letrecdecl :: Parser Binding
+letrecdecl = do
+  reserved "let"
+  reserved "rec"
+  name <- identifier
+  arg <- many identifier
+  reservedOp "="
+  body <- expr
+  return (name, Expr $ Fix $ Lam name $ foldr Lam body arg)
 
 typedecl :: Parser Binding
 typedecl = do
@@ -209,7 +278,7 @@ constructor = do
     e -> App (Var name) e
 
 decl :: Parser Binding
-decl = letdecl <|> typedecl
+decl = try letrecdecl <|> letdecl <|> typedecl <|> sig
 
 top :: Parser Binding
 top = do

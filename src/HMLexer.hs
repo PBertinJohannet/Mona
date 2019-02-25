@@ -26,6 +26,7 @@ reservedNames = [
 
 reservedOps :: [String]
 reservedOps = [
+    "=>",
     "->",
     "\\",
     "+",

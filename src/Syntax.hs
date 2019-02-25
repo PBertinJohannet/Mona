@@ -3,6 +3,7 @@
 module Syntax where
 import Pretty
 import Control.Arrow
+import Type
 
 type Name = String
 
@@ -29,7 +30,7 @@ data Program = Program [Decl] Expr deriving Eq
 type Decl = (String, Statement)
 type ExprDecl = (String, Expr)
 
-data Statement = Expr Expr | TypeDecl [String] Expr deriving (Show, Eq, Ord);
+data Statement = Expr Expr | TypeDecl [String] Expr | Sig Scheme deriving (Show, Eq, Ord);
 
 -- apply a function to the leftmost element of a succession of applications.
 mapLeft :: (Expr -> Expr) -> Expr -> Expr
@@ -64,5 +65,5 @@ instance Pretty Expr where
     Lam n e -> "\\"++ n ++ " -> " ++ pretty e
     Lit l -> show l
     Fix e -> "fix " ++ pretty e
-    Case e ex -> "case " ++ pretty e ++ " of " ++ unlines (pretty <$> ex) 
+    Case e ex -> "case " ++ pretty e ++ " of " ++ unlines (pretty <$> ex)
     ) ++ ")"
