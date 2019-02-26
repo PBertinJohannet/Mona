@@ -1,5 +1,6 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 
 module Infer where
@@ -17,7 +18,7 @@ import Control.Arrow
 import Subst
 import qualified Data.Map as Map
 import qualified Data.Set as Set
-import Data.List (nub, find)
+import Data.List (nub, find, length)
 import Pretty
 
 
@@ -46,6 +47,7 @@ data TypeError
   | WrongKind String Kind
   | UnificationFail Type Type
   | UnknownCommand String
+  | SignatureMismatch Subst
   | UnificationMismatch [Type] [Type] deriving (Show, Eq);
 
 instance Pretty TypeError where
@@ -56,6 +58,7 @@ instance Pretty TypeError where
     UnknownCommand s -> "Unknown command : " ++ s
     UnknownClass s -> "Unknown class : " ++ s
     WrongKind s k -> s ++ " has kind : " ++ pretty k
+    SignatureMismatch s -> "Signature does not match : " ++ pretty s
     UnificationFail t t' -> "Cannot unify : " ++ pretty t ++ " with "++pretty t'
     UnificationMismatch t t' -> "Cannot unify : " ++ pretty t ++ " with "++pretty t'
 
@@ -104,7 +107,9 @@ inferExprT cenv env ex tp = case runInfer env (inferEq ex tp) of
     (preds, subst) <- runSolve cenv cs
     tell $ "found : " ++ pretty found ++ "\n"
     tell $ "with subst : " ++ pretty (apply subst found) ++ "\n"
-    checkStrict (apply subst found) (apply subst expected) False
+    tell $ "strict  : " ++ pretty (apply subst expected) ++ "\n"
+    s0 <- checkStrict (apply subst found) (apply subst expected) False
+    checkSubst s0
     return $ closeOver (apply subst found) (apply subst preds)
 
 runInfer :: Env -> Infer a -> Either TypeError a
@@ -207,24 +212,28 @@ infer = \case
     tv <- fresh
     return (tv, c1 <> union (tv `mkArr` tv, t1))
 
-checkStrict :: Type -> Type -> Bool -> ExceptLog ()
-checkStrict t1 t2 False | t1 == t2= return ()
-checkStrict t1 t2 True | t1 `checkSub` t2 = return ()
+checkSubst :: Subst -> ExceptLog Subst
+checkSubst sub = Map.elems >>> nub >>> check $ sub
+  where check l = if length l == Map.size sub
+                  then return sub
+                  else throwError $ SignatureMismatch sub
+
+
+checkStrict :: Type -> Type -> Bool -> ExceptLog Subst
+checkStrict t1 t2 _ | t1 == t2 = return nullSubst
+checkStrict (TVar v) t2@(TVar v2) False = return $ Map.singleton v t2
+checkStrict (TVar v) t2 True = return $ Map.singleton v t2
 checkStrict
   t1@(TApp (TApp (TCon "(->)" _) a) b)
   t2@(TApp (TApp (TCon "(->)" _) a0) b0)
   contra = do
   tell $ "strict : " ++ pretty t1 ++ " == " ++ pretty t2 ++ "\n"
-  checkStrict a a0 (not contra)
-  checkStrict b b0 contra
-  return ()
+  s1 <- checkStrict a a0 (not contra)
+  s2 <- checkStrict (apply s1 b) (apply s1 b0) contra
+  return $ s2 `compose` s1
 checkStrict t1 t2 _ = do
   tell $ "strict : " ++ pretty t1 ++ " == " ++ pretty t2 ++ "\n"
   throwError $ UnificationFail t1 t2
-
-checkSub :: Type -> Type -> Bool
-checkSub (TVar v) t0 = True
-checkSub t1 t2 = False
 
 type Unifier = (Subst, [Union])
 

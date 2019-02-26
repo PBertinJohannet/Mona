@@ -1,3 +1,4 @@
+data Bool = True | False;
 data Maybe a = Nil | Just a | P a a;
 data Option a = Some a | None + JustSome Just(Some);
 data Prod a b = P a b;
@@ -7,6 +8,7 @@ data Inl a = Inl (List a);
 data Cmp a = Cmp (App Maybe a);
 data Nat = N (fix Maybe);
 data Lam = L (\e -> Maybe e) | None;
+sig flip = forall a b c . (a -> b -> c) -> b -> a -> c;
 let flip = \f a b -> f b a;
 let facf = \f a -> if a == 0 then a else (f a);
 let o = \l -> l + 1;

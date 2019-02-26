@@ -1,1 +1,2 @@
-
+sig flip = forall a b c . (a -> b -> c) -> b -> a -> c;
+let flip = \f a b -> f a b;
