@@ -66,6 +66,19 @@ unapply = \case
   TApp a b -> a
   e -> e
 
+kindToFunc :: Kind -> Type
+kindToFunc = \case
+  Star -> tvar "a"
+  Kfun a b -> TApp (TApp tArr $ kindToFunc a) $ kindToFunc b
+
+extractKind :: Type -> Kind
+extractKind = \case
+  TVar (TV a _) -> Star
+  TCon s k -> k
+  TApp (TApp (TCon "(->)" _) a) b -> Kfun (extractKind a) (extractKind b)
+  TApp a b -> Kfun (extractKind a) (extractKind b)
+
+
 class HasKind a where
   getKind :: a -> Kind
 

@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE LambdaCase #-}
 
 module HMParser (
   parseModule
@@ -148,6 +149,14 @@ mychainlfirst p f op = do {a <- f <$> p; rest a}
                  <|> return a
 
 
+mychainr :: Parser a -> Parser (a -> a -> a) -> Parser a
+mychainr p op = do {a <- p; rest a}
+  where rest a = (do  f <- op
+                      b <- p
+                      res <- rest b
+                      return $ f a res)
+                    <|> return a
+
 mychainl :: Parser a -> Parser (a -> a -> a) -> Parser a
 mychainl p = mychainlfirst p id
 
@@ -190,7 +199,7 @@ parsePred = do
   return $ IsIn cls tp
 
 parseType :: Parser Type
-parseType = mychainl ((tvar <$> identifier) <|> inParen parseType) parseArrow
+parseType = mychainr ((tvar <$> identifier) <|> inParen parseType) parseArrow
 
 inParen :: Parser a -> Parser a
 inParen p = do
@@ -207,7 +216,7 @@ parseArrow = do
   spaces
   return $ case symbol of
    "" -> TApp
-   s_ -> mkArr
+   _ -> mkArr
 
 parseForall :: Parser [TVar]
 parseForall = do

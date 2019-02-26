@@ -126,13 +126,6 @@ findKind s = do
     Just (Forall _ (Qual _ t)) -> extractKind t
     Nothing -> Star
 
-extractKind :: Type -> Kind
-extractKind = \case
-  TVar (TV a _) -> Star
-  TCon s k -> k
-  TApp (TApp (TCon "(->)" _) a) b -> Kfun (extractKind a) (extractKind b)
-  TApp a b -> Kfun (extractKind a) (extractKind b)
-
 flattenArgs :: String -> Expr -> Type -> Interpret (Env, Expr)
 flattenArgs name expr tp = do
   env <- ask

@@ -1,2 +1,1 @@
-sig a = forall a . Show a, Show b =>  a -> Int -> (f i);
-let a = 1+1;
+

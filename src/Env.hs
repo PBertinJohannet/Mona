@@ -61,6 +61,10 @@ instance Pretty Env where
   pretty (TypeEnv t) = mconcat . fmap showAssoc . Map.toList $ t
     where showAssoc (n, s) = n ++ " : "++ pretty s ++ "\n"
 
+instance ShowKind Env where
+  showKind (TypeEnv t) = mconcat . fmap showAssoc . Map.toList $ t
+    where showAssoc (n, s) = n ++ " : "++ showKind s ++ "\n"
+
 instance Pretty ClassEnv where
   pretty (ClassEnv t) = mconcat . fmap showAssoc . Map.toList $ t
     where showAssoc (n, s) = n ++ " : "++ pretty s ++ "\n"
@@ -68,6 +72,10 @@ instance Pretty ClassEnv where
 instance Pretty Envs where
   pretty (Envs d v c) =
     "Vars : \n" ++ pretty v ++ "\nTypes : \n" ++ pretty d ++ "\n"
+
+instance ShowKind Envs where
+  showKind (Envs d v c) =
+    "Vars : \n" ++ showKind v ++ "\nTypes : \n" ++ pretty d ++ "\n"
 
 baseEnvs :: Envs
 baseEnvs = Envs kindEnv baseEnv baseClasses

@@ -14,10 +14,12 @@ import Syntax
 import Infer
 import Text.Parsec (ParseError)
 import Pretty
+import Type (Scheme, showKind)
 import Control.Monad.Writer
 import Control.Monad.Except
 import Control.Monad.State
 import InterpretTypes
+import Sig
 -- (((flip) (:) [1]) 2)
 
 (<&>) = flip fmap
@@ -37,14 +39,14 @@ run = L.pack
   >>> fmap (passes >>> runExceptT >>> runWriter)
   >>> debug --debug . fmap (
 
-sepDecls :: [Decl] -> ([ExprDecl], [(String, [String], Expr)], String)
+sepDecls :: [Decl] -> ([ExprDecl], [(String, [String], Expr)], [(String, Scheme)])
 sepDecls [] = ([], [], [])
 sepDecls (d:ds) =
   let (vars, datas, sigs) = sepDecls ds in
   case d of
     (s, TypeDecl tvars e) -> (vars, (s, tvars, e): datas, sigs)
     (s, Expr e) -> ((s, e): vars, datas, sigs)
-    (s, Sig e) -> (vars, datas, sigs ++ pretty e)
+    (s, Sig e) -> (vars, datas, (s, e):sigs)
 
 instance Pretty (String, [String], Expr) where
   pretty (name, tvars, ex) = "type " ++ name ++ " " ++ unwords tvars ++ " = " ++ pretty ex ++ "\n"
@@ -52,13 +54,15 @@ instance Pretty (String, [String], Expr) where
 passes :: [(String, Statement)] -> ExceptT PassErr (Writer String) Envs
 passes l = do
   let (exprs, datas, sigs) = sepDecls l
-  tell $ "sigs : \n" ++ sigs ++ "\n"
+  tell $ "sigs : \n" ++ pretty sigs ++ "\n"
   tell $ "datas : \n" ++ pretty datas
   tell $ "exprs : \n" ++ pretty exprs
-  env <- withExceptT TypeError $ interpret datas baseEnvs
+  env0 <- withExceptT TypeError $ interpret datas baseEnvs
+  env1 <- withExceptT TypeError $ addSigs sigs env0
+  tell $ "after sigs : " ++ showKind env1 ++ "\n"
   --tell $ pretty env
   --tell $ pretty exprs
-  withExceptT TypeError $ inferTop env exprs
+  withExceptT TypeError $ inferTop env1 exprs
 
 instance Pretty (String, Expr) where
   pretty (s, e) = s ++ " : " ++ pretty e ++ "\n"

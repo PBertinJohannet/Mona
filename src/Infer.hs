@@ -59,49 +59,55 @@ instance Pretty TypeError where
     UnificationFail t t' -> "Cannot unify : " ++ pretty t ++ " with "++pretty t'
     UnificationMismatch t t' -> "Cannot unify : " ++ pretty t ++ " with "++pretty t'
 
+type ExceptLog a = ExceptT TypeError (Writer String) a;
+
 type Infer a = (ReaderT Env (StateT InferState (Except TypeError)) a)
 
 type Solve a = (ReaderT ClassEnv (ExceptT TypeError (Writer String)) a)
-
-type CSolve a = (ReaderT ClassEnv (ExceptT TypeError (Writer String)) a)
 
 newtype InferState = InferState {count :: Int}
 
 initInfer :: InferState
 initInfer = InferState { count = 0 }
 
-runSolve :: ClassEnv -> Constraints -> ExceptT TypeError (Writer String) ([Pred], Subst)
+runSolve :: ClassEnv -> Constraints -> ExceptLog ([Pred], Subst)
 runSolve env cs = runReaderT (solver cs) env
 
-inferDecl :: Envs -> [(String, [String], Expr)] -> ExceptT TypeError (Writer String) Envs
+inferDecl :: Envs -> [(String, [String], Expr)] -> ExceptLog Envs
 inferDecl env [] = return env
 inferDecl (Envs d ev cenv) ((name, _, ex):xs) = do
   e <- inferExpr cenv d ex
   inferDecl (Envs (extend d (name, e)) ev cenv) xs
 
 
-inferTop :: Envs -> [(String, Expr)] -> ExceptT TypeError (Writer String) Envs
+inferTop :: Envs -> [(String, Expr)] -> ExceptLog Envs
 inferTop env [] = return env
 inferTop (Envs d env cenv) ((name, ex):xs) = do
   tell $ "infering : " ++ pretty ex ++ "\n"
-  e <- inferExpr cenv env ex
+  e <- case Env.lookup name env of
+    Nothing -> inferExpr cenv env ex
+    Just sc -> inferExprT cenv env ex sc
   inferTop (Envs d (extend env (name, e)) cenv) xs
 
-inferExpr :: ClassEnv -> Env -> Expr -> ExceptT TypeError (Writer String) Scheme
+inferExpr :: ClassEnv -> Env -> Expr -> ExceptLog Scheme
 inferExpr cenv env ex = case runInfer env (infer ex) of
   Left err -> throwError err
   Right (ty, cs) -> do
     (preds, subst) <- runSolve cenv cs
     return $ closeOver (apply subst ty) (apply subst preds)
 
-inferExprT :: ClassEnv -> Env -> Expr -> Scheme -> ExceptT TypeError (Writer String) Scheme
+inferExprT :: ClassEnv -> Env -> Expr -> Scheme -> ExceptLog Scheme
 inferExprT cenv env ex tp = case runInfer env (inferEq ex tp) of
   Left err -> throwError err
-  Right (ty, cs) -> do
+  Right (found, cs, expected) -> do
+    tell "inferExprT\n"
     (preds, subst) <- runSolve cenv cs
-    return $ closeOver (apply subst ty) (apply subst preds)
+    tell $ "found : " ++ pretty found ++ "\n"
+    tell $ "with subst : " ++ pretty (apply subst found) ++ "\n"
+    checkStrict (apply subst found) (apply subst expected) False
+    return $ closeOver (apply subst found) (apply subst preds)
 
-runInfer :: Env -> Infer (Type, Constraints) -> Either TypeError (Type, Constraints)
+runInfer :: Env -> Infer a -> Either TypeError a
 runInfer env m = runIdentity $ runExceptT $ evalStateT (runReaderT m env) initInfer
 
 -- | Canonicalize and return the polymorphic toplevel type.
@@ -164,11 +170,11 @@ lookupEnv x = do
     Just s -> instantiate s
     Nothing -> throwError $ UnboundVariable $ show x
 
-inferEq :: Expr -> Scheme -> Infer (Type, Constraints)
+inferEq :: Expr -> Scheme -> Infer (Type, Constraints, Type)
 inferEq e t0 = do
   Qual q t1 <- instantiate t0
   (t2, c) <- infer e
-  return (t1, ([], q) <> union (t1, t2))
+  return (t2, c, t1)
 
 infer :: Expr -> Infer (Type, Constraints)
 infer = \case
@@ -201,6 +207,25 @@ infer = \case
     tv <- fresh
     return (tv, c1 <> union (tv `mkArr` tv, t1))
 
+checkStrict :: Type -> Type -> Bool -> ExceptLog ()
+checkStrict t1 t2 False | t1 == t2= return ()
+checkStrict t1 t2 True | t1 `checkSub` t2 = return ()
+checkStrict
+  t1@(TApp (TApp (TCon "(->)" _) a) b)
+  t2@(TApp (TApp (TCon "(->)" _) a0) b0)
+  contra = do
+  tell $ "strict : " ++ pretty t1 ++ " == " ++ pretty t2 ++ "\n"
+  checkStrict a a0 (not contra)
+  checkStrict b b0 contra
+  return ()
+checkStrict t1 t2 _ = do
+  tell $ "strict : " ++ pretty t1 ++ " == " ++ pretty t2 ++ "\n"
+  throwError $ UnificationFail t1 t2
+
+checkSub :: Type -> Type -> Bool
+checkSub (TVar v) t0 = True
+checkSub t1 t2 = False
+
 type Unifier = (Subst, [Union])
 
 emptyUnifier :: Unifier
@@ -223,8 +248,8 @@ unifyMany t1 t2 = throwError $ UnificationMismatch t1 t2
 
 solver :: Constraints -> Solve ([Pred], Subst)
 solver (unions, ps) = do
+  tell $ "solve : \n" ++ pretty unions ++ "\n"
   sub <- unionSolve (nullSubst, unions)
-  tell $ "solve : \n" ++ pretty ps ++ "\n"
   preds <- classSolve $ ClassSolver [] (apply sub ps)
   return (preds, sub)
 
@@ -234,35 +259,37 @@ unionSolve (su, cs) =
   case cs of
     [] -> return su
     Union (t1, t2) : cs1 -> do
+      tell $ "unify : " ++ pretty t1 ++ " and " ++ pretty t2 ++ "\n"
       su1 <- unifies t1 t2
+      tell $ "found : " ++ pretty su1 ++ "\n"
       unionSolve (su1 `compose` su, apply su1 cs1)
 
 data ClassSolver = ClassSolver{found :: [Pred], remain :: [Pred]};
 
-classSolve :: ClassSolver -> CSolve [Pred]
+classSolve :: ClassSolver -> Solve [Pred]
 classSolve = \case
   ClassSolver founds [] -> return founds
   ClassSolver founds (p:ps) -> do
     preds <- solvePred p
     classSolve $ ClassSolver (founds ++ preds) ps
 
-solvePred :: Pred -> CSolve [Pred]
+solvePred :: Pred -> Solve [Pred]
 solvePred (IsIn n t) = do
   ClassEnv cenv <- ask
   case Map.lookup n cenv of
     Nothing -> throwError $ UnknownClass n
     Just cls -> isIn n cls t
 
-isIn :: String -> Class -> Type -> CSolve [Pred]
+isIn :: String -> Class -> Type -> Solve [Pred]
 isIn cname (m, insts) = \case
   TVar t -> return [IsIn cname $ TVar t]
   t -> satisfyInsts (IsIn cname t) insts
 
-satisfyInsts :: Pred -> [Inst] -> CSolve [Pred]
+satisfyInsts :: Pred -> [Inst] -> Solve [Pred]
 satisfyInsts s [i] = satisfyInst s i
 satisfyInsts s (i:is) = satisfyInst s i `catchError` \e -> satisfyInsts s is
 
-satisfyInst :: Pred -> Inst -> CSolve [Pred]
+satisfyInst :: Pred -> Inst -> Solve [Pred]
 satisfyInst (IsIn c t) (Qual ps (IsIn _ t')) = do
   s <- unifies t' t `catchError` const (throwError $ NotInClass c t)
   return $ apply s ps
