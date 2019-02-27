@@ -5,6 +5,7 @@
 module Type where
 import Pretty
 import Control.Arrow
+import Data.List
 
 data TVar = TV{name :: String, kind :: Kind}
   deriving (Show, Eq, Ord)
@@ -27,6 +28,9 @@ type Inst  = Qual Pred
 -- forall a b c . a -> b
 data Scheme = Forall [TVar] (Qual Type)
   deriving (Show, Eq, Ord)
+
+withPred :: String -> Pred -> Scheme -> Scheme
+withPred tv p (Forall tvars (Qual q ty)) = Forall (var tv:tvars) (Qual (p:q) ty)
 
 var :: String -> TVar
 var s = TV{name = s, kind = Star}
@@ -93,7 +97,8 @@ instance HasKind Type where
       Kfun _ k -> k
 
 instance Pretty Class where
-  pretty = show
+  pretty (parents, instances) =
+    unwords parents ++ " => " ++ intercalate ", " (pretty <$> instances) ++ "\n"
 
 instance Pretty Pred where
   pretty (IsIn i t) = "(" ++ i ++ " " ++ pretty t ++ ")"

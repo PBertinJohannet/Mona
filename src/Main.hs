@@ -19,6 +19,7 @@ import Control.Monad.Writer
 import Control.Monad.Except
 import Control.Monad.State
 import InterpretTypes
+import Typeclass
 import Sig
 -- (((flip) (:) [1]) 2)
 
@@ -49,7 +50,8 @@ passes l = do
   tell $ "datas : \n" ++ pretty datas
   tell $ "exprs : \n" ++ pretty exprs
   env0 <- withExceptT TypeError $ interpret datas baseEnvs
-  env1 <- withExceptT TypeError $ addSigs sigs env0
+  env1 <- withExceptT TypeError $ addClasses classes env0
+  env2 <- withExceptT TypeError $ addSigs sigs env0
   tell $ "after sigs : " ++ showKind env1 ++ "\n"
   --tell $ pretty env
   --tell $ pretty exprs

@@ -15,7 +15,8 @@ module Env (
   fromList,
   toList,
   pretty,
-  modifyClass,
+  alterClass,
+  addClass,
   ClassEnv(..),
   DeclErr,
   baseEnvs,
@@ -82,8 +83,11 @@ instance ShowKind Envs where
 baseEnvs :: Envs
 baseEnvs = Envs kindEnv baseEnv baseClasses
 
-modifyClass :: ClassEnv -> (String, Class) -> ClassEnv
-modifyClass env (n, c) = env{classes = Map.insert n c (classes env)}
+addClass :: ClassEnv -> (String, Class) -> ClassEnv
+addClass env (n, c) = alterClass env n (Just . const c)
+
+alterClass :: ClassEnv -> String -> (Maybe Class -> Maybe Class) -> ClassEnv
+alterClass env name f = env{classes = Map.alter f name (classes env)}
 
 baseEnv :: Env
 baseEnv = TypeEnv (Map.fromList allOps)

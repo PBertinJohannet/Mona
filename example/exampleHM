@@ -1,5 +1,12 @@
 sig flip = forall a b c . (a -> b -> c) -> b -> a -> c;
 let flip = \f a b -> f b a;
-class Show a = {
-  sig show = forall a . a -> List Char;
+class Read a = {
+  sig read = (List Char) -> a;
 };
+class Functor f = {
+  sig fmap = forall a b . (a -> b) -> (f a) -> f b;
+}
+class Monad m = {
+  sig return = forall a . m a;
+  sig bind = forall a b . (a -> m b) -> (m a) -> (m b);
+}
