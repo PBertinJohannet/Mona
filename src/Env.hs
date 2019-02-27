@@ -71,7 +71,9 @@ instance Pretty ClassEnv where
 
 instance Pretty Envs where
   pretty (Envs d v c) =
-    "Vars : \n" ++ pretty v ++ "\nTypes : \n" ++ pretty d ++ "\n"
+    "Vars : \n" ++ pretty v ++
+    "\nTypes : \n" ++ pretty d ++
+    "\nClasses : \n" ++ pretty c ++ "\n"
 
 instance ShowKind Envs where
   showKind (Envs d v c) =
@@ -139,95 +141,3 @@ instance Pretty DeclErr where
     AlreadyDefined s -> "Type is already defined : " ++ s
     UnknownClass s -> "Class is unknown : " ++ s
     EmptyType s -> "Empty type : " ++ s
-{-
-type AddTypes a = StateT Env (ExceptT DeclErr (Writer String)) a;
-
-addTVar :: [String] -> [String]
-addTVar vs = vs ++ [lastVar vs]
-
-lastVar :: [String] -> String
-lastVar vs = case find (`notElem` vs) letters of
-  Just l -> l
-
-runTypeDecls :: Env -> [Decl] -> ExceptT DeclErr (Writer String) ([ExprDecl], Env)
-runTypeDecls env = addTypeDecls >>> flip runStateT env
-
-addTypeDecls :: [Decl] -> AddTypes [ExprDecl]
-addTypeDecls ds = do
-  l <- mapM addTypeDecl ds
-  return $ mconcat l
-
-addTypeDecl :: Decl -> AddTypes [ExprDecl]
-addTypeDecl = \case
-  (s, Expr e) -> return [(s, e)]
-  (s, TypeDecl tvars (Or prods)) -> do
-    addType s tvars prods
-    return []
-
-addType :: String -> [String] -> [Prod] -> AddTypes ()
-addType name tvars pd = do
-  env <- get
-  case lookup name env of
-    Just _ -> throwError $ AlreadyDefined name
-    Nothing -> do
-      cons <- mapM (constructor name tvars) pd
-      pats <- mapM (pat name tvars) pd
-      modify $ flip extends (cons ++ pats)
-      return ()
-
-pat :: String -> [String] -> Prod -> AddTypes (String, Scheme)
-pat name tvars p@(Prod cname fs) =
-  let finalVar = TVar $ TV (lastVar tvars) Star in
-  let utilFunc = inConstructor name tvars p finalVar in
-  let vars = (`TV` Star) <$> addTVar tvars in
-  let baseType = mkType name tvars in
-  let construct = utilFunc `mkArr` (baseType `mkArr` finalVar) in
-  let finalType = Forall vars (Qual [] construct) in
-  return ("~" ++ cname, finalType)
-
-constructor :: String -> [String] -> Prod -> AddTypes (String, Scheme)
-constructor name tvars p@(Prod cname fs) =
-  return (cname,
-    Forall ((`TV` Star) <$> tvars)
-    $ Qual []
-    $ inConstructor name tvars p (mkType name tvars))
-
-inConstructor :: String -> [String] -> Prod -> Type -> Type
-inConstructor name tvars (Prod n fs) end =
-  foldr mkArr
-    end
-    $ mkField name tvars <$> fs
-
-mkField :: String -> [String] -> Field -> Type
-mkField name tvars = \case
-  FieldS s -> makeVar s tvars
-  FieldApp a b -> TApp (mkField name tvars a) (mkField name tvars b)
-
-mkType :: String -> [String] -> Type
-mkType s tvars = foldl TApp (makeVar s tvars) $ fmap (TVar . (`TV` Star)) tvars
-
-makeVar :: String -> [String] -> Type
-makeVar v tvars = if v `elem` tvars then TVar (TV v Star) else TCon v Star
-{-
-inferKind :: [String] -> TypeDecl -> AddTypes Kind
-inferKind = _ok
--}
-type Infer a = ReaderT String -- tvars
-  (StateT KindEnv
-  (ExceptT DeclErr
-  (Writer String))) a;
-
-type Union = (Kind, TVar);
-type Constraints = (Type, [Union]);
-
-infer :: TypeDecl -> Infer (Type , [Constraints])
-infer t = do
-  name <- ask
-  case t of
-    Or [] -> throwError $ EmptyType name
-    Or (p:ps) -> do
-      (tp, cs) <- infer p
-      is <- mapM infer ps
-      (tps, css) <- unzip is
-      return (tp, fmap (, tp) tps)
--}

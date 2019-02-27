@@ -103,11 +103,7 @@ inferExprT :: ClassEnv -> Env -> Expr -> Scheme -> ExceptLog Scheme
 inferExprT cenv env ex tp = case runInfer env (inferEq ex tp) of
   Left err -> throwError err
   Right (found, cs, expected) -> do
-    tell "inferExprT\n"
     (preds, subst) <- runSolve cenv cs
-    tell $ "found : " ++ pretty found ++ "\n"
-    tell $ "with subst : " ++ pretty (apply subst found) ++ "\n"
-    tell $ "strict  : " ++ pretty (apply subst expected) ++ "\n"
     s0 <- checkStrict (apply subst found) (apply subst expected) False
     checkSubst s0
     return $ closeOver (apply subst found) (apply subst preds)
@@ -218,7 +214,6 @@ checkSubst sub = Map.elems >>> nub >>> check $ sub
                   then return sub
                   else throwError $ SignatureMismatch sub
 
-
 checkStrict :: Type -> Type -> Bool -> ExceptLog Subst
 checkStrict t1 t2 _ | t1 == t2 = return nullSubst
 checkStrict (TVar v) t2@(TVar v2) False = return $ Map.singleton v t2
@@ -227,13 +222,10 @@ checkStrict
   t1@(TApp (TApp (TCon "(->)" _) a) b)
   t2@(TApp (TApp (TCon "(->)" _) a0) b0)
   contra = do
-  tell $ "strict : " ++ pretty t1 ++ " == " ++ pretty t2 ++ "\n"
   s1 <- checkStrict a a0 (not contra)
   s2 <- checkStrict (apply s1 b) (apply s1 b0) contra
   return $ s2 `compose` s1
-checkStrict t1 t2 _ = do
-  tell $ "strict : " ++ pretty t1 ++ " == " ++ pretty t2 ++ "\n"
-  throwError $ UnificationFail t1 t2
+checkStrict t1 t2 _ = throwError $ UnificationFail t1 t2
 
 type Unifier = (Subst, [Union])
 

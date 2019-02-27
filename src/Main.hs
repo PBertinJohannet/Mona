@@ -39,21 +39,12 @@ run = L.pack
   >>> fmap (passes >>> runExceptT >>> runWriter)
   >>> debug --debug . fmap (
 
-sepDecls :: [Decl] -> ([ExprDecl], [(String, [String], Expr)], [(String, Scheme)])
-sepDecls [] = ([], [], [])
-sepDecls (d:ds) =
-  let (vars, datas, sigs) = sepDecls ds in
-  case d of
-    (s, TypeDecl tvars e) -> (vars, (s, tvars, e): datas, sigs)
-    (s, Expr e) -> ((s, e): vars, datas, sigs)
-    (s, Sig e) -> (vars, datas, (s, e):sigs)
-
 instance Pretty (String, [String], Expr) where
   pretty (name, tvars, ex) = "type " ++ name ++ " " ++ unwords tvars ++ " = " ++ pretty ex ++ "\n"
 
 passes :: [(String, Statement)] -> ExceptT PassErr (Writer String) Envs
 passes l = do
-  let (exprs, datas, sigs) = sepDecls l
+  let Program exprs datas classes sigs = sepDecls l
   tell $ "sigs : \n" ++ pretty sigs ++ "\n"
   tell $ "datas : \n" ++ pretty datas
   tell $ "exprs : \n" ++ pretty exprs

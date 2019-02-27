@@ -25,12 +25,31 @@ data Lit
   | LBool Bool
   deriving (Show, Eq, Ord)
 
-data Program = Program [Decl] Expr deriving Eq
-
 type Decl = (String, Statement)
 type ExprDecl = (String, Expr)
 
-data Statement = Expr Expr | TypeDecl [String] Expr | Sig Scheme deriving (Show, Eq, Ord);
+data Statement
+  = Expr Expr
+  | TypeDecl [String] Expr
+  | Class String String [(Name, Scheme)]
+  | Sig Scheme deriving (Show, Eq, Ord);
+
+data Program = Program{
+  exprs :: [ExprDecl],
+  datas :: [(String, [String], Expr)],
+  clasdecls :: [(String, String, [(Name, Scheme)])],
+  signatures :: [(String, Scheme)]} deriving Eq
+
+sepDecls :: [Decl] -> Program
+sepDecls [] = Program [] [] [] []
+sepDecls (d:ds) =
+  let prog = sepDecls ds in
+  case d of
+    (s, TypeDecl tvars e) -> prog{datas = (s, tvars, e): datas prog}
+    (s, Expr e) -> prog{exprs = (s, e): exprs prog}
+    (s, Class nm vr sigs) -> prog{clasdecls = (nm, vr, sigs): clasdecls prog}
+    (s, Sig e) -> prog{signatures = (s, e): signatures prog}
+
 
 -- apply a function to the leftmost element of a succession of applications.
 mapLeft :: (Expr -> Expr) -> Expr -> Expr

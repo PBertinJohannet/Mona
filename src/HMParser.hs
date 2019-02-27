@@ -1,5 +1,4 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE LambdaCase #-}
 
 module HMParser (
   parseModule
@@ -240,15 +239,29 @@ parsePreds = do
   reservedOp "=>"
   return preds
 
-type Binding = (String, Statement)
-
-sig :: Parser Binding
-sig = do
+inSig :: Parser (String, Scheme)
+inSig = do
   reserved "sig"
   name <- identifier
   reservedOp "="
   body <- parseScheme
-  return (name, Sig body)
+  return (name, body)
+
+type Binding = (String, Statement)
+
+sig :: Parser Binding
+sig = second Sig <$> inSig
+
+classdecl :: Parser Binding
+classdecl = do
+  reserved "class"
+  name <- identifier
+  typename <- identifier
+  reservedOp "="
+  reservedOp "{"
+  sigs <- many $ do {x <- inSig; semi; return x}
+  reservedOp"}"
+  return (name, Class name typename sigs)
 
 letdecl :: Parser Binding
 letdecl = do
@@ -287,7 +300,7 @@ constructor = do
     e -> App (Var name) e
 
 decl :: Parser Binding
-decl = try letrecdecl <|> letdecl <|> typedecl <|> sig
+decl = try letrecdecl <|> letdecl <|> typedecl <|> sig <|> classdecl
 
 top :: Parser Binding
 top = do

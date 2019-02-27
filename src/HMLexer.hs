@@ -18,6 +18,7 @@ reservedNames = [
     "fix",
     "rec",
     "if",
+    "class",
     "then",
     "else",
     "case",
@@ -36,6 +37,8 @@ reservedOps = [
     ":",
     "[",
     "]",
+    "{",
+    "}",
     "=",
     "==",
     "++"
