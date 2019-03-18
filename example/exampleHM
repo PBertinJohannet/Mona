@@ -13,3 +13,8 @@ class Monad m = {
 inst int of Read = {
   let read k = flip;
 }
+inst List of Functor = {
+  let fmap f l = case l of
+    (Cons a b) -> f a,
+    (End) -> 0;
+}

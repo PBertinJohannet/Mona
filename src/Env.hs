@@ -21,6 +21,7 @@ module Env (
   DeclErr,
   baseEnvs,
   letters,
+  addInstance,
   lettersSim,
 ) where
 
