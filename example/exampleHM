@@ -10,3 +10,6 @@ class Monad m = {
   sig return = forall a . m a;
   sig bind = forall a b . (a -> m b) -> (m a) -> (m b);
 }
+inst int of Read = {
+  let read k = flip;
+}

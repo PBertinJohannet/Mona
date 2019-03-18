@@ -7,3 +7,9 @@ class Pretty a where
 
 instance Pretty a => Pretty [a] where
   pretty = fmap pretty >>> unwords
+
+instance Pretty Char where
+  pretty = (:[])
+
+instance (Pretty a, Pretty b, Pretty c) => Pretty (a, b, c) where
+  pretty (i, j, k) = pretty i ++ "\n" ++ pretty j ++ "\n" ++ pretty k ++ "\n"

@@ -18,8 +18,8 @@ import Type (Scheme, showKind)
 import Control.Monad.Writer
 import Control.Monad.Except
 import Control.Monad.State
-import InterpretTypes
-import Typeclass
+import InterpretTypes (interpret)
+import Typeclass (runAddClasses)
 import Sig
 -- (((flip) (:) [1]) 2)
 
@@ -40,25 +40,23 @@ run = L.pack
   >>> fmap (passes >>> runExceptT >>> runWriter)
   >>> debug --debug . fmap (
 
-instance Pretty (String, [String], Expr) where
-  pretty (name, tvars, ex) = "type " ++ name ++ " " ++ unwords tvars ++ " = " ++ pretty ex ++ "\n"
+instance Pretty (Scheme, Expr) where
+  pretty (s, e) = "check : " ++ pretty s ++ " vs " ++ pretty e ++ "\n"
 
 passes :: [(String, Statement)] -> ExceptT PassErr (Writer String) Envs
 passes l = do
-  let Program exprs datas classes sigs = sepDecls l
+  let Program exprs datas classes insts sigs = sepDecls l
   tell $ "sigs : \n" ++ pretty sigs ++ "\n"
   tell $ "datas : \n" ++ pretty datas
   tell $ "exprs : \n" ++ pretty exprs
   env0 <- withExceptT TypeError $ interpret datas baseEnvs
-  env1 <- withExceptT TypeError $ addClasses classes env0
-  env2 <- withExceptT TypeError $ addSigs sigs env0
+  (env1, insts) <- withExceptT TypeError $ runAddClasses classes insts env0
+  tell $ "inst to check : " ++ pretty insts ++ "\n"
+  env2 <- withExceptT TypeError $ addSigs sigs env1
   tell $ "after sigs : " ++ showKind env1 ++ "\n"
   --tell $ pretty env
   --tell $ pretty exprs
   withExceptT TypeError $ inferTop env1 exprs
-
-instance Pretty (String, Expr) where
-  pretty (s, e) = s ++ " : " ++ pretty e ++ "\n"
 
 debug :: Either ParseError (Either PassErr Envs, String) -> String
 debug = \case

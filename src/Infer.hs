@@ -46,6 +46,8 @@ data TypeError
   | UnknownClass String
   | WrongKind String Kind
   | UnificationFail Type Type
+  | UndeclaredClass String
+  | MultipleDecl String
   | UnknownCommand String
   | SignatureMismatch Subst
   | UnificationMismatch [Type] [Type] deriving (Show, Eq);
@@ -57,7 +59,9 @@ instance Pretty TypeError where
     NotInClass a b -> pretty b ++ " is not in " ++ a
     UnknownCommand s -> "Unknown command : " ++ s
     UnknownClass s -> "Unknown class : " ++ s
+    UndeclaredClass s -> "Undeclared class : " ++ s
     WrongKind s k -> s ++ " has kind : " ++ pretty k
+    MultipleDecl s -> s ++ " Multiple declarations : " ++ s
     SignatureMismatch s -> "Signature does not match : " ++ pretty s
     UnificationFail t t' -> "Cannot unify : " ++ pretty t ++ " with "++pretty t'
     UnificationMismatch t t' -> "Cannot unify : " ++ pretty t ++ " with "++pretty t'

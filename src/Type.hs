@@ -130,6 +130,9 @@ instance Pretty Type where
 class ShowKind a where
   showKind :: a -> String
 
+instance ShowKind a => ShowKind [a] where
+  showKind = fmap showKind >>> unwords
+
 instance ShowKind Type where
   showKind = \case
     TVar v -> showKind v

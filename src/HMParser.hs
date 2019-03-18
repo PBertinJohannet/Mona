@@ -247,7 +247,29 @@ inSig = do
   body <- parseScheme
   return (name, body)
 
+inLet :: Parser (String, Expr)
+inLet = do
+  reserved "let"
+  name <- identifier
+  args <- many identifier
+  reservedOp "="
+  body <- expr
+  return (name, foldr Lam body args)
+
+
 type Binding = (String, Statement)
+
+instdecl :: Parser Binding
+instdecl = do
+  reserved "inst"
+  tp <- parseType
+  reserved "of"
+  cls <- identifier
+  reservedOp "="
+  reservedOp "{"
+  vals <- many $ do {x <- inLet; semi; return x}
+  reservedOp "}"
+  return ("", Inst cls tp vals)
 
 sig :: Parser Binding
 sig = second Sig <$> inSig
@@ -260,17 +282,13 @@ classdecl = do
   reservedOp "="
   reservedOp "{"
   sigs <- many $ do {x <- inSig; semi; return x}
-  reservedOp"}"
+  reservedOp "}"
   return (name, Class name typename sigs)
 
 letdecl :: Parser Binding
 letdecl = do
-  reserved "let"
-  name <- identifier
-  args <- many identifier
-  reservedOp "="
-  body <- expr
-  return (name, Expr $ foldr Lam body args)
+  (n, e) <- inLet
+  return (n, Expr e)
 
 letrecdecl :: Parser Binding
 letrecdecl = do
@@ -300,7 +318,7 @@ constructor = do
     e -> App (Var name) e
 
 decl :: Parser Binding
-decl = try letrecdecl <|> letdecl <|> typedecl <|> sig <|> classdecl
+decl = try letrecdecl <|> letdecl <|> typedecl <|> sig <|> classdecl <|> instdecl
 
 top :: Parser Binding
 top = do

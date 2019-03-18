@@ -27,24 +27,29 @@ data Lit
 
 type Decl = (String, Statement)
 type ExprDecl = (String, Expr)
+type ClassDecl = (String, String, [(String, Scheme)]);
+type InstDecl = (String, Type, [(String, Expr)]);
 
 data Statement
   = Expr Expr
   | TypeDecl [String] Expr
   | Class String String [(Name, Scheme)]
+  | Inst String Type [(Name, Expr)]
   | Sig Scheme deriving (Show, Eq, Ord);
 
 data Program = Program{
   exprs :: [ExprDecl],
   datas :: [(String, [String], Expr)],
-  clasdecls :: [(String, String, [(Name, Scheme)])],
+  clasdecls :: [ClassDecl],
+  instances :: [InstDecl],
   signatures :: [(String, Scheme)]} deriving Eq
 
 sepDecls :: [Decl] -> Program
-sepDecls [] = Program [] [] [] []
+sepDecls [] = Program [] [] [] [] []
 sepDecls (d:ds) =
   let prog = sepDecls ds in
   case d of
+    (n, Inst s t e) -> prog{instances = (s, t, e) : instances prog}
     (s, TypeDecl tvars e) -> prog{datas = (s, tvars, e): datas prog}
     (s, Expr e) -> prog{exprs = (s, e): exprs prog}
     (s, Class nm vr sigs) -> prog{clasdecls = (nm, vr, sigs): clasdecls prog}

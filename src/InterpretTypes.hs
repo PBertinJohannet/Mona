@@ -29,8 +29,8 @@ data UK = UK{
   patterns :: [(String, Scheme)],
   consts :: [(String, Scheme)]};
 
-instance Pretty (String, Scheme) where
-  pretty (s, t) = s ++ " = " ++ showKind t ++ "\n"
+instance ShowKind (String, Scheme) where
+  showKind (s, t) = s ++ " = " ++ showKind t ++ "\n"
 
 instance Pretty UK where
   pretty (UK tname tvars tcons tp kd pats cst) =
@@ -38,8 +38,8 @@ instance Pretty UK where
     ++ "\nconstructing : " ++ pretty tcons
     ++ "\n of type  : " ++ pretty tp
     ++ "\n with tvars : " ++ unwords (showKind <$> tvars)
-    ++ "\n constructors : \n" ++ pretty cst ++ "\n"
-    ++ "\n and patterns : \n" ++ pretty pats ++ "\n"
+    ++ "\n constructors : \n" ++ showKind cst ++ "\n"
+    ++ "\n and patterns : \n" ++ showKind pats ++ "\n"
 
 interpret :: [(String, [String], Expr)] -> Envs -> ExceptT TypeError (Writer String) Envs
 interpret ds env = foldM (flip runInterpret) env ds

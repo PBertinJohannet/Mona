@@ -22,6 +22,7 @@ reservedNames = [
     "then",
     "else",
     "case",
+    "inst",
     "of"
   ]
 

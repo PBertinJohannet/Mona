@@ -86,6 +86,12 @@ baseEnvs = Envs kindEnv baseEnv baseClasses
 addClass :: ClassEnv -> (String, Class) -> ClassEnv
 addClass env (n, c) = alterClass env n (Just . const c)
 
+addInstance :: ClassEnv -> String -> Inst -> ClassEnv
+addInstance env n i = modifyClass env n $ second (i:)
+
+modifyClass :: ClassEnv -> String -> (Class -> Class) -> ClassEnv
+modifyClass env n f = alterClass env n (fmap f)
+
 alterClass :: ClassEnv -> String -> (Maybe Class -> Maybe Class) -> ClassEnv
 alterClass env name f = env{classes = Map.alter f name (classes env)}
 
