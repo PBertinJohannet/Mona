@@ -64,7 +64,7 @@ instance Pretty TypeError where
     MultipleDecl s -> s ++ " Multiple declarations : " ++ s
     SignatureMismatch s -> "Signature does not match : " ++ pretty s
     UnificationFail t t' -> "Cannot unify : " ++ pretty t ++ " with "++pretty t'
-    UnificationMismatch t t' -> "Cannot unify : " ++ pretty t ++ " with "++pretty t'
+    UnificationMismatch t t' -> "Mismatch : Cannot unify : " ++ pretty t ++ " with "++pretty t'
 
 type ExceptLog a = ExceptT TypeError (Writer String) a;
 
@@ -86,6 +86,12 @@ inferDecl (Envs d ev cenv) ((name, _, ex):xs) = do
   e <- inferExpr cenv d ex
   inferDecl (Envs (extend d (name, e)) ev cenv) xs
 
+checkInstances :: Envs -> [(Scheme, Expr)] -> ExceptLog ()
+checkInstances env [] = return ()
+checkInstances (Envs d env cenv) ((sc, ex):xs) = do
+  tell $ "checking : " ++ pretty ex ++ " against " ++ pretty sc ++ "\n"
+  inferExprT cenv env ex sc
+  checkInstances (Envs d env cenv) xs
 
 inferTop :: Envs -> [(String, Expr)] -> ExceptLog Envs
 inferTop env [] = return env
@@ -100,6 +106,7 @@ inferExpr :: ClassEnv -> Env -> Expr -> ExceptLog Scheme
 inferExpr cenv env ex = case runInfer env (infer ex) of
   Left err -> throwError err
   Right (ty, cs) -> do
+    tell $ "found : "++ pretty ty ++ "\n"
     (preds, subst) <- runSolve cenv cs
     return $ closeOver (apply subst ty) (apply subst preds)
 
@@ -108,6 +115,8 @@ inferExprT cenv env ex tp = case runInfer env (inferEq ex tp) of
   Left err -> throwError err
   Right (found, cs, expected) -> do
     (preds, subst) <- runSolve cenv cs
+    tell $ "found : " ++ pretty (apply subst found) ++ "\n"
+    tell $ "expected : " ++ pretty (apply subst expected) ++ "\n"
     s0 <- checkStrict (apply subst found) (apply subst expected) False
     checkSubst s0
     return $ closeOver (apply subst found) (apply subst preds)
@@ -226,10 +235,16 @@ checkStrict
   t1@(TApp (TApp (TCon "(->)" _) a) b)
   t2@(TApp (TApp (TCon "(->)" _) a0) b0)
   contra = do
-  s1 <- checkStrict a a0 (not contra)
-  s2 <- checkStrict (apply s1 b) (apply s1 b0) contra
+    s1 <- checkStrict a a0 (not contra)
+    s2 <- checkStrict (apply s1 b) (apply s1 b0) contra
+    return $ s2 `compose` s1
+checkStrict (TApp t1 v1) (TApp t2 v2) c = do
+  s1 <- checkStrict t1 t2 c
+  s2 <- checkStrict (apply s1 v1) (apply s1 v2) c
   return $ s2 `compose` s1
-checkStrict t1 t2 _ = throwError $ UnificationFail t1 t2
+checkStrict t1 t2 _ = do
+  tell $ "try for : " ++ showKind t1 ++ " and " ++ showKind t2 ++ "\n"
+  throwError $ UnificationFail t1 t2
 
 type Unifier = (Subst, [Union])
 

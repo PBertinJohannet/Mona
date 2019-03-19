@@ -4,6 +4,7 @@ module Typeclass where
 
 import Type
 import Control.Monad.Except
+import Control.Monad.Reader
 import Control.Monad.Writer
 import Infer
 import Data.List (find, sortOn, groupBy)
@@ -11,11 +12,12 @@ import Sig
 import Syntax
 import Control.Arrow
 import qualified Env (lookup)
-import Env (Envs, addClass, classEnv, addInstance)
+import Env (Envs, addClass, classEnv, addInstance, Env, dataEnv)
 import Prelude hiding (head)
 import qualified Prelude
 import qualified Data.Map as Map
 import Pretty
+import Subst
 
 instance Pretty a => Pretty (String, a) where
   pretty (k, c) = k ++ " = " ++ pretty c ++ "\n"
@@ -77,22 +79,23 @@ runAddClasses c i env = do
   tell $ "add classes : " ++ pretty cls ++ "\n"
   env <- addClasses c env
   env <- addInstances i env
-  schems <- mconcat <$> mapM checkSigs cls
+  schems <- mconcat <$> mapM (checkSigs $ dataEnv env) cls
   return (env, schems)
 
-checkSigs :: (ClassDecl, [InstDecl]) -> AddClass [(Scheme, Expr)]
-checkSigs (c, i) = mconcat <$> mapM (checkSig c) i
+checkSigs :: Env -> (ClassDecl, [InstDecl]) -> AddClass [(Scheme, Expr)]
+checkSigs env (c, i) = mconcat <$> mapM (checkSig env c) i
 
-checkSig :: ClassDecl -> InstDecl -> AddClass [(Scheme, Expr)]
-checkSig (_, tv, funcs) (_, t, exprs) = do
-  let baseSubst = Map.singleton tv t
-  tell $ "checking : "++ pretty (snd <$> funcs) ++ " vs : " ++ pretty exprs ++ "\n"
-  groupStrict funcs exprs
+checkSig :: Env -> ClassDecl -> InstDecl -> AddClass [(Scheme, Expr)]
+checkSig env (_, tv, funcs) (_, t, exprs) = do
+  let baseSubst = Map.singleton (var tv) t
+  groupStrict env (second (apply baseSubst) <$> funcs) exprs
 
-groupStrict :: [(String, a)] -> [(String, b)] -> AddClass [(a, b)]
-groupStrict a b = foldM inGroup [] (zip (sortOn fst a) (sortOn fst b))
+groupStrict :: Env -> [(String, Scheme)] -> [(String, Expr)] -> AddClass [(Scheme, Expr)]
+groupStrict dEnv a b = foldM inGroup [] (zip (sortOn fst a) (sortOn fst b))
   where
     inGroup lst ((a, b), (a', b')) =
       if a == a'
-      then return $ (b, b'):lst
+      then do
+        b <- replaceConsTypes [] dEnv b
+        return $ (b, b'):lst
       else throwError $ UnificationFail (tvar a) (tvar a')

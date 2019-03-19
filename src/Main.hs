@@ -49,14 +49,17 @@ passes l = do
   tell $ "sigs : \n" ++ pretty sigs ++ "\n"
   tell $ "datas : \n" ++ pretty datas
   tell $ "exprs : \n" ++ pretty exprs
-  env0 <- withExceptT TypeError $ interpret datas baseEnvs
-  (env1, insts) <- withExceptT TypeError $ runAddClasses classes insts env0
+  env <- withExceptT TypeError $ interpret datas baseEnvs
+  (env, insts) <- withExceptT TypeError $ runAddClasses classes insts env
   tell $ "inst to check : " ++ pretty insts ++ "\n"
-  env2 <- withExceptT TypeError $ addSigs sigs env1
-  tell $ "after sigs : " ++ showKind env1 ++ "\n"
+  env <- withExceptT TypeError $ addSigs sigs env
+  tell $ "after sigs : " ++ showKind env ++ "\n"
   --tell $ pretty env
   --tell $ pretty exprs
-  withExceptT TypeError $ inferTop env1 exprs
+  env <- withExceptT TypeError $ inferTop env exprs
+  tell $ "after infer : " ++ showKind env ++ "\n"
+  withExceptT TypeError $ checkInstances env insts
+  return env
 
 debug :: Either ParseError (Either PassErr Envs, String) -> String
 debug = \case

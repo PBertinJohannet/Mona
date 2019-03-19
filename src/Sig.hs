@@ -5,6 +5,7 @@ import Type
 import Env
 import Control.Monad.Except
 import Control.Monad.Writer
+import Control.Monad.Reader
 import Infer
 import Data.List (find)
 import qualified Env (lookup)
