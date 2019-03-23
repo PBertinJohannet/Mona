@@ -17,6 +17,7 @@ import Control.Arrow
 import Data.Maybe
 import Infer
 import Data.List
+import RecursionSchemes
 
 type Interpret a = ReaderT Env (ExceptT TypeError (Writer String)) a;
 
@@ -46,11 +47,13 @@ interpret ds env = foldM (flip runInterpret) env ds
 
 runInterpret :: (String, [String], Expr) -> Envs -> ExceptT TypeError (Writer String) Envs
 runInterpret (s, tvars, e) (Envs d v cenv) = do
+  tell $ "doing : " ++ pretty e ++ "\n"
   let (toInfer, baseConsts, additionalConsts) = desugar tvars e
   tell $ "base : " ++ pretty baseConsts ++ "\n"
   tell $ "additionals : " ++ pretty additionalConsts ++ "\n"
   Forall _ (Qual _ t) <- inferExpr cenv d toInfer
   envs <- runReaderT (interpretTop (Envs d v cenv) s tvars toInfer t baseConsts) d
+  tell $ "giving env : " ++ pretty envs
   foldM addCustomCons envs (reverse additionalConsts)
 
 interpretTop :: Envs -> String -> [String] -> Expr -> Type -> [Expr] -> Interpret Envs
@@ -129,7 +132,7 @@ findKind s = do
 flattenArgs :: String -> Expr -> Type -> Interpret (Env, Expr)
 flattenArgs name expr tp = do
   env <- ask
-  case (expr, tp) of
+  case (out expr, tp) of
     (Lam n e, TApp (TCon "(->)" _) b) ->
       return ( extend env (n, Forall [] $ Qual [] b), e)
     (Lam n e, TApp a b) -> do
@@ -140,14 +143,15 @@ flattenArgs name expr tp = do
 
 
 extractCons :: Expr -> [String]
-extractCons = \case
-  App (App (Var "|") a) b -> extractCons b ++ extractCons a
-  App (App (Var "+") a) b -> extractCons b ++ extractCons a
-  App a b -> extractCons a
-  Lam n e -> extractCons e
+extractCons = histo $ \case
+  App a b -> case matchApp a b of
+    (Just ("|", a, b), _) -> b ++ a
+    (Just ("+", a, b), _) -> b ++ a
+    (_, (a, _)) -> a
+  Lam n e -> value e
   Var v -> [v]
   Lit l -> ["uh uh"]
-  Fix e -> extractCons e
+  Fix e -> value e
 
 data ConsDeclF a = Or a | Plus a  deriving (Show, Functor);
 type ConsDecl = ConsDeclF Expr;
@@ -165,23 +169,25 @@ getBaseConsts = \case
     (Plus p) -> (os, p:ps)
     (Or o) -> (o:os, ps)
 
+
 -- removes the (+) operations
 desugar :: [String] -> Expr -> (Expr, [Expr], [Expr])
 desugar tvars expr =
   let callw = uncurry (:) $ sepCalls Or expr in
   let (b:bs, additionals) = getBaseConsts callw in
-  let e = foldr (App . App (Var "|")) b bs in
-  let e1 = foldr Lam e (extractCons e) in
-  let toInfer = foldr Lam e1 tvars in
+  let e = foldr (appC . appC (varC "|")) b bs in
+  let e1 = foldr lamC e (extractCons e) in
+  let toInfer = foldr lamC e1 tvars in
   (toInfer, b:bs, additionals)
 
 -- expr found + remaining expr.
 sepCalls :: (Expr -> ConsDecl) -> Expr -> (ConsDecl, [ConsDecl])
-sepCalls tp = \case
-  App (App (Var "|") a) b -> (Or b, uncurry (:) $ sepCalls tp a)
-  App (App (Var "+") a) b -> (Plus b, uncurry (:) $ sepCalls tp a)
-  App a b -> let (remain, res) = sepCalls tp a in ((`App` b) <$> remain, res)
-  e -> (tp e, [])
+sepCalls tp = histo $ \case
+  App a b -> case matchApp a b of
+    (Just ("|", a, _), _) -> (Or $ orig b, uncurry (:) a)
+    (Just ("+", a, _), _) -> (Plus $ orig b, uncurry (:) a)
+    (_, ((remain, res), b')) -> ((`appC` orig b) <$> remain, res)
+  e -> (tp $ inOrig e, [])
 
 makeCons :: Type -> [TVar] -> Expr -> Interpret ((String, Scheme), (String, Scheme))
 makeCons baseT tvars expr = do
@@ -197,20 +203,15 @@ makeCons baseT tvars expr = do
       ret = nextTV tvars
 
 toType :: Type -> [TVar] -> Expr -> Interpret Type
-toType baseT tvars e = do
+toType baseT tvars = cataM $ \e -> do
     env <- ask
     case e of
-      App a b -> do
-        a1 <- toType baseT tvars a
-        b1 <- toType baseT tvars b
-        return $ TApp a1 b1
+      App a b -> return $ TApp a b
       Var v -> do
         k <- findKind v
         return $ maybe (TCon v k) TVar (find (\(TV n k) -> n == v) tvars)
-      Fix e -> do
-        e1 <- toType baseT tvars e
-        return $ TApp e1 $ unapply baseT
-      Lam n e -> toType baseT tvars e
+      Fix e -> return $ TApp e $ unapply baseT
+      Lam n e -> return e
 
 simplifyUnit :: Type -> Type
 simplifyUnit = \case

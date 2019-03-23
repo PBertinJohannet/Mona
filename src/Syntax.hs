@@ -1,21 +1,42 @@
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveFoldable #-}
+{-# LANGUAGE DeriveTraversable #-}
 
 module Syntax where
 import Pretty
 import Control.Arrow
+import RecursionSchemes
+import qualified Data.Map as Map
 import Type
 
 type Name = String
 
-data Expr
+data ExprF a
   = Var Name
-  | App Expr Expr
-  | Lam Name Expr
+  | App a a
+  | Lam Name a
   | Lit Integer
-  | Case Expr [Expr]
-  | Fix Expr
-  deriving (Show, Eq, Ord)
+  | Case a [a]
+  | Fix a
+  deriving (Eq, Ord, Functor, Foldable, Traversable)
 
+makeConstructor :: (a -> b -> ExprF Expr) -> a -> b -> Expr
+makeConstructor f a = f a >>> In
+
+varC = Var >>> In
+appC = makeConstructor App
+lamC = makeConstructor Lam
+litC = Lit >>> In
+caseC = makeConstructor Case
+fixC = Fix >>> In
+
+
+
+type Expr = Term ExprF;
 
 
 data Field = FieldS String | FieldApp Field Field deriving (Show, Eq, Ord)
@@ -30,19 +51,22 @@ type ExprDecl = (String, Expr)
 type ClassDecl = (String, String, [(String, Scheme)]);
 type InstDecl = (String, Type, [(String, Expr)]);
 
-data Statement
-  = Expr Expr
-  | TypeDecl [String] Expr
-  | Class String String [(Name, Scheme)]
-  | Inst String Type [(Name, Expr)]
-  | Sig Scheme deriving (Show, Eq, Ord);
+data StatementF a
+ = Expr a
+ | TypeDecl [String] a
+ | Class String String [(String, Scheme)]
+ | Inst String Type [(String, a)]
+ | Sig Scheme
+ deriving (Functor)
+
+type Statement = StatementF Expr;
 
 data Program = Program{
   exprs :: [ExprDecl],
   datas :: [(String, [String], Expr)],
   clasdecls :: [ClassDecl],
   instances :: [InstDecl],
-  signatures :: [(String, Scheme)]} deriving Eq
+  signatures :: [(String, Scheme)]}
 
 sepDecls :: [Decl] -> Program
 sepDecls [] = Program [] [] [] [] []
@@ -56,38 +80,59 @@ sepDecls (d:ds) =
     (s, Sig e) -> prog{signatures = (s, e): signatures prog}
 
 
--- apply a function to the leftmost element of a succession of applications.
+
 mapLeft :: (Expr -> Expr) -> Expr -> Expr
 mapLeft f = \case
-  App a b -> App (mapLeft f a) b
-  e -> f e
+  In (App a b) -> In $ App (mapLeft f a) b
+  In e -> In $ fmap f e
 
--- apply a function to the leftmost element of a succession of applications.
 leftMost :: Expr -> Expr
-leftMost = \case
-  App a b -> leftMost a
-  e -> e
+leftMost = cata $ \case
+  App a b -> a
+  e -> In e
 
 leftMostVar :: Expr -> String
-leftMostVar e = let Var v = leftMost e in v
+leftMostVar e = let Var v = out $ leftMost e in v
 
 uncurryCall :: Expr -> [Expr]
-uncurryCall = \case
-  App a b -> uncurryCall a ++ [b]
-  e -> [e]
+uncurryCall = para $ curry $ \case
+  (In (App _ b), App a _) -> a ++ [b]
+  (e, _) -> [e]
 
 sepCallee :: Expr -> (String, Expr)
-sepCallee = \case
-  App (Var a) b -> (a, b)
-  App a b -> let (n, e) = sepCallee a in (n, App e b)
+sepCallee = out >>> \case
+  App (In (Var a)) b -> (a, b)
+  App a b -> let (n, e) = sepCallee a in (n, In $ App e b)
 
-instance Pretty Expr where
-  pretty e = "(" ++ (case e of
+type ExprAttr a = ExprF (Attr ExprF a);
+type AttrExpr a = Attr ExprF a;
+
+isAppOfH :: String -> ExprAttr a -> Maybe (a, a)
+isAppOfH s = \case
+  App (Attr _ (App (Attr _ (Var s)) (Attr a _))) (Attr b _) -> Just (a, b)
+  _ -> Nothing
+
+matchApp :: AttrExpr a -> AttrExpr a -> (Maybe (String, a, a), (a, a))
+matchApp a (Attr b _)= case a of
+  (Attr _ (App (Attr _ (Var s)) (Attr a' _))) -> (Just (s, a', b), (value a, b))
+  _ -> (Nothing, (value a, b))
+
+instance Show (ExprF String) where
+  show = inParen <<< \case
+    Var n -> "Var " ++ n
+    App a b -> "App " ++ a ++ " " ++ b
+    Lam a b -> "Lam " ++ a ++ " " ++ b
+    Case a b -> "Case " ++ a ++ " " ++ show b
+    Lit n -> "Lit " ++ show n
+    Fix n -> "Fix " ++ n
+
+instance PrettyHisto ExprF where
+  prettyH = inParen <<< \case
     Var n -> n
-    App (App (Var "|") a) b -> pretty a ++ " | " ++ pretty b
-    App a b -> pretty a ++ " " ++ pretty b
-    Lam n e -> "\\"++ n ++ " -> " ++ pretty e
+    App a b -> case matchApp a b of
+      (Just ("|", a, b), _) -> a ++ "|" ++ b
+      (_, (a, b)) -> unwords [a, b]
+    Lam n e -> "\\" ++ n ++ " -> " ++ value e
     Lit l -> show l
-    Fix e -> "fix " ++ pretty e
-    Case e ex -> "case " ++ pretty e ++ " of " ++ unlines (pretty <$> ex)
-    ) ++ ")"
+    Fix e -> "fix " ++ value e
+    Case e ex -> "case " ++ value e ++ " of " ++ unlines (value <$> ex)

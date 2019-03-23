@@ -1,13 +1,28 @@
+sig flip = forall a b c . (a -> b -> c) -> b -> a -> c;
+let flip = \f a b -> (f b) a;
 
+sig add = Int -> Int -> Int
+let add a b = a + b;
+
+class Read a = {
+  sig read = (List Char) -> a;
+};
 class Functor f = {
   sig fmap = forall a b . (a -> b) -> (f a) -> f b;
 }
+class Monad m = {
+  sig return = forall a . m a;
+  sig bind = forall a b . (a -> m b) -> (m a) -> (m b);
+}
+inst Int of Read = {
+  let read k = 1;
+}
+
 data ListF f a = EndF | ConsF a (f a);
 data List a  = List ((fix ListF) a)
   + Cons (\a b -> List(ConsF a b))
   + End List(EndF)
   + CCons \a b c -> Cons a (Cons b c);
-
 
 inst List of Functor = {
   let fmap f l = case l of

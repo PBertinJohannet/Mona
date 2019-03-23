@@ -1,7 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE LambdaCase #-}
 
 module HMParser (
-  parseModule
+  parseModule,
+  toSyntax
 ) where
 
 import Text.Parsec
@@ -11,13 +13,36 @@ import qualified Text.Parsec.Expr as Ex
 import qualified Text.Parsec.Token as Tok
 
 import qualified Data.Text.Lazy as L
+import RecursionSchemes
+import qualified Syntax as S
 
 import HMLexer
-import Syntax
 import Type
 
 import Control.Arrow
 
+data Expr
+  = Var String
+  | App Expr Expr
+  | Lam String Expr
+  | Lit Integer
+  | Case Expr [Expr]
+  | Fix Expr
+  deriving (Eq, Ord)
+
+type Statement = S.StatementF Expr
+
+toSyntax :: Statement -> S.Statement
+toSyntax = fmap fixExpr
+
+fixExpr :: Expr -> S.Expr
+fixExpr = ana $ \case
+  Var n -> S.Var n
+  App a b -> S.App a b
+  Lam a b -> S.Lam a b
+  Lit i -> S.Lit i
+  Case a b -> S.Case a b
+  Fix a -> S.Fix a
 
 -- returns the transformed function.
 pat :: Parser (Expr -> Expr)
@@ -256,7 +281,6 @@ inLet = do
   body <- expr
   return (name, foldr Lam body args)
 
-
 type Binding = (String, Statement)
 
 instdecl :: Parser Binding
@@ -269,10 +293,10 @@ instdecl = do
   reservedOp "{"
   vals <- many $ do {x <- inLet; semi; return x}
   reservedOp "}"
-  return ("", Inst cls tp vals)
+  return ("", S.Inst cls tp vals)
 
 sig :: Parser Binding
-sig = second Sig <$> inSig
+sig = second S.Sig <$> inSig
 
 classdecl :: Parser Binding
 classdecl = do
@@ -283,12 +307,12 @@ classdecl = do
   reservedOp "{"
   sigs <- many $ do {x <- inSig; semi; return x}
   reservedOp "}"
-  return (name, Class name typename sigs)
+  return (name, S.Class name typename sigs)
 
 letdecl :: Parser Binding
 letdecl = do
   (n, e) <- inLet
-  return (n, Expr e)
+  return (n, S.Expr e)
 
 letrecdecl :: Parser Binding
 letrecdecl = do
@@ -298,7 +322,7 @@ letrecdecl = do
   arg <- many identifier
   reservedOp "="
   body <- expr
-  return (name, Expr $ Fix $ Lam name $ foldr Lam body arg)
+  return (name, S.Expr $ Fix $ Lam name $ foldr Lam body arg)
 
 typedecl :: Parser Binding
 typedecl = do
@@ -307,7 +331,7 @@ typedecl = do
   tvars <- many identifier
   reservedOp "="
   body <- expr
-  return (name, TypeDecl tvars body)
+  return (name, S.TypeDecl tvars body)
 
 constructor :: Parser Expr
 constructor = do

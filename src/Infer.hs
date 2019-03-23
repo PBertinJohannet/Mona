@@ -20,7 +20,7 @@ import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Data.List (nub, find, length)
 import Pretty
-
+import RecursionSchemes
 
 newtype Union = Union (Type, Type) deriving Show;
 
@@ -68,7 +68,8 @@ instance Pretty TypeError where
 
 type ExceptLog a = ExceptT TypeError (Writer String) a;
 
-type Infer a = (ReaderT Env (StateT InferState (Except TypeError)) a)
+type Infer = ReaderT Env (StateT InferState (Except TypeError))
+type InferCons = WriterT Constraints Infer
 
 type Solve a = (ReaderT ClassEnv (ExceptT TypeError (Writer String)) a)
 
@@ -103,7 +104,7 @@ inferTop (Envs d env cenv) ((name, ex):xs) = do
   inferTop (Envs d (extend env (name, e)) cenv) xs
 
 inferExpr :: ClassEnv -> Env -> Expr -> ExceptLog Scheme
-inferExpr cenv env ex = case runInfer env (infer ex) of
+inferExpr cenv env ex = case runInfer env (runWriterT $ infer ex) of
   Left err -> throwError err
   Right (ty, cs) -> do
     tell $ "found : "++ pretty ty ++ "\n"
@@ -111,9 +112,9 @@ inferExpr cenv env ex = case runInfer env (infer ex) of
     return $ closeOver (apply subst ty) (apply subst preds)
 
 inferExprT :: ClassEnv -> Env -> Expr -> Scheme -> ExceptLog Scheme
-inferExprT cenv env ex tp = case runInfer env (inferEq ex tp) of
+inferExprT cenv env ex tp = case runInfer env (runWriterT $ inferEq ex tp) of
   Left err -> throwError err
-  Right (found, cs, expected) -> do
+  Right ((found, expected), cs) -> do
     (preds, subst) <- runSolve cenv cs
     tell $ "found : " ++ pretty (apply subst found) ++ "\n"
     tell $ "expected : " ++ pretty (apply subst expected) ++ "\n"
@@ -152,12 +153,12 @@ normalize (Forall _ (Qual q body)) =
         Just x -> TVar x
         Nothing -> error "type variable not in signature"
 
-inEnv :: (Name, Scheme) -> Infer a -> Infer a
+inEnv :: (Name, Scheme) -> InferCons a -> InferCons a
 inEnv (x, sc) m = do
   let scope e = remove e x `extend` (x, sc)
   local scope m
 
-instantiate :: Scheme -> Infer (Qual Type) -- replace by fresh variables
+instantiate :: Scheme -> InferCons (Qual Type) -- replace by fresh variables
 instantiate (Forall as (Qual preds t)) = do
   as' <- mapM (const fresh) as
   let s = Map.fromList $ zip as as'
@@ -167,7 +168,7 @@ generalise :: Env -> [Pred] -> Type -> Scheme
 generalise env p t = Forall as $ Qual p t
   where as = Set.toList $ ftv env `Set.difference` ftv t
 
-fresh :: Infer Type
+fresh :: InferCons Type
 fresh = do
   s <- get
   put s{count = count s + 1}
@@ -177,20 +178,60 @@ fresh = do
 noConstraints :: Constraints
 noConstraints = ([], [])
 
-lookupEnv :: Name -> Infer (Qual Type)
+lookupEnv :: Name -> InferCons (Qual Type)
 lookupEnv x = do
   (TypeEnv env) <- ask
   case Map.lookup x env of
     Just s -> instantiate s
     Nothing -> throwError $ UnboundVariable $ show x
 
-inferEq :: Expr -> Scheme -> Infer (Type, Constraints, Type)
+inferEq :: Expr -> Scheme -> InferCons (Type, Type)
 inferEq e t0 = do
   Qual q t1 <- instantiate t0
-  (t2, c) <- infer e
-  return (t2, c, t1)
+  t2 <- infer e
+  return (t2, t1)
 
-infer :: Expr -> Infer (Type, Constraints)
+infer :: Expr -> InferCons Type
+infer = bicataM lamAlg inferAlg
+
+lamAlg :: ExprF (InferCons Type) -> InferCons (ExprF Type)
+lamAlg = \case
+  Lam x e -> do
+    tv <- fresh
+    t <- inEnv (x, Forall [] (Qual [] tv)) e
+    return $ Lam x (tv `mkArr` t)
+  e -> sequence e
+
+inferAlg :: ExprF Type -> InferCons Type
+inferAlg = \case
+  Lit _ -> do
+    tell noConstraints
+    return typeInt
+
+  Case sourceT (t:ts) -> do
+    let exprEq = mconcat $ curry union t <$> ts
+    destT <- fresh
+    tell $ union (t, sourceT `mkArr` destT) <> exprEq
+    return destT
+
+  Var x -> do
+    env <- ask
+    (Qual p t) <- lookupEnv x -- `catchError` \e -> lookupEnv $ pretty env
+    return t
+
+  Lam x e -> return e
+
+  App t1 t2 -> do
+    tv <- fresh
+    tell $ union (t1, t2 `mkArr` tv)
+    return tv
+
+  Fix t1 -> do
+    tv <- fresh
+    tell $ union (tv `mkArr` tv, t1)
+    return tv
+{- old
+infer :: Expr -> InferCons Type
 infer = \case
   Lit _ -> return (typeInt, noConstraints)
 
@@ -220,7 +261,7 @@ infer = \case
     (t1, c1) <- infer e1
     tv <- fresh
     return (tv, c1 <> union (tv `mkArr` tv, t1))
-
+-}
 checkSubst :: Subst -> ExceptLog Subst
 checkSubst sub = Map.elems >>> nub >>> check $ sub
   where check l = if length l == Map.size sub

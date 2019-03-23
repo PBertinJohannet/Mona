@@ -37,6 +37,7 @@ instance Pretty PassErr where
 run :: String -> String
 run = L.pack
   >>> parseModule "exampleHM"
+  >>> fmap (fmap (second toSyntax))
   >>> fmap (passes >>> runExceptT >>> runWriter)
   >>> debug --debug . fmap (
 
@@ -47,6 +48,7 @@ passes :: [(String, Statement)] -> ExceptT PassErr (Writer String) Envs
 passes l = do
   let Program exprs datas classes insts sigs = sepDecls l
   tell $ "sigs : \n" ++ pretty sigs ++ "\n"
+  tell $ "datas show : \n" ++ show datas
   tell $ "datas : \n" ++ pretty datas
   tell $ "exprs : \n" ++ pretty exprs
   env <- withExceptT TypeError $ interpret datas baseEnvs
