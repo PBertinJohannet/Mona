@@ -1,25 +1,24 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE FlexibleInstances #-}
+
 module RecursionSchemes where
 
 import Control.Arrow
 import Control.Monad
+import Control.Monad.Identity
 import Data.List (partition)
 
 
 (&) x f = f x
 
+newtype CofreeM f m a = CM (m (a, f (CofreeM f m a)))
+
+type Cofree f a = CofreeM f Identity a;
+
 newtype Term f = In { out :: f (Term f) }
-
-class Functor f => ShowAlg f where
-  prettyA :: RAlgebra f String
-
-instance (Functor f, Show (f String)) => Show (Term f) where
-  show = cata show
-
-topDown, bottomUp :: Functor f => (Term f -> Term f) -> Term f -> Term f
-bottomUp fn = out >>> fmap (bottomUp fn) >>> In >>> fn
-topDown fn = In <<< fmap (bottomUp fn) <<< out <<< fn
 
 data Attr f a = Attr
               { value :: a
@@ -93,3 +92,72 @@ prepro n alg = out >>> fmap (prepro n alg) >>> n >>> alg
 
 postpro :: Functor f => NatTrans f f -> CoAlgebra f a -> a -> Term f
 postpro n calg = In <<< fmap (postpro n calg) <<< calg
+
+topDown, bottomUp :: Functor f => (Term f -> Term f) -> Term f -> Term f
+bottomUp fn = out >>> fmap (bottomUp fn) >>> In >>> fn
+topDown fn = In <<< fmap (bottomUp fn) <<< out <<< fn
+
+class Functor f => ShowAlg f where
+  prettyA :: RAlgebra f String
+
+instance (Functor f, Show (f String)) => Show (Term f) where
+  show = cata show
+
+-- cofree functions
+
+(<:>) :: Monad m => m a -> m (f (CofreeM f m a)) -> CofreeM f m a
+a <:> b = CM $ (,) <$> a <*> b
+
+(<:<) :: Monad m => m a -> f (CofreeM f m a) -> CofreeM f m a
+a <:< b = CM $ (, b) <$> a
+
+(>:>) :: Monad m => a -> m (f (CofreeM f m a)) -> CofreeM f m a
+a >:> b = CM $ (a,) <$> b
+
+(<:) :: a -> f (Cofree f a) -> Cofree f a
+a <: b = CM $ return (a, b)
+
+(>:) = flip (<:)
+
+unwrapM :: Monad m => CofreeM f m a -> m (f (CofreeM f m a))
+unwrapM (CM a) = snd <$> a
+
+unwrap :: Cofree f a -> f (Cofree f a)
+unwrap = unwrapM >>> runIdentity
+
+forgetM :: (Monad m, Functor f, Traversable f) => CofreeM f m a -> m (Term f)
+forgetM = unwrapM >>> fmap (traverse forgetM) >>> join >>> fmap In
+
+forget :: (Functor f, Traversable f) => Cofree f a -> Term f
+forget = forgetM >>> runIdentity
+
+sepM :: CofreeM f m a -> m (a, f (CofreeM f m a))
+sepM (CM a) = a
+
+sep :: Cofree f a -> (a, f (Cofree f a))
+sep = sepM >>> runIdentity
+
+sequenceCF :: (Monad m, Functor f, Traversable f)
+  => CofreeM f m a -> m (Cofree f a)
+sequenceCF = cataCFM (uncurry (<:) >>> return)
+
+cataCFM :: (Monad m, Functor f, Traversable f)
+  => ((b, f a) -> m a) -> CofreeM f m b -> m a
+cataCFM alg = sepM >=> second (traverse (cataCFM alg)) >>> seqtup >=> alg
+  where
+    seqtup (a, b) = (\inB -> (a, inB)) <$> b
+
+cataCF :: (Functor f, Traversable f)
+  => ((b, f a) -> a) -> Cofree f b -> a
+cataCF alg = cataCFM (alg >>> return) >>> runIdentity
+
+anaCFM :: (Functor f, Traversable f)
+  => (a -> Either (f a) (b, a)) -> b -> a -> Cofree f b
+anaCFM alg def = alg >>> (keep ||| uncurry change)
+  where
+    keep = fmap (anaCFM alg def) >>> (def,) >>> return >>> CM
+    change = anaCFM alg
+
+instance (Traversable f, Functor f, Show (f String), Show a)
+  => Show (Cofree f a) where
+  show = cataCF show

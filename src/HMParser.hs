@@ -28,21 +28,34 @@ data Expr
   | Lit Integer
   | Case Expr [Expr]
   | Fix Expr
+  | Position SourcePos Expr
   deriving (Eq, Ord)
 
 type Statement = S.StatementF Expr
+type StatementAnn = S.StatementF (S.ExprAnn SourcePos)
 
-toSyntax :: Statement -> S.Statement
-toSyntax = fmap fixExpr
+toSyntax :: SourcePos -> [Binding] -> [BindingAnn]
+toSyntax s = fmap $ second (fmap $ annotate s)
 
-fixExpr :: Expr -> S.Expr
-fixExpr = ana $ \case
-  Var n -> S.Var n
-  App a b -> S.App a b
-  Lam a b -> S.Lam a b
-  Lit i -> S.Lit i
-  Case a b -> S.Case a b
-  Fix a -> S.Fix a
+annotate :: SourcePos -> Expr -> S.ExprAnn SourcePos
+annotate = anaCFM myAlg
+
+myAlg :: Expr -> Either (S.ExprF Expr) (SourcePos, Expr)
+myAlg = \case
+  Position s e -> Right (s, e)
+  e -> Left $ case e of
+    Var n -> S.Var n
+    App a b -> S.App a b
+    Lam a b -> S.Lam a b
+    Lit i -> S.Lit i
+    Case a b -> S.Case a b
+    Fix a -> S.Fix a
+
+withPos :: Parser Expr -> Parser Expr
+withPos p = do
+  pos <- getPosition
+  e <- p
+  return $ Position pos e 
 
 -- returns the transformed function.
 pat :: Parser (Expr -> Expr)
@@ -138,7 +151,7 @@ ifthen = do
 
 
 aexp :: Parser Expr
-aexp =
+aexp = withPos $
    parens expr
   <|> number
   <|> ifthen
@@ -282,6 +295,7 @@ inLet = do
   return (name, foldr Lam body args)
 
 type Binding = (String, Statement)
+type BindingAnn = (String, StatementAnn)
 
 instdecl :: Parser Binding
 instdecl = do
@@ -350,8 +364,11 @@ top = do
   optional semi
   return x
 
-modl ::  Parser [Binding]
-modl = many top
+modl ::  Parser (SourcePos, [Binding])
+modl = do
+  bindings <- many top
+  pos <- getPosition
+  return (pos, bindings)
 
-parseModule ::  FilePath -> L.Text -> Either ParseError [Binding]
-parseModule = parse (contents modl)
+parseModule ::  FilePath -> L.Text -> Either ParseError [BindingAnn]
+parseModule = parse (contents modl) >>> fmap (fmap $ uncurry toSyntax)

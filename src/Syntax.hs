@@ -5,6 +5,7 @@
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE DeriveFoldable #-}
 {-# LANGUAGE DeriveTraversable #-}
+{-# LANGUAGE DeriveFoldable #-}
 
 module Syntax where
 import Pretty
@@ -34,10 +35,8 @@ litC = Lit >>> In
 caseC = makeConstructor Case
 fixC = Fix >>> In
 
-
-
 type Expr = Term ExprF;
-
+type ExprAnn a = Cofree ExprF a;
 
 data Field = FieldS String | FieldApp Field Field deriving (Show, Eq, Ord)
 
@@ -57,7 +56,7 @@ data StatementF a
  | Class String String [(String, Scheme)]
  | Inst String Type [(String, a)]
  | Sig Scheme
- deriving (Functor)
+ deriving (Functor, Foldable, Traversable, Show)
 
 type Statement = StatementF Expr;
 

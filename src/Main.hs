@@ -12,7 +12,7 @@ import qualified Data.Text.Lazy as L
 import Env
 import Syntax
 import Infer
-import Text.Parsec (ParseError)
+import Text.Parsec (ParseError, SourcePos)
 import Pretty
 import Type (Scheme, showKind)
 import Control.Monad.Writer
@@ -20,6 +20,7 @@ import Control.Monad.Except
 import Control.Monad.State
 import InterpretTypes (interpret)
 import Typeclass (runAddClasses)
+import RecursionSchemes
 import Sig
 -- (((flip) (:) [1]) 2)
 
@@ -37,15 +38,23 @@ instance Pretty PassErr where
 run :: String -> String
 run = L.pack
   >>> parseModule "exampleHM"
-  >>> fmap (fmap (second toSyntax))
   >>> fmap (passes >>> runExceptT >>> runWriter)
   >>> debug --debug . fmap (
 
 instance Pretty (Scheme, Expr) where
   pretty (s, e) = "check : " ++ pretty s ++ " vs " ++ pretty e ++ "\n"
 
-passes :: [(String, Statement)] -> ExceptT PassErr (Writer String) Envs
-passes l = do
+forgetPos :: [(String, StatementF (ExprAnn SourcePos))] -> ExceptT PassErr (Writer String) [(String, Statement)]
+forgetPos = mapM forget'
+
+forget' :: (String, StatementF (ExprAnn SourcePos)) -> ExceptT PassErr (Writer String) (String, Statement)
+forget' (s, st) = do
+  tell $ show st
+  return (s, fmap forget st)
+
+passes :: [(String, StatementF (ExprAnn SourcePos))] -> ExceptT PassErr (Writer String) Envs
+passes a = do
+  l <- forgetPos a
   let Program exprs datas classes insts sigs = sepDecls l
   tell $ "sigs : \n" ++ pretty sigs ++ "\n"
   tell $ "datas show : \n" ++ show datas

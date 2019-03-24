@@ -47,7 +47,6 @@ interpret ds env = foldM (flip runInterpret) env ds
 
 runInterpret :: (String, [String], Expr) -> Envs -> ExceptT TypeError (Writer String) Envs
 runInterpret (s, tvars, e) (Envs d v cenv) = do
-  tell $ "doing : " ++ pretty e ++ "\n"
   let (toInfer, baseConsts, additionalConsts) = desugar tvars e
   tell $ "base : " ++ pretty baseConsts ++ "\n"
   tell $ "additionals : " ++ pretty additionalConsts ++ "\n"
@@ -141,7 +140,6 @@ flattenArgs name expr tp = do
       return (mconcat [env1, env, env2], e2)
     _ -> return (env, expr)
 
-
 extractCons :: Expr -> [String]
 extractCons = histo $ \case
   App a b -> case matchApp a b of
@@ -161,14 +159,12 @@ instance Pretty ConsDecl where
     Plus a -> "Plus " ++ pretty a
     Or a -> "Or " ++ pretty a
 
-
 getBaseConsts :: [ConsDecl] -> ([Expr], [Expr])
 getBaseConsts = \case
   [] -> ([], [])
   (a:as) -> let (os, ps) = getBaseConsts as in case a of
     (Plus p) -> (os, p:ps)
     (Or o) -> (o:os, ps)
-
 
 -- removes the (+) operations
 desugar :: [String] -> Expr -> (Expr, [Expr], [Expr])
