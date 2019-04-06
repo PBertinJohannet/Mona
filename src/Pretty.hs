@@ -16,7 +16,7 @@ inParen s = "(" ++ s ++ ")"
 
 instance (PrettyHisto f, Pretty a) => Pretty (Cofree f a) where
   pretty = histoCF' prettyH pretty'
-    where pretty' (a, b) = b -- ++ inParen (pretty a)
+    where pretty' (a, b) = b ++ "`" ++ pretty a++"`" 
 
 prettyL :: Pretty a => [a] -> String
 prettyL a = unwords (pretty <$> a)

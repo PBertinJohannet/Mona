@@ -69,8 +69,9 @@ passes a = do
   --tell $ pretty env
   --tell $ pretty exprs
   env <- withExceptT TypeError $ inferTop env exprs
-  tell $ "after infer : " ++ showKind env ++ "\n"
-  (Envs _ _ _ TAst{texprs = texprs, compiled = comp}) <- withExceptT TypeError $ checkInstances env insts
+  env <- withExceptT TypeError $ checkInstances env insts
+  let (Envs _ _ _ TAst{texprs = texprs, compiled = comp}) = env
+  tell $ "now run  : \n\n" ++ showKind env ++ "\n\n\n"
   withExceptT RTError $ runProgram $ createRunEnv allNatives texprs comp
 
 debug :: Either ParseError (Either PassErr Value, String) -> String

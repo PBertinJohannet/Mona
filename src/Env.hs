@@ -90,7 +90,9 @@ instance Pretty Envs where
 
 instance ShowKind Envs where
   showKind (Envs d v c s) =
-    "Vars : \n" ++ showKind v ++ "\nTypes : \n" ++ pretty d ++ "\n"
+    "Vars : \n" ++ showKind v ++ "\nTypes : \n" ++ pretty d ++
+    "\nClasses : \n" ++ pretty c ++
+    "\nsources : \n" ++ pretty s ++ "\n"
 
 baseEnvs :: Envs
 baseEnvs = Envs kindEnv baseEnv baseClasses baseSource

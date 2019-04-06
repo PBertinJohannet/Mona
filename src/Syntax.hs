@@ -164,7 +164,7 @@ instance Pretty a => Pretty (String, a) where
   pretty (k, c) = k ++ " = " ++ pretty c ++ "\n"
 
 instance Pretty Location where
-  pretty (Loc (file, line, col)) = file ++ " " ++ show line ++ ":" ++ show col
+  pretty (Loc (file, line, col)) = "" -- file ++ " " ++ show line ++ ":" ++ show col
 
 instance Pretty (ClassDecl, [InstDecl]) where
   pretty (c, i) = prettycls c ++ " \n => \n "++ unwords (show <$> i) ++ "\n"

@@ -35,6 +35,9 @@ instance Pretty Constraints where
 union :: (Type, Type) -> Constraints
 union u = ([Union u], [])
 
+predicate :: [Pred] -> Constraints
+predicate p = ([], p)
+
 instance Substituable Union where
   apply s (Union (a, b)) = Union (apply s a, apply s b)
   ftv (Union (a, b)) = ftv a `Set.union` ftv b
@@ -102,8 +105,12 @@ inferExpr cenv env ex = case runInfer env (runWriterT $ infer ex) of
   Right (ty', cs) -> do
     let ty = snd $ ann ty'
     --tell $ "found : "++ pretty ty ++ "\n"
+    tell $ "with type : " ++ pretty ty' ++ " solve => \n"
+    tell $ "constraints : " ++ pretty cs ++ " go \n"
     (preds, subst) <- runSolve cenv cs
-    return (closeOver (apply subst ty) (apply subst preds), ty')
+    tell $ "before : " ++ pretty ty ++ "\n"
+    tell $ "after : " ++ pretty (closeOver (apply subst ty) (apply subst preds)) ++ "\n"
+    return (closeOver (apply subst ty) (apply subst preds), apply subst ty')
 
 inferExprT :: ClassEnv -> Env -> Expr -> Scheme -> ExceptLog (Scheme, TExpr)
 inferExprT cenv env ex tp = case runInfer env (runWriterT $ inferEq ex tp) of
@@ -189,31 +196,30 @@ inferEq e t0 = do
 infer :: Expr -> InferCons TExpr
 infer = cataCF inferAlg'
 
-getTp :: InferCons TExpr -> InferCons Type
-getTp = fmap (\(In ((_, t) :< _)) -> t)
+getTp :: TExpr -> Type
+getTp (In ((_, t) :< _)) = t
 
 inferAlg' :: (Location, ExprF (InferCons TExpr)) -> InferCons TExpr
 inferAlg' = \case
     (l, Lam x e) -> do
         tv <- fresh
         e' <- inEnv (x, Forall [] (Qual [] tv)) e
-        t <- getTp $ return e'
+        let t = getTp e'
         return $ In $ (l, tv `mkArr` t) :< Lam x e'
     (l, k) -> do
-        tp <- inferAlg k
         k <- sequence k
-        return $ In $ (l, tp) :< k
+        let tpk = getTp <$> k
+        tp <- inferAlg tpk
+        -- k <- censor (const noConstraints) $ sequence k -- already applied in the previous sequence
+        return (In $ (l, tp) :< k)
 
-inferAlg :: ExprF (InferCons TExpr) -> InferCons Type
+inferAlg :: ExprF Type -> InferCons Type
 inferAlg = \case
       Lit _ -> do
         tell noConstraints
         return typeInt
 
       Case sourceT (t:ts) -> do
-        t <- getTp t
-        ts <- mapM getTp ts
-        sourceT <- getTp sourceT
         let exprEq = mconcat $ curry union t <$> ts
         destT <- fresh
         tell $ union (t, sourceT `mkArr` destT) <> exprEq
@@ -222,17 +228,15 @@ inferAlg = \case
       Var x -> do
         env <- ask
         (Qual p t) <- lookupEnv x -- `catchError` \e -> lookupEnv $ pretty env
+        tell $ predicate p
         return t
 
       App t1 t2 -> do
-        t1 <- getTp t1
-        t2 <- getTp t2
         tv <- fresh
         tell $ union (t1, t2 `mkArr` tv)
         return tv
 
       Fix t1 -> do
-        t1 <- getTp t1
         tv <- fresh
         tell $ union (tv `mkArr` tv, t1)
         return tv
@@ -284,7 +288,8 @@ unifyMany t1 t2 = throwError $ UnificationMismatch t1 t2
 
 solver :: Constraints -> Solve ([Pred], Subst)
 solver (unions, ps) = do
-  --tell $ "solve : \n" ++ prettyL unions ++ "\n"
+  tell $ "solve cls : \n" ++ prettyL ps ++ "\n"
+  tell $ "solve un : \n" ++ prettyL unions ++ "\n"
   sub <- unionSolve (nullSubst, unions)
   preds <- classSolve $ ClassSolver [] (apply sub ps)
   return (preds, sub)
@@ -322,6 +327,7 @@ isIn cname (m, insts) = \case
   t -> satisfyInsts (IsIn cname t) insts
 
 satisfyInsts :: Pred -> [Inst] -> Solve [Pred]
+satisfyInsts (IsIn c t) [] = throwError $ NotInClass c t
 satisfyInsts s [i] = satisfyInst s i
 satisfyInsts s (i:is) = satisfyInst s i `catchError` \e -> satisfyInsts s is
 

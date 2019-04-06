@@ -94,6 +94,7 @@ interpretAlg' :: Location -> Type -> ExprF Value -> Run Value
 interpretAlg' loc tp = \case
   Lit l -> return $ Int l
   Var x -> do
+    tell $ "tp is : " ++ pretty tp ++ "\n"
     (RTEnv env) <- ask
     fromMaybe
       (throwError $ ShouldNotHappen $ "cannot find variable " ++ x)
