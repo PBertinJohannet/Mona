@@ -61,8 +61,10 @@ inEnv (x, sc) m = do
   let scope e = removeRT e x `extendRT` (x, return sc)
   local scope m
 
-createRunEnv :: Map.Map String Value -> Map.Map String TExpr -> Map.Map String (Run Value)
-createRunEnv nat src = Map.union (return <$> nat) (interpret <$> src)
+type MapS a = Map.Map String a
+
+createRunEnv :: MapS Value -> MapS TExpr -> MapS (Run Value) -> MapS (Run Value)
+createRunEnv nat src = Map.union $ Map.union (return <$> nat) (interpret <$> src)
 
 runProgram :: Map.Map String (Run Value) -> ExceptT RunTimeError (Writer String) Value
 runProgram env = case Map.lookup "main" env of
@@ -128,35 +130,21 @@ runCompose = Func (\a -> return $ Func (\b -> case (a, b) of
   (a, b) -> throwError $ ShouldNotHappen $ "Non func in native " ++ pretty a))
 
 makeRunCons :: (Int, String, [Expr]) -> (String, Run Value)
-makeRunCons (tag, name, exprs) = (name, do
-  prods <- mapM (cataCFM_ consAlg) exprs
-  return $ Variant tag $ Prod prods)
+makeRunCons (tag, name, exprs) = (name, construct tag (length exprs) [])
 
-consAlg :: ExprF Value -> Run Value
-consAlg = \case
-  Var x -> do
-    (RTEnv env) <- ask
-    fromMaybe
-      (throwError $ ShouldNotHappen $ "cannot find constructor " ++ x)
-      (Map.lookup x env)
-  App a b ->
-    case a of
-      Func f -> f b
-      e -> throwError $ ShouldNotHappen $ "applying a non function " ++ pretty a ++ " to an arg"
-  Fix t1 -> case t1 of
-    Func f -> f t1
-    e -> throwError $ ShouldNotHappen $ "applying fix to a non function " ++ pretty t1
-  Case src pats -> throwError $ ForbidenPattern "Case"
-  Lam src pats -> throwError $ ForbidenPattern "Lambda"
-  Lit l -> throwError $ ForbidenPattern "Int"
+construct :: Int -> Int -> [Value] -> Run Value
+construct tag 0 prods = return $ Variant tag $ Prod prods
+construct tag n prods = return $ Func (\val -> construct tag (n-1) (prods ++ [val]))
 
+applyVal :: Value -> Value -> Run Value
+applyVal a b = case a of
+  Func f -> f b
+  e -> throwError $ ShouldNotHappen $ "applying a non function " ++ pretty a ++ " to an arg"
 
 makeRunPat :: (Int, String, [Expr]) -> (String, Run Value)
-makeRunPat (tag, name, exprs) = (name, return $ Func $ return . Func . runPat exprs tag)
+makeRunPat (tag, name, _) = (name, return $ Func $ return . Func . runPat tag)
 
-runPat :: [Expr] -> Int -> Value -> Value -> Run Value
-runPat exps tag func (Variant tag' _) | tag /= tag' = return PatFail
-runPat exps _ func (Variant _ (Prod vals)) = do
-  let tuples = zip exps vals
-  
-  return $ Int 1
+runPat :: Int -> Value -> Value -> Run Value
+runPat tag func (Variant tag' _) | tag /= tag' = return PatFail
+runPat _ func (Variant _ (Prod vals)) = foldM applyVal func vals
+runPat _ _ v = throwError $ ShouldNotHappen "Pattern called on non Object"

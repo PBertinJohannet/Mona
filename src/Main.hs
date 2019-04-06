@@ -70,8 +70,8 @@ passes a = do
   --tell $ pretty exprs
   env <- withExceptT TypeError $ inferTop env exprs
   tell $ "after infer : " ++ showKind env ++ "\n"
-  (Envs _ _ _ TAst{texprs = texprs}) <- withExceptT TypeError $ checkInstances env insts
-  withExceptT RTError $ runProgram $ createRunEnv allNatives texprs
+  (Envs _ _ _ TAst{texprs = texprs, compiled = comp}) <- withExceptT TypeError $ checkInstances env insts
+  withExceptT RTError $ runProgram $ createRunEnv allNatives texprs comp
 
 debug :: Either ParseError (Either PassErr Value, String) -> String
 debug = \case

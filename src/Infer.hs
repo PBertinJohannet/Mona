@@ -236,38 +236,7 @@ inferAlg = \case
         tv <- fresh
         tell $ union (tv `mkArr` tv, t1)
         return tv
-{- old
-infer :: Expr -> InferCons Type
-infer = \case
-  Lit _ -> return (typeInt, noConstraints)
 
-  Case e ex -> do
-    (sourceT, c1) <- infer e
-    (t:ts, cs) <- unzip <$> mapM infer ex
-    let exprEq = mconcat $ curry union t <$> ts
-    destT <- fresh
-    return (destT, mconcat cs <> union (t, sourceT `mkArr` destT) <> exprEq)
-
-  Var x -> do
-    (Qual p t) <- lookupEnv x
-    return (t, ([], p))
-
-  Lam x e -> do
-    tv <- fresh
-    (t, c) <- inEnv (x, Forall [] (Qual [] tv)) (infer e)
-    return (tv `mkArr` t, c)
-
-  App e1 e2 -> do
-    (t1, c1) <- infer e1
-    (t2, c2) <- infer e2
-    tv <- fresh
-    return (tv, c1 <> c2 <> union (t1, t2 `mkArr` tv))
-
-  Fix e1 -> do
-    (t1, c1) <- infer e1
-    tv <- fresh
-    return (tv, c1 <> union (tv `mkArr` tv, t1))
--}
 checkSubst :: Subst -> ExceptLog Subst
 checkSubst sub = Map.elems >>> nub >>> check $ sub
   where check l = if length l == Map.size sub

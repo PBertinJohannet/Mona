@@ -204,7 +204,7 @@ sepCalls :: (Expr -> ConsDecl) -> Expr -> (ConsDecl, [ConsDecl])
 sepCalls tp = histo $ \(pos :< e) -> case e of
   App a b -> case matchAppCF a b of
     (Just ("|", a, _), _) -> (Or $ orig b, uncurry (:) a)
-    (Just ("+", a, _), _) -> (Plus $ orig b, uncurry (:) a)
+    -- (Just ("+", a, _), _) -> (Plus $ orig b, uncurry (:) a)
     (_, ((remain, res), b')) -> ((`appC` orig b) <$> remain, res)
   e -> (tp $ inOrig (pos :< e), [])
 
