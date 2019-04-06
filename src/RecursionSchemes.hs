@@ -127,6 +127,14 @@ cataCF' :: (Functor f, Traversable f)
   => Algebra f a -> ((b, a) -> a) -> Cofree f b -> a
 cataCF' alg comb = cataCF (second alg >>> comb)
 
+cataCF_ ::  (Functor f, Traversable f)
+  => Algebra f a -> Cofree f b -> a
+cataCF_ alg = cataCF' alg snd
+
+cataCFM_ :: (Functor f, Traversable f, Monad m)
+ => (f a -> m a) -> Cofree f b -> m a
+cataCFM_ alg = sep >>> snd >>> fmap (cataCFM_ alg) >>> sequence >=> alg
+
 anaCF :: (Functor f)
   => (a -> Either (f a) (b, a)) -> b -> a -> Cofree f b
 anaCF alg def = alg >>> (keep ||| uncurry (anaCF alg))

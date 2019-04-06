@@ -5,10 +5,16 @@ module Operators (
   Binop(..),
   allOps,
   allClasses,
-  allKinds
+  allKinds,
+  allOpsTypes,
+  allNatives,
   ) where
 
 import Type
+import Run
+import qualified Data.Map as Map
+
+type NativeFunc = (Name, Scheme, Value)
 
 type Name = String;
 data Binop = Add | Sub | Mul | Eql
@@ -21,14 +27,14 @@ toFunc = \case
   Mul -> "*"
   Eql -> "="
 
+allNatives :: Map.Map String Value
+allNatives = Map.fromList ((\(n, _, r) -> (n, r)) <$> allOps)
 
-allOps :: [(Name, Scheme)]
-allOps  = [
-  ("show", showOp),
-  ("[]", emptyList),
-  ("++", listConcat),
-  (":", listOp),
-  ("if", ifOp)] ++ ops
+allOpsTypes :: [(Name, Scheme)]
+allOpsTypes = (\(a, b, c) -> (a, b)) <$> allOps
+
+allOps :: [NativeFunc]
+allOps  = ("if", ifOp, runIf): ops
 
 showOp :: Scheme
 showOp = Forall [var "a"] $ Qual [IsIn "Show" a] $ a `mkArr` mkList typeChar
@@ -78,12 +84,12 @@ allKinds = [
 
 -- (bool -> (a -> (a -> a)))
 
-ops :: [(Name, Scheme)]
-ops = fmap (\(name, (a, b, c)) -> (name, Forall [] $ Qual []  $ a `mkArr` (b `mkArr` c)))
-  [("+", (typeInt, typeInt, typeInt)),
-  ("*", (typeInt, typeInt, typeInt)),
-  ("-", (typeInt, typeInt, typeInt)),
+ops :: [NativeFunc]
+ops = fmap (\(name, (a, b, c), r) -> (name, Forall [] $ Qual []  $ a `mkArr` (b `mkArr` c), r))
+  [("+", (typeInt, typeInt, typeInt), mkRun (+)),
+  ("*", (typeInt, typeInt, typeInt), mkRun (*)),
+  ("-", (typeInt, typeInt, typeInt), mkRun (-)),
   (".", (tvar "b" `mkArr` tvar "c",
         tvar "a" `mkArr` tvar "b",
-        tvar "a" `mkArr` tvar "c")),
-  ("==", (typeInt, typeInt, typeBool))]
+        tvar "a" `mkArr` tvar "c"), runCompose),
+  ("==", (typeInt, typeInt, typeBool), mkRun (\a b -> fromEnum $ a == b))]

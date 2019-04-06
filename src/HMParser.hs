@@ -25,7 +25,7 @@ data Expr
   = Var String
   | App Expr Expr
   | Lam String Expr
-  | Lit Integer
+  | Lit Int
   | Case Expr [Expr]
   | Fix Expr
   | Position SourcePos Expr
@@ -98,20 +98,20 @@ lst = do
   e <- mychainlfirst expr putIn inList
   char ']'
   return e
-  where putIn a = App (App (Var ":") a) $ Var "[]"
+  where putIn a = App (App (Var "Cons") a) $ Var "End"
 
 emptylst :: Parser Expr
 emptylst = do
   char '['
   char ']'
-  return $ Var "[]"
+  return $ Var "End"
 
 inList :: Parser (Expr -> Expr -> Expr)
 inList =
   do spaces
      string ","
      spaces
-     return $ \a b -> App (App (App (Var "flip") (Var ":")) a) b
+     return $ \a b -> App (App (App (Var "flip") (Var "Cons")) a) b
 
 fix :: Parser Expr
 fix = do
@@ -202,12 +202,10 @@ mychainl p = mychainlfirst p id
 
 parseOperation =
   do spaces
-     symbol <- try (string "++")
-           <|> string "+"
+     symbol <- string "+"
            <|> string "-"
            <|> string "=="
            <|> string "*"
-           <|> string ":"
            <|> string "|"
            <|> string "."
            <|> string ""

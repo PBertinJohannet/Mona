@@ -21,7 +21,7 @@ data ExprF a
   = Var Name
   | App a a
   | Lam Name a
-  | Lit Integer
+  | Lit Int
   | Case a [a]
   | Fix a
   deriving (Eq, Ord, Functor, Foldable, Traversable)
@@ -31,11 +31,6 @@ type Expr = Cofree ExprF Location; -- expression with position information (afte
 type Forgot = Term ExprF -- expression without any information
 
 data Field = FieldS String | FieldApp Field Field deriving (Show, Eq, Ord)
-
-data Lit
-  = LInt Integer
-  | LBool Bool
-  deriving (Show, Eq, Ord)
 
 type Decl = (String, Statement)
 type ExprDecl = (String, Expr)

@@ -24,6 +24,7 @@ module Env (
   baseEnvs,
   letters,
   addInstance,
+  withCompiled,
   lettersSim,
 ) where
 
@@ -44,6 +45,7 @@ import Pretty
 import Operators
 import Data.List (uncons)
 import Data.Maybe (catMaybes)
+import Run
 
 -------------------------------------------------------------------------------
 -- Typing Environment
@@ -59,12 +61,12 @@ newtype ClassEnv = ClassEnv {classes :: Map.Map Name Class} deriving (Eq, Show)
 
 newtype Env = TypeEnv { types :: Map.Map Name Scheme } deriving (Eq, Show)
 
-newtype TAst = TAst { texprs :: Map.Map Name TExpr } deriving Show
+data TAst = TAst { texprs :: Map.Map Name TExpr, compiled :: Map.Map Name (Run Value)}
 
-data Envs = Envs{ dataEnv :: Env, varEnv :: Env, classEnv :: ClassEnv, ast :: TAst} deriving Show
+data Envs = Envs{ dataEnv :: Env, varEnv :: Env, classEnv :: ClassEnv, ast :: TAst}
 
 instance Pretty TAst where
-  pretty (TAst t) = mconcat . fmap showAssoc . Map.toList $ t
+  pretty (TAst t c) = mconcat . fmap showAssoc . Map.toList $ t
     where showAssoc (n, s) = n ++ " : "++ pretty s ++ "\n"
 
 instance Pretty Env where
@@ -106,7 +108,7 @@ alterClass :: ClassEnv -> String -> (Maybe Class -> Maybe Class) -> ClassEnv
 alterClass env name f = env{classes = Map.alter f name (classes env)}
 
 baseEnv :: Env
-baseEnv = TypeEnv (Map.fromList allOps)
+baseEnv = TypeEnv (Map.fromList allOpsTypes)
 
 baseClasses :: ClassEnv
 baseClasses = ClassEnv (Map.fromList allClasses)
@@ -115,7 +117,10 @@ kindEnv :: Env
 kindEnv = TypeEnv (Map.fromList allKinds)
 
 baseSource :: TAst
-baseSource = TAst Map.empty
+baseSource = TAst Map.empty Map.empty
+
+withCompiled :: TAst -> [(Name, Run Value)] -> TAst
+withCompiled env vals = env{compiled = Map.union (compiled env) (Map.fromList vals)}
 
 empty :: Env
 empty = TypeEnv Map.empty

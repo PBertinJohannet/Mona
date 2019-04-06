@@ -32,4 +32,4 @@ inst List of Functor = {
 
 let choseFrom a b c = b;
 
-let main = choseFrom 1 2 3;
+let main = [];

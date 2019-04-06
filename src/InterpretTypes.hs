@@ -16,10 +16,17 @@ import qualified Data.Map as Map
 import Control.Arrow
 import Data.Maybe
 import Infer
-import Data.List
+import Data.List (intercalate, find)
 import RecursionSchemes
+import Run (Value(..), Run, makeRunPat, makeRunCons)
 
 type Interpret a = ReaderT Env (ExceptT TypeError (Writer String)) a;
+
+type Object = [(Int, String, [Expr])]
+
+instance Pretty Object where
+  pretty = fmap pretty' >>> unwords
+    where pretty' (v, n, e) = inParen $ "Variant " ++ show v ++ inParen n ++ " " ++ prettyL e
 
 data UK = UK{
   tname :: String,
@@ -27,6 +34,7 @@ data UK = UK{
   tcons :: Type,
   tp :: Type,
   kd :: Kind,
+  obj :: Object,
   patterns :: [(String, Scheme)],
   consts :: [(String, Scheme)]};
 
@@ -34,12 +42,13 @@ instance ShowKind (String, Scheme) where
   showKind (s, t) = s ++ " = " ++ showKind t ++ "\n"
 
 instance Pretty UK where
-  pretty (UK tname tvars tcons tp kd pats cst) =
+  pretty (UK tname tvars tcons tp kd obj pats cst) =
     tname ++ " : " ++ pretty kd
     ++ "\nconstructing : " ++ pretty tcons
     ++ "\n of type  : " ++ pretty tp
     ++ "\n with tvars : " ++ unwords (showKind <$> tvars)
     ++ "\n constructors : \n" ++ showKind cst ++ "\n"
+    ++ "\n object : \n" ++ pretty obj ++ "\n"
     ++ "\n and patterns : \n" ++ showKind pats ++ "\n"
 
 interpret :: [(String, [String], Expr)] -> Envs -> ExceptT TypeError (Writer String) Envs
@@ -64,7 +73,7 @@ interpretTop (Envs dat e cenv tast) name tvars expr inferedType calls = do
     (extend dat (name, Forall (var <$> tvars) $ Qual [] (tp uk)))
     (extends e $ consts uk ++ patterns uk)
     cenv
-    tast
+    (withCompiled tast (addRuns $ obj uk))
 
 addCustomCons :: Envs -> Expr -> ExceptT TypeError (Writer String) Envs
 addCustomCons (Envs dat val cls tast) ex = do
@@ -87,6 +96,18 @@ findTV s = do
   k <- findKind s
   return $ TV s k
 
+enumerate :: [a] -> [(Int, a)]
+enumerate = zip [0..]
+
+addRuns :: Object -> [(String, Run Value)]
+addRuns = fmap makeRunPat &&& fmap makeRunCons >>> uncurry (++)
+
+withTags :: [(a, b)] -> [(Int, a , b)]
+withTags = zip [0..] >>> fmap (\(a, (b, c)) -> (fromIntegral a, b, c))
+
+makeObject :: [Expr] -> (String, [Expr])
+makeObject (In (_ :< Var name):exprs) = (name, exprs)
+
 createType :: String -> [String] -> [Expr] -> Interpret UK
 createType s tvars constructs = do
   vs <- mapM findKind tvars
@@ -101,6 +122,7 @@ createType s tvars constructs = do
       tcons = tc,
       tp = foldr mkArr (TVar $ TV "a" Star) (toKindVar <$> tvs),
       tvars = tvs,
+      obj = withTags (makeObject . uncurryCall <$> constructs),
       patterns = pats,
       consts = cts
     }
@@ -145,7 +167,7 @@ extractCons :: Expr -> [String]
 extractCons = histoCF $ snd >>> \case
   App a b -> case matchApp a b of
     (Just ("|", a, b), _) -> b ++ a
-    (Just ("+", a, b), _) -> b ++ a
+    -- (Just ("+", a, b), _) -> b ++ a
     (_, (a, _)) -> a
   Lam n e -> value e
   Var v -> [v]

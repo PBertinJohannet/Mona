@@ -23,6 +23,7 @@ import Typeclass (runAddClasses)
 import RecursionSchemes
 import Sig
 import Run
+import Operators
 
 (<&>) = flip fmap
 
@@ -69,8 +70,8 @@ passes a = do
   --tell $ pretty exprs
   env <- withExceptT TypeError $ inferTop env exprs
   tell $ "after infer : " ++ showKind env ++ "\n"
-  env <- withExceptT TypeError $ checkInstances env insts
-  withExceptT RTError $ runProgram env
+  (Envs _ _ _ TAst{texprs = texprs}) <- withExceptT TypeError $ checkInstances env insts
+  withExceptT RTError $ runProgram $ createRunEnv allNatives texprs
 
 debug :: Either ParseError (Either PassErr Value, String) -> String
 debug = \case
