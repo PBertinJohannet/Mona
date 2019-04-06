@@ -12,9 +12,6 @@ class Pretty a where
 class Functor f => PrettyHisto f where
   prettyH :: CVAlgebra f String
 
-instance (Pretty a, Pretty b, Pretty c) => Pretty (a, b, c) where
-  pretty (i, j, k) = pretty i ++ "\n" ++ pretty j ++ "\n" ++ pretty k ++ "\n"
-
 inParen s = "(" ++ s ++ ")"
 
 instance (PrettyHisto f, Pretty a) => Pretty (Cofree f a) where

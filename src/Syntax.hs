@@ -26,9 +26,9 @@ data ExprF a
   | Fix a
   deriving (Eq, Ord, Functor, Foldable, Traversable)
 
-type TExpr = Cofree ExprF (Location, Type);
-type Expr = Cofree ExprF Location;
-type Forgot = Term ExprF
+type TExpr = Cofree ExprF (Location, Type); -- expression with type information (after type inference)
+type Expr = Cofree ExprF Location; -- expression with position information (after the parsing)
+type Forgot = Term ExprF -- expression without any information
 
 data Field = FieldS String | FieldApp Field Field deriving (Show, Eq, Ord)
 
@@ -41,6 +41,10 @@ type Decl = (String, Statement)
 type ExprDecl = (String, Expr)
 type ClassDecl = (String, String, [(String, Scheme)]);
 type InstDecl = (String, Type, [(String, Expr)]);
+type InstCheck = (String, Scheme, Expr)
+
+instance Pretty InstCheck where
+  pretty (n, sc, ex) = n ++ " :: " ++ pretty sc ++ inParen (pretty ex)
 
 data StatementF a
  = Expr a
@@ -125,6 +129,9 @@ matchApp :: AttrExpr a -> AttrExpr a -> (Maybe (String, a, a), (a, a))
 matchApp a (Attr b _)= case a of
   (Attr _ (App (Attr _ (Var s)) (Attr a' _))) -> (Just (s, a', b), (value a, b))
   _ -> (Nothing, (value a, b))
+
+instance Pretty (Location, Type) where
+  pretty (l, t) = pretty t ++ " at " ++ pretty l
 
 instance Show (ExprF String) where
   show = inParen <<< \case

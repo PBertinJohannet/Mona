@@ -1,10 +1,13 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveFoldable #-}
 
 module Type where
 import Pretty
 import Control.Arrow
+import RecursionSchemes
 import Data.List
 
 data TVar = TV{name :: String, kind :: Kind}

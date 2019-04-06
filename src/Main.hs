@@ -18,11 +18,11 @@ import Type (Scheme, showKind)
 import Control.Monad.Writer
 import Control.Monad.Except
 import Control.Monad.State
-import InterpretTypes (interpret)
+import qualified InterpretTypes as DataDecl
 import Typeclass (runAddClasses)
 import RecursionSchemes
 import Sig
--- (((flip) (:) [1]) 2)
+import Erase
 
 (<&>) = flip fmap
 
@@ -59,7 +59,7 @@ passes a = do
   tell $ "datas show : \n" ++ show datas
   tell $ "exprs : \n" ++ prettyL exprs
   tell $ "datas : \n" ++ prettyDatas datas
-  env <- withExceptT TypeError $ interpret datas baseEnvs
+  env <- withExceptT TypeError $ DataDecl.interpret datas baseEnvs
   (env, insts) <- withExceptT TypeError $ runAddClasses classes insts env
   tell $ "inst to check : " ++ prettyL insts ++ "\n"
   env <- withExceptT TypeError $ addSigs sigs env
@@ -69,11 +69,13 @@ passes a = do
   env <- withExceptT TypeError $ inferTop env exprs
   tell $ "after infer : " ++ showKind env ++ "\n"
   withExceptT TypeError $ checkInstances env insts
-  return env
 
 debug :: Either ParseError (Either PassErr Envs, String) -> String
 debug = \case
   Left perr -> "ParseError : " ++ show perr
   Right (r, s) -> s ++ "\n" ++ case r of
     Left terr -> "TypeError : " ++ pretty terr
-    Right env -> pretty env
+    Right env -> pretty env ++ "\n\n Running ... \n\n"
+      ++ case runExcept (runProgram env) of
+        Left l -> "Error : " ++ pretty l
+        Right res -> "======\n" ++ pretty res

@@ -29,3 +29,7 @@ inst List of Functor = {
     (End) -> End,
     (Cons a b) -> (Cons (f a)) (fmap f b);
 }
+
+let choseFrom a b c = b;
+
+let main = choseFrom 1 2 3;

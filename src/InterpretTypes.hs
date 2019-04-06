@@ -46,17 +46,17 @@ interpret :: [(String, [String], Expr)] -> Envs -> ExceptT TypeError (Writer Str
 interpret ds env = foldM (flip runInterpret) env ds
 
 runInterpret :: (String, [String], Expr) -> Envs -> ExceptT TypeError (Writer String) Envs
-runInterpret (s, tvars, e) (Envs d v cenv) = do
+runInterpret (s, tvars, e) (Envs d v cenv tast) = do
   let (toInfer, baseConsts, additionalConsts) = desugar tvars e
   tell $ "base : " ++ prettyL baseConsts ++ "\n"
   tell $ "additionals : " ++ prettyL additionalConsts ++ "\n"
-  Forall _ (Qual _ t) <- inferExpr cenv d toInfer
-  envs <- runReaderT (interpretTop (Envs d v cenv) s tvars toInfer t baseConsts) d
+  (Forall _ (Qual _ t), _) <- inferExpr cenv d toInfer
+  envs <- runReaderT (interpretTop (Envs d v cenv tast) s tvars toInfer t baseConsts) d
   tell $ "giving env : " ++ pretty envs
   foldM addCustomCons envs (reverse additionalConsts)
 
 interpretTop :: Envs -> String -> [String] -> Expr -> Type -> [Expr] -> Interpret Envs
-interpretTop (Envs dat e cenv) name tvars expr inferedType calls = do
+interpretTop (Envs dat e cenv tast) name tvars expr inferedType calls = do
   (env, expr1) <- flattenArgs name expr inferedType
   uk <- local (const env) $ createType name tvars calls
   tell $ "created : \n" ++ pretty uk ++ "\n"
@@ -64,15 +64,16 @@ interpretTop (Envs dat e cenv) name tvars expr inferedType calls = do
     (extend dat (name, Forall (var <$> tvars) $ Qual [] (tp uk)))
     (extends e $ consts uk ++ patterns uk)
     cenv
+    tast
 
 addCustomCons :: Envs -> Expr -> ExceptT TypeError (Writer String) Envs
-addCustomCons (Envs dat val cls) ex = do
+addCustomCons (Envs dat val cls tast) ex = do
   let (name, e) = sepCallee ex
   tell $ "got : " ++ pretty e ++ "\n"
-  infcons <- inferExpr cls val e
-  tell $ "infered : " ++ pretty infcons ++ "\n"
-  let infpat = consToPat infcons
-  return $ Envs dat (val `extends` [(name, infcons), ("~"++name, infpat)]) cls
+  (tp, texp) <- inferExpr cls val e
+  tell $ "infered : " ++ pretty tp ++ "\n"
+  let infpat = consToPat tp
+  return $ Envs dat (val `extends` [(name, tp), ("~"++name, infpat)]) cls (extendAst tast (name, texp))
 
 consToPat :: Scheme -> Scheme
 consToPat(Forall tvars (Qual q tp)) = Forall (ret:tvars) (Qual q tp1)

@@ -8,6 +8,8 @@ import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Control.Arrow
 import Pretty
+import Syntax
+import RecursionSchemes
 
 type Subst = Map.Map TVar Type
 
@@ -59,6 +61,10 @@ instance Substituable t => Substituable (Qual t) where
 instance Substituable Pred where
   apply s (IsIn n t) = IsIn n (apply s t)
   ftv (IsIn _ t) =  ftv t
+
+instance Substituable TExpr where
+  apply s (In ((loc, tp) :< ex)) = In $ (loc, apply s tp) :< fmap (apply s) ex
+  ftv _ = Set.empty
 
 compose :: Subst -> Subst -> Subst
 compose s1 s2 = Map.map (apply s1) s2 `Map.union` s1

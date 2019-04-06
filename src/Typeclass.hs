@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TupleSections #-}
 module Typeclass where
 
 import Type
@@ -67,7 +68,7 @@ addClasses ((name, v, sigs):ss) env = do
   let env2 = env1{classEnv = addClass (classEnv env1) (name, ([], []))}
   addSigs (second (withPred v (IsIn name $ tvar v)) <$> sigs) env2
 
-runAddClasses :: [ClassDecl] -> [InstDecl] -> Envs -> AddClass (Envs, [(Scheme, Expr)])
+runAddClasses :: [ClassDecl] -> [InstDecl] -> Envs -> AddClass (Envs, [InstCheck])
 runAddClasses c i env = do
   cls <- mergeInstances c i
   tell $ "add classes : " ++ prettyL cls ++ "\n"
@@ -76,20 +77,20 @@ runAddClasses c i env = do
   schems <- mconcat <$> mapM (checkSigs $ dataEnv env) cls
   return (env, schems)
 
-checkSigs :: Env -> (ClassDecl, [InstDecl]) -> AddClass [(Scheme, Expr)]
+checkSigs :: Env -> (ClassDecl, [InstDecl]) -> AddClass [InstCheck]
 checkSigs env (c, i) = mconcat <$> mapM (checkSig env c) i
 
-checkSig :: Env -> ClassDecl -> InstDecl -> AddClass [(Scheme, Expr)]
+checkSig :: Env -> ClassDecl -> InstDecl -> AddClass [InstCheck]
 checkSig env (_, tv, funcs) (_, t, exprs) = do
   let baseSubst = Map.singleton (var tv) t
-  groupStrict env (second (apply baseSubst) <$> funcs) exprs
+  groupStrict env (second (apply baseSubst) <$> funcs) (fmap (pretty t,) exprs)
 
-groupStrict :: Env -> [(String, Scheme)] -> [(String, Expr)] -> AddClass [(Scheme, Expr)]
-groupStrict dEnv a b = foldM inGroup [] (zip (sortOn fst a) (sortOn fst b))
+groupStrict :: Env -> [(String, Scheme)] -> [(String, (String, Expr))] -> AddClass [InstCheck]
+groupStrict dEnv a b = foldM inGroup [] (zip (sortOn fst a) (sortOn (fst . snd) b))
   where
-    inGroup lst ((a, b), (a', b')) =
+    inGroup lst ((a, b), (s, (a', b'))) =
       if a == a'
       then do
         b <- replaceConsTypes [] dEnv b
-        return $ (b, b'):lst
+        return $ (unwords [a, s], b, b'):lst
       else throwError $ UnificationFail (tvar a) (tvar a')

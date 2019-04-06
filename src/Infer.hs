@@ -81,47 +81,41 @@ initInfer = InferState { count = 0 }
 runSolve :: ClassEnv -> Constraints -> ExceptLog ([Pred], Subst)
 runSolve env cs = runReaderT (solver cs) env
 
-inferDecl :: Envs -> [(String, [String], Expr)] -> ExceptLog Envs
-inferDecl env [] = return env
-inferDecl (Envs d ev cenv) ((name, _, ex):xs) = do
-  e <- inferExpr cenv d ex
-  inferDecl (Envs (extend d (name, e)) ev cenv) xs
-
-checkInstances :: Envs -> [(Scheme, Expr)] -> ExceptLog ()
-checkInstances env [] = return ()
-checkInstances (Envs d env cenv) ((sc, ex):xs) = do
-  tell $ "checking : " ++ pretty ex ++ " against " ++ pretty sc ++ "\n"
-  inferExprT cenv env ex sc
-  checkInstances (Envs d env cenv) xs
+checkInstances :: Envs -> [InstCheck] -> ExceptLog Envs
+checkInstances env [] = return env
+checkInstances (Envs d env cenv tast) ((name, sc, ex):xs) = do
+  (_, texp) <- inferExprT cenv env ex sc
+  checkInstances (Envs d env cenv (extendAst tast (name, texp))) xs
 
 inferTop :: Envs -> [(String, Expr)] -> ExceptLog Envs
 inferTop env [] = return env
-inferTop (Envs d env cenv) ((name, ex):xs) = do
-  tell $ "infering : " ++ pretty ex ++ "\n"
-  e <- case Env.lookup name env of
+inferTop (Envs d env cenv tast) ((name, ex):xs) = do
+  --tell $ "infering : " ++ pretty ex ++ "\n"
+  (tp, texp) <- case Env.lookup name env of
     Nothing -> inferExpr cenv env ex
     Just sc -> inferExprT cenv env ex sc
-  inferTop (Envs d (extend env (name, e)) cenv) xs
+  inferTop (Envs d (extend env (name, tp)) cenv (extendAst tast (name, texp))) xs
 
-inferExpr :: ClassEnv -> Env -> Expr -> ExceptLog Scheme
+inferExpr :: ClassEnv -> Env -> Expr -> ExceptLog (Scheme, TExpr)
 inferExpr cenv env ex = case runInfer env (runWriterT $ infer ex) of
   Left err -> throwError err
   Right (ty', cs) -> do
     let ty = snd $ ann ty'
-    tell $ "found : "++ pretty ty ++ "\n"
+    --tell $ "found : "++ pretty ty ++ "\n"
     (preds, subst) <- runSolve cenv cs
-    return $ closeOver (apply subst ty) (apply subst preds)
+    return (closeOver (apply subst ty) (apply subst preds), ty')
 
-inferExprT :: ClassEnv -> Env -> Expr -> Scheme -> ExceptLog Scheme
+inferExprT :: ClassEnv -> Env -> Expr -> Scheme -> ExceptLog (Scheme, TExpr)
 inferExprT cenv env ex tp = case runInfer env (runWriterT $ inferEq ex tp) of
   Left err -> throwError err
-  Right ((found, expected), cs) -> do
+  Right ((texp, expected), cs) -> do
     (preds, subst) <- runSolve cenv cs
-    tell $ "found : " ++ pretty (apply subst found) ++ "\n"
-    tell $ "expected : " ++ pretty (apply subst expected) ++ "\n"
+    let found = snd $ ann texp
+    --tell $ "found : " ++ pretty (apply subst found) ++ "\n"
+    --tell $ "expected : " ++ pretty (apply subst expected) ++ "\n"
     s0 <- checkStrict (apply subst found) (apply subst expected) False
     checkSubst s0
-    return $ closeOver (apply subst found) (apply subst preds)
+    return (closeOver (apply subst found) (apply subst preds), apply subst texp)
 
 runInfer :: Env -> Infer a -> Either TypeError a
 runInfer env m = runIdentity $ runExceptT $ evalStateT (runReaderT m env) initInfer
@@ -192,10 +186,10 @@ lookupEnv x = do
     Just s -> instantiate s
     Nothing -> throwError $ UnboundVariable $ show x
 
-inferEq :: Expr -> Scheme -> InferCons (Type, Type)
+inferEq :: Expr -> Scheme -> InferCons (TExpr, Type)
 inferEq e t0 = do
   Qual q t1 <- instantiate t0
-  t2 <- snd . ann <$> infer e
+  t2 <- infer e
   return (t2, t1)
 
 infer :: Expr -> InferCons TExpr
@@ -235,11 +229,6 @@ inferAlg = \case
         env <- ask
         (Qual p t) <- lookupEnv x -- `catchError` \e -> lookupEnv $ pretty env
         return t
-
-      Lam x e -> do
-        tv <- fresh
-        t <- inEnv (x, Forall [] (Qual [] tv)) (getTp e)
-        return $ tv `mkArr` t
 
       App t1 t2 -> do
         t1 <- getTp t1
@@ -332,7 +321,7 @@ unifyMany t1 t2 = throwError $ UnificationMismatch t1 t2
 
 solver :: Constraints -> Solve ([Pred], Subst)
 solver (unions, ps) = do
-  tell $ "solve : \n" ++ prettyL unions ++ "\n"
+  --tell $ "solve : \n" ++ prettyL unions ++ "\n"
   sub <- unionSolve (nullSubst, unions)
   preds <- classSolve $ ClassSolver [] (apply sub ps)
   return (preds, sub)
@@ -343,9 +332,9 @@ unionSolve (su, cs) =
   case cs of
     [] -> return su
     Union (t1, t2) : cs1 -> do
-      tell $ "unify : " ++ pretty t1 ++ " and " ++ pretty t2 ++ "\n"
+      --tell $ "unify : " ++ pretty t1 ++ " and " ++ pretty t2 ++ "\n"
       su1 <- unifies t1 t2
-      tell $ "found : " ++ pretty su1 ++ "\n"
+      --tell $ "found : " ++ pretty su1 ++ "\n"
       unionSolve (su1 `compose` su, apply su1 cs1)
 
 data ClassSolver = ClassSolver{found :: [Pred], remain :: [Pred]};

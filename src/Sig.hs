@@ -15,9 +15,9 @@ type AddSig a = ExceptT TypeError (Writer String) a
 addSigs :: [(String, Scheme)] -> Envs -> AddSig Envs
 addSigs [] env = return env
 addSigs ((name, scheme):ss) env = do
-  Envs d v c <- addSigs ss env
+  Envs d v c t <- addSigs ss env
   withCons <- replaceConsTypes [] d scheme
-  return $ Envs d (v `extend` (name, withCons)) c
+  return $ Envs d (v `extend` (name, withCons)) c t
 
 class ReplaceCons a where
   replaceConsTypes :: [TVar] -> Env -> a -> AddSig a

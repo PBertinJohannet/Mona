@@ -1,12 +1,14 @@
 {-# LANGUAGE LambdaCase #-}
 
 module Env (
+  TAst(..),
   Env(..),
   Envs(..),
   empty,
   lookup,
   remove,
   extend,
+  extendAst,
   extends,
   merge,
   mergeEnvs,
@@ -57,7 +59,13 @@ newtype ClassEnv = ClassEnv {classes :: Map.Map Name Class} deriving (Eq, Show)
 
 newtype Env = TypeEnv { types :: Map.Map Name Scheme } deriving (Eq, Show)
 
-data Envs = Envs{ dataEnv :: Env, varEnv :: Env, classEnv :: ClassEnv} deriving (Eq, Show)
+newtype TAst = TAst { texprs :: Map.Map Name TExpr } deriving Show
+
+data Envs = Envs{ dataEnv :: Env, varEnv :: Env, classEnv :: ClassEnv, ast :: TAst} deriving Show
+
+instance Pretty TAst where
+  pretty (TAst t) = mconcat . fmap showAssoc . Map.toList $ t
+    where showAssoc (n, s) = n ++ " : "++ pretty s ++ "\n"
 
 instance Pretty Env where
   pretty (TypeEnv t) = mconcat . fmap showAssoc . Map.toList $ t
@@ -72,17 +80,18 @@ instance Pretty ClassEnv where
     where showAssoc (n, s) = n ++ " : "++ pretty s ++ "\n"
 
 instance Pretty Envs where
-  pretty (Envs d v c) =
+  pretty (Envs d v c e) =
     "Vars : \n" ++ pretty v ++
     "\nTypes : \n" ++ pretty d ++
-    "\nClasses : \n" ++ pretty c ++ "\n"
+    "\nClasses : \n" ++ pretty c ++
+    "\nsources : \n" ++ pretty e ++ "\n"
 
 instance ShowKind Envs where
-  showKind (Envs d v c) =
+  showKind (Envs d v c s) =
     "Vars : \n" ++ showKind v ++ "\nTypes : \n" ++ pretty d ++ "\n"
 
 baseEnvs :: Envs
-baseEnvs = Envs kindEnv baseEnv baseClasses
+baseEnvs = Envs kindEnv baseEnv baseClasses baseSource
 
 addClass :: ClassEnv -> (String, Class) -> ClassEnv
 addClass env (n, c) = alterClass env n (Just . const c)
@@ -105,8 +114,14 @@ baseClasses = ClassEnv (Map.fromList allClasses)
 kindEnv :: Env
 kindEnv = TypeEnv (Map.fromList allKinds)
 
+baseSource :: TAst
+baseSource = TAst Map.empty
+
 empty :: Env
 empty = TypeEnv Map.empty
+
+extendAst :: TAst -> (Name, TExpr) -> TAst
+extendAst env (x, s) = env { texprs = Map.insert x s (texprs env) }
 
 extend :: Env -> (Name, Scheme) -> Env
 extend env (x, s) = env { types = Map.insert x s (types env) }
