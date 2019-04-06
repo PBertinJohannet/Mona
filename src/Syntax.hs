@@ -3,7 +3,6 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE DeriveFunctor #-}
-{-# LANGUAGE DeriveFoldable #-}
 {-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE DeriveFoldable #-}
 
@@ -16,6 +15,8 @@ import Type
 
 type Name = String
 
+newtype Location = Loc (String, Int, Int) deriving Show;
+
 data ExprF a
   = Var Name
   | App a a
@@ -25,18 +26,9 @@ data ExprF a
   | Fix a
   deriving (Eq, Ord, Functor, Foldable, Traversable)
 
-makeConstructor :: (a -> b -> ExprF Expr) -> a -> b -> Expr
-makeConstructor f a = f a >>> In
-
-varC = Var >>> In
-appC = makeConstructor App
-lamC = makeConstructor Lam
-litC = Lit >>> In
-caseC = makeConstructor Case
-fixC = Fix >>> In
-
-type Expr = Term ExprF;
-type ExprAnn a = Cofree ExprF a;
+type TExpr = Cofree ExprF (Location, Type);
+type Expr = Cofree ExprF Location;
+type Forgot = Term ExprF
 
 data Field = FieldS String | FieldApp Field Field deriving (Show, Eq, Ord)
 
@@ -67,6 +59,9 @@ data Program = Program{
   instances :: [InstDecl],
   signatures :: [(String, Scheme)]}
 
+prettyDatas :: [(String, [String], Expr)] -> String
+prettyDatas = unwords . fmap (\(a, b, c) -> a ++ " " ++ unwords b ++ " = " ++ pretty c)
+
 sepDecls :: [Decl] -> Program
 sepDecls [] = Program [] [] [] [] []
 sepDecls (d:ds) =
@@ -78,30 +73,40 @@ sepDecls (d:ds) =
     (s, Class nm vr sigs) -> prog{clasdecls = (nm, vr, sigs): clasdecls prog}
     (s, Sig e) -> prog{signatures = (s, e): signatures prog}
 
+appC :: Expr -> Expr -> Expr
+appC a@(In (l :< _)) b = In $ l :< App a b
 
+appC' :: (Location -> Expr) -> Expr -> Expr
+appC' a b@(In (l :< _)) = In $ l :< App (a l) b
+
+varC :: String -> Location -> Expr
+varC s l = In $ l :< Var s
+
+lamC :: String -> Expr -> Expr
+lamC s a@(In (l :< _)) = In $ l :< Lam s a
 
 mapLeft :: (Expr -> Expr) -> Expr -> Expr
-mapLeft f = \case
-  In (App a b) -> In $ App (mapLeft f a) b
-  In e -> In $ fmap f e
+mapLeft f = asTup $ second $ \case
+  (App a b) -> App (mapLeft f a) b
+  e -> fmap f e
 
 leftMost :: Expr -> Expr
-leftMost = cata $ \case
-  App a b -> a
-  e -> In e
+leftMost = cataCF $ \case
+  (b, App a _) -> a
+  (b, e) -> In $ b :< e
 
 leftMostVar :: Expr -> String
-leftMostVar e = let Var v = out $ leftMost e in v
+leftMostVar e = let Var v = extract $ leftMost e in v
 
 uncurryCall :: Expr -> [Expr]
-uncurryCall = para $ curry $ \case
-  (In (App _ b), App a _) -> a ++ [b]
-  (e, _) -> [e]
+uncurryCall = paraCF $ \case
+  ((_, App _ b), App a _) -> a ++ [b]
+  ((b, e), _) -> [In $ b :< e]
 
 sepCallee :: Expr -> (String, Expr)
-sepCallee = out >>> \case
-  App (In (Var a)) b -> (a, b)
-  App a b -> let (n, e) = sepCallee a in (n, In $ App e b)
+sepCallee = sep >>> \case
+  (p, App (In (_ :< Var a)) b) -> (a, b)
+  (p, App a b) -> let (n, e) = sepCallee a in (n, In $ p :< App e b)
 
 type ExprAttr a = ExprF (Attr ExprF a);
 type AttrExpr a = Attr ExprF a;
@@ -110,6 +115,11 @@ isAppOfH :: String -> ExprAttr a -> Maybe (a, a)
 isAppOfH s = \case
   App (Attr _ (App (Attr _ (Var s)) (Attr a _))) (Attr b _) -> Just (a, b)
   _ -> Nothing
+
+matchAppCF :: Attr (CofreeF ExprF b) a -> Attr (CofreeF ExprF b) a -> (Maybe (String, a, a), (a, a))
+matchAppCF a (Attr b _)= case a of
+  (Attr _ (_ :< App (Attr _ (_ :< Var s)) (Attr a' _))) -> (Just (s, a', b), (value a, b))
+  _ -> (Nothing, (value a, b))
 
 matchApp :: AttrExpr a -> AttrExpr a -> (Maybe (String, a, a), (a, a))
 matchApp a (Attr b _)= case a of
@@ -131,7 +141,18 @@ instance PrettyHisto ExprF where
     App a b -> case matchApp a b of
       (Just ("|", a, b), _) -> a ++ "|" ++ b
       (_, (a, b)) -> unwords [a, b]
-    Lam n e -> "\\" ++ n ++ " -> " ++ value e
+    Lam n e -> "/" ++ n ++ " -> " ++ value e
     Lit l -> show l
     Fix e -> "fix " ++ value e
     Case e ex -> "case " ++ value e ++ " of " ++ unlines (value <$> ex)
+
+instance Pretty a => Pretty (String, a) where
+  pretty (k, c) = k ++ " = " ++ pretty c ++ "\n"
+
+instance Pretty Location where
+  pretty (Loc (file, line, col)) = file ++ " " ++ show line ++ ":" ++ show col
+
+instance Pretty (ClassDecl, [InstDecl]) where
+  pretty (c, i) = prettycls c ++ " \n => \n "++ unwords (show <$> i) ++ "\n"
+     where
+       prettycls (a, b, l) = a ++ " : " ++ b  ++ " -> " ++ prettyL l ++ "\n"

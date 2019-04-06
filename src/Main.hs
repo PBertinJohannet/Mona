@@ -44,25 +44,24 @@ run = L.pack
 instance Pretty (Scheme, Expr) where
   pretty (s, e) = "check : " ++ pretty s ++ " vs " ++ pretty e ++ "\n"
 
-forgetPos :: [(String, StatementF (ExprAnn SourcePos))] -> ExceptT PassErr (Writer String) [(String, Statement)]
+forgetPos :: [(String, Statement)] -> ExceptT PassErr (Writer String) [(String, StatementF Forgot)]
 forgetPos = mapM forget'
 
-forget' :: (String, StatementF (ExprAnn SourcePos)) -> ExceptT PassErr (Writer String) (String, Statement)
+forget' :: (String, Statement) -> ExceptT PassErr (Writer String) (String, StatementF Forgot)
 forget' (s, st) = do
   tell $ show st
   return (s, fmap forget st)
 
-passes :: [(String, StatementF (ExprAnn SourcePos))] -> ExceptT PassErr (Writer String) Envs
+passes :: [(String, Statement)] -> ExceptT PassErr (Writer String) Envs
 passes a = do
-  l <- forgetPos a
-  let Program exprs datas classes insts sigs = sepDecls l
-  tell $ "sigs : \n" ++ pretty sigs ++ "\n"
+  let Program exprs datas classes insts sigs = sepDecls a
+  tell $ "sigs : \n" ++ prettyL sigs ++ "\n"
   tell $ "datas show : \n" ++ show datas
-  tell $ "datas : \n" ++ pretty datas
-  tell $ "exprs : \n" ++ pretty exprs
+  tell $ "exprs : \n" ++ prettyL exprs
+  tell $ "datas : \n" ++ prettyDatas datas
   env <- withExceptT TypeError $ interpret datas baseEnvs
   (env, insts) <- withExceptT TypeError $ runAddClasses classes insts env
-  tell $ "inst to check : " ++ pretty insts ++ "\n"
+  tell $ "inst to check : " ++ prettyL insts ++ "\n"
   env <- withExceptT TypeError $ addSigs sigs env
   tell $ "after sigs : " ++ showKind env ++ "\n"
   --tell $ pretty env

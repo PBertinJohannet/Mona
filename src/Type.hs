@@ -147,9 +147,10 @@ instance ShowKind TVar where
   showKind (TV v k) = v ++ "{"++ pretty k ++"}"
 
 instance ShowKind Scheme where
-  showKind = \case
-    Forall [] (Qual q tp) -> pretty q ++ " => " ++ showKind tp
-    Forall t (Qual q tp) -> "forall " ++ unwords (fmap showKind t) ++ " . "++ pretty q ++ " => " ++ showKind tp
+  showKind = let pretty' q = unwords (pretty <$> q) in
+    \case
+      Forall [] (Qual q tp) -> pretty' q ++ " => " ++ showKind tp
+      Forall t (Qual q tp) -> "forall " ++ unwords (fmap showKind t) ++ " . "++ pretty' q ++ " => " ++ showKind tp
 
 instance Pretty Kind where
   pretty = \case

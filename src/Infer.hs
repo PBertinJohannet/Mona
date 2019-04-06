@@ -30,7 +30,7 @@ instance Pretty Union where
 type Constraints = ([Union], [Pred])
 
 instance Pretty Constraints where
-  pretty (a, b) = pretty a ++ " => " ++ pretty b ++ "\n"
+  pretty (a, b) = prettyL a ++ " => " ++ prettyL b ++ "\n"
 
 union :: (Type, Type) -> Constraints
 union u = ([Union u], [])
@@ -64,7 +64,7 @@ instance Pretty TypeError where
     MultipleDecl s -> s ++ " Multiple declarations : " ++ s
     SignatureMismatch s -> "Signature does not match : " ++ pretty s
     UnificationFail t t' -> "Cannot unify : " ++ pretty t ++ " with "++pretty t'
-    UnificationMismatch t t' -> "Mismatch : Cannot unify : " ++ pretty t ++ " with "++pretty t'
+    UnificationMismatch t t' -> "Mismatch : Cannot unify : " ++ prettyL t ++ " with "++prettyL t'
 
 type ExceptLog a = ExceptT TypeError (Writer String) a;
 
@@ -106,7 +106,8 @@ inferTop (Envs d env cenv) ((name, ex):xs) = do
 inferExpr :: ClassEnv -> Env -> Expr -> ExceptLog Scheme
 inferExpr cenv env ex = case runInfer env (runWriterT $ infer ex) of
   Left err -> throwError err
-  Right (ty, cs) -> do
+  Right (ty', cs) -> do
+    let ty = snd $ ann ty'
     tell $ "found : "++ pretty ty ++ "\n"
     (preds, subst) <- runSolve cenv cs
     return $ closeOver (apply subst ty) (apply subst preds)
@@ -153,6 +154,12 @@ normalize (Forall _ (Qual q body)) =
         Just x -> TVar x
         Nothing -> error "type variable not in signature"
 
+lamInEnv :: String -> InferCons Type -> InferCons Type
+lamInEnv x e = do
+  tv <- fresh
+  t <- inEnv (x, Forall [] (Qual [] tv)) e
+  return (tv `mkArr` t)
+
 inEnv :: (Name, Scheme) -> InferCons a -> InferCons a
 inEnv (x, sc) m = do
   let scope e = remove e x `extend` (x, sc)
@@ -188,48 +195,64 @@ lookupEnv x = do
 inferEq :: Expr -> Scheme -> InferCons (Type, Type)
 inferEq e t0 = do
   Qual q t1 <- instantiate t0
-  t2 <- infer e
+  t2 <- snd . ann <$> infer e
   return (t2, t1)
 
-infer :: Expr -> InferCons Type
-infer = bicataM lamAlg inferAlg
+infer :: Expr -> InferCons TExpr
+infer = cataCF inferAlg'
 
-lamAlg :: ExprF (InferCons Type) -> InferCons (ExprF Type)
-lamAlg = \case
-  Lam x e -> do
-    tv <- fresh
-    t <- inEnv (x, Forall [] (Qual [] tv)) e
-    return $ Lam x (tv `mkArr` t)
-  e -> sequence e
+getTp :: InferCons TExpr -> InferCons Type
+getTp = fmap (\(In ((_, t) :< _)) -> t)
 
-inferAlg :: ExprF Type -> InferCons Type
+inferAlg' :: (Location, ExprF (InferCons TExpr)) -> InferCons TExpr
+inferAlg' = \case
+    (l, Lam x e) -> do
+        tv <- fresh
+        e' <- inEnv (x, Forall [] (Qual [] tv)) e
+        t <- getTp $ return e'
+        return $ In $ (l, tv `mkArr` t) :< Lam x e'
+    (l, k) -> do
+        tp <- inferAlg k
+        k <- sequence k
+        return $ In $ (l, tp) :< k
+
+inferAlg :: ExprF (InferCons TExpr) -> InferCons Type
 inferAlg = \case
-  Lit _ -> do
-    tell noConstraints
-    return typeInt
+      Lit _ -> do
+        tell noConstraints
+        return typeInt
 
-  Case sourceT (t:ts) -> do
-    let exprEq = mconcat $ curry union t <$> ts
-    destT <- fresh
-    tell $ union (t, sourceT `mkArr` destT) <> exprEq
-    return destT
+      Case sourceT (t:ts) -> do
+        t <- getTp t
+        ts <- mapM getTp ts
+        sourceT <- getTp sourceT
+        let exprEq = mconcat $ curry union t <$> ts
+        destT <- fresh
+        tell $ union (t, sourceT `mkArr` destT) <> exprEq
+        return destT
 
-  Var x -> do
-    env <- ask
-    (Qual p t) <- lookupEnv x -- `catchError` \e -> lookupEnv $ pretty env
-    return t
+      Var x -> do
+        env <- ask
+        (Qual p t) <- lookupEnv x -- `catchError` \e -> lookupEnv $ pretty env
+        return t
 
-  Lam x e -> return e
+      Lam x e -> do
+        tv <- fresh
+        t <- inEnv (x, Forall [] (Qual [] tv)) (getTp e)
+        return $ tv `mkArr` t
 
-  App t1 t2 -> do
-    tv <- fresh
-    tell $ union (t1, t2 `mkArr` tv)
-    return tv
+      App t1 t2 -> do
+        t1 <- getTp t1
+        t2 <- getTp t2
+        tv <- fresh
+        tell $ union (t1, t2 `mkArr` tv)
+        return tv
 
-  Fix t1 -> do
-    tv <- fresh
-    tell $ union (tv `mkArr` tv, t1)
-    return tv
+      Fix t1 -> do
+        t1 <- getTp t1
+        tv <- fresh
+        tell $ union (tv `mkArr` tv, t1)
+        return tv
 {- old
 infer :: Expr -> InferCons Type
 infer = \case
@@ -309,7 +332,7 @@ unifyMany t1 t2 = throwError $ UnificationMismatch t1 t2
 
 solver :: Constraints -> Solve ([Pred], Subst)
 solver (unions, ps) = do
-  tell $ "solve : \n" ++ pretty unions ++ "\n"
+  tell $ "solve : \n" ++ prettyL unions ++ "\n"
   sub <- unionSolve (nullSubst, unions)
   preds <- classSolve $ ClassSolver [] (apply sub ps)
   return (preds, sub)

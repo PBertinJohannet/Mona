@@ -19,12 +19,6 @@ import qualified Data.Map as Map
 import Pretty
 import Subst
 
-instance Pretty a => Pretty (String, a) where
-  pretty (k, c) = k ++ " = " ++ pretty c ++ "\n"
-
-instance Pretty (ClassDecl, [InstDecl]) where
-  pretty (c, i) = pretty c ++ " \n => \n "++ pretty i ++ "\n"
-
 type AddClass a = ExceptT TypeError (Writer String) a
 -- (string, a) (string, b)
 mergeInstances :: [ClassDecl] -> [InstDecl] -> AddClass [(ClassDecl, [InstDecl])]
@@ -76,7 +70,7 @@ addClasses ((name, v, sigs):ss) env = do
 runAddClasses :: [ClassDecl] -> [InstDecl] -> Envs -> AddClass (Envs, [(Scheme, Expr)])
 runAddClasses c i env = do
   cls <- mergeInstances c i
-  tell $ "add classes : " ++ pretty cls ++ "\n"
+  tell $ "add classes : " ++ prettyL cls ++ "\n"
   env <- addClasses c env
   env <- addInstances i env
   schems <- mconcat <$> mapM (checkSigs $ dataEnv env) cls

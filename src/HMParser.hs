@@ -32,17 +32,20 @@ data Expr
   deriving (Eq, Ord)
 
 type Statement = S.StatementF Expr
-type StatementAnn = S.StatementF (S.ExprAnn SourcePos)
+type StatementAnn = S.StatementF S.Expr
+
+toLoc :: SourcePos -> S.Location
+toLoc s = S.Loc (sourceName s, sourceLine s, sourceColumn s)
 
 toSyntax :: SourcePos -> [Binding] -> [BindingAnn]
-toSyntax s = fmap $ second (fmap $ annotate s)
+toSyntax s = fmap $ second (fmap $ annotate (toLoc s))
 
-annotate :: SourcePos -> Expr -> S.ExprAnn SourcePos
-annotate = anaCFM myAlg
+annotate :: S.Location -> Expr -> S.Expr
+annotate = anaCF myAlg
 
-myAlg :: Expr -> Either (S.ExprF Expr) (SourcePos, Expr)
+myAlg :: Expr -> Either (S.ExprF Expr) (S.Location, Expr)
 myAlg = \case
-  Position s e -> Right (s, e)
+  Position s e -> Right (toLoc s, e)
   e -> Left $ case e of
     Var n -> S.Var n
     App a b -> S.App a b
@@ -55,7 +58,7 @@ withPos :: Parser Expr -> Parser Expr
 withPos p = do
   pos <- getPosition
   e <- p
-  return $ Position pos e 
+  return $ Position pos e
 
 -- returns the transformed function.
 pat :: Parser (Expr -> Expr)

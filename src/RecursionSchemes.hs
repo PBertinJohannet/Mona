@@ -1,8 +1,8 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TupleSections #-}
 
 module RecursionSchemes where
 
@@ -14,9 +14,12 @@ import Data.List (partition)
 
 (&) x f = f x
 
-newtype CofreeM f m a = CM (m (a, f (CofreeM f m a)))
+data CofreeF f a b = a :< f b deriving (Show, Eq);
 
-type Cofree f a = CofreeM f Identity a;
+type Cofree f a = Term (CofreeF f a)
+
+instance Functor f => Functor (CofreeF f a) where
+  fmap f (a :< k) = a :< fmap f k
 
 newtype Term f = In { out :: f (Term f) }
 
@@ -75,11 +78,6 @@ histo :: Functor f => CVAlgebra f a -> Term f -> a
 histo h = worker >>> value
   where worker = out >>> fmap worker >>> (h &&& id) >>> uncurry Attr
 
-futu :: Functor f => CVCoAlgebra f a -> a -> Term f
-futu f = In <<< fmap worker <<< f
-  where worker (Automatic a) = futu f a
-        worker (Manual m) = In (fmap worker m)
-
 zygo :: Functor f => Algebra f b -> GAlgebra f a b -> Term f -> a
 zygo alg galg = snd . zygoHelper
   where zygoHelper = out >>> fmap zygoHelper >>> (alg . fmap fst &&& galg)
@@ -103,61 +101,118 @@ class Functor f => ShowAlg f where
 instance (Functor f, Show (f String)) => Show (Term f) where
   show = cata show
 
--- cofree functions
-
-(<:>) :: Monad m => m a -> m (f (CofreeM f m a)) -> CofreeM f m a
-a <:> b = CM $ (,) <$> a <*> b
-
-(<:<) :: Monad m => m a -> f (CofreeM f m a) -> CofreeM f m a
-a <:< b = CM $ (, b) <$> a
-
-(>:>) :: Monad m => a -> m (f (CofreeM f m a)) -> CofreeM f m a
-a >:> b = CM $ (a,) <$> b
-
-(<:) :: a -> f (Cofree f a) -> Cofree f a
-a <: b = CM $ return (a, b)
-
-(>:) = flip (<:)
-
-unwrapM :: Monad m => CofreeM f m a -> m (f (CofreeM f m a))
-unwrapM (CM a) = snd <$> a
+-- cofree instances
 
 unwrap :: Cofree f a -> f (Cofree f a)
-unwrap = unwrapM >>> runIdentity
-
-forgetM :: (Monad m, Functor f, Traversable f) => CofreeM f m a -> m (Term f)
-forgetM = unwrapM >>> fmap (traverse forgetM) >>> join >>> fmap In
+unwrap (In (a :< b)) = b
 
 forget :: (Functor f, Traversable f) => Cofree f a -> Term f
-forget = forgetM >>> runIdentity
-
-sepM :: CofreeM f m a -> m (a, f (CofreeM f m a))
-sepM (CM a) = a
+forget = unwrap >>> fmap forget >>> In
 
 sep :: Cofree f a -> (a, f (Cofree f a))
-sep = sepM >>> runIdentity
+sep (In (a :< b)) = (a, b)
 
-sequenceCF :: (Monad m, Functor f, Traversable f)
-  => CofreeM f m a -> m (Cofree f a)
-sequenceCF = cataCFM (uncurry (<:) >>> return)
+asTup :: ((a, f (Cofree f a)) -> (b, f (Cofree f b))) -> Cofree f a -> Cofree f b
+asTup f = sep >>> f >>> uncurry (:<) >>> In
 
-cataCFM :: (Monad m, Functor f, Traversable f)
-  => ((b, f a) -> m a) -> CofreeM f m b -> m a
-cataCFM alg = sepM >=> second (traverse (cataCFM alg)) >>> seqtup >=> alg
-  where
-    seqtup (a, b) = (\inB -> (a, inB)) <$> b
+rmap f = asTup $ second f
+extract = snd . sep
+ann = fst . sep
 
 cataCF :: (Functor f, Traversable f)
   => ((b, f a) -> a) -> Cofree f b -> a
-cataCF alg = cataCFM (alg >>> return) >>> runIdentity
+cataCF alg = sep >>> second (fmap (cataCF alg)) >>> alg
 
-anaCFM :: (Functor f, Traversable f)
+cataCF' :: (Functor f, Traversable f)
+  => Algebra f a -> ((b, a) -> a) -> Cofree f b -> a
+cataCF' alg comb = cataCF (second alg >>> comb)
+
+anaCF :: (Functor f)
   => (a -> Either (f a) (b, a)) -> b -> a -> Cofree f b
-anaCFM alg def = alg >>> (keep ||| uncurry change)
+anaCF alg def = alg >>> (keep ||| uncurry (anaCF alg))
   where
-    keep = fmap (anaCFM alg def) >>> (def,) >>> return >>> CM
-    change = anaCFM alg
+    keep = fmap (anaCF alg def) >>> (def :<) >>> In
 
-instance (Traversable f, Functor f, Show (f String), Show a)
-  => Show (Cofree f a) where
-  show = cataCF show
+paraCF :: Functor f => (((c, f (Cofree f c)), f b) -> b) -> Cofree f c -> b
+paraCF alg = sep >>> (id &&& apply) >>> alg -- id &&& fmap (paraCF alg) >>> alg
+  where apply = snd >>> fmap (paraCF alg)
+
+histoCF :: (Functor f)
+  => ((b, f (Attr f a)) -> a) -> Cofree f b -> a
+histoCF alg = worker >>> value
+  where
+    worker = sep >>> second (fmap worker) >>> (snd &&& alg) >>> uncurry (flip Attr)
+
+histoCF' :: (Functor f)
+  => CVAlgebra f a -> ((b, a) -> a) -> Cofree f b -> a
+histoCF' alg comb = histoCF (second alg >>> comb)
+
+applyM :: (Traversable f, Functor f, Monad m)
+  => (f (m a) -> m a) -> Cofree f b -> m (Cofree f (b, a))
+applyM alg = sep
+  >>> second (fmap (applyM alg)
+    >>> (id &&& (fmap (fmap $ snd . ann) >>> alg))
+    >>> uncurry mergeAnn)
+  >>> seqTup
+  >>> fmap (\(b, (x, a)) -> In ((b, a) :< x))
+
+mergeAnn :: (Traversable f, Functor f, Monad m)
+  => f (m (Cofree f (b, a))) -> m a -> m (f (Cofree f (b, a)), a)
+mergeAnn bs added = seqTup . (,added) =<< sequence bs
+
+mt a = (1,) <$> a
+
+seqTup :: Applicative m => (a, m b) -> m (a, b)
+seqTup (a, mb) = flip (,) <$> mb <*> pure a
+
+{-
+applyM :: (Traversable f, Functor f, Monad m)
+  => (f (m a) -> f (m a)) -> (f a -> m a) -> Cofree f b -> m (Cofree f (b, a))
+applyM malg alg =
+  sep
+  >>> second (fmap (applyM malg alg)
+--    >>> fmap (id &&& malg . fmap workApp)
+    >>> _ok
+    >>> sequence
+    >>> (id &&& fmap (alg . fmap workApp))
+    >>> second join
+    >>> seqTup)
+  >>> seqTupS
+  >>> fmap ((\(a, (b, c)) -> ((a, c), b))
+    >>> uncurry (:<)
+    >>> In)
+
+seqTup (a, b) = (,) <$> a <*> b
+seqTupS (a, b) = (a,) <$> b
+exchange (a, b, c) = (\a b c -> (a, b, c)) <$> a <*> b <*> c
+
+workApp :: (Traversable f, Functor f)
+  =>  Cofree f (b, a) -> a
+workApp = ann >>> snd
+
+newtype Contains f m b a= Cont (f (m (b, a)))
+instance (Functor m, Functor f) => Functor (Contains f m b) where
+  fmap f (Cont x) = Cont $ fmap (fmap (second f)) x
+
+
+inner ::Functor f => (f (m a) -> f (m a)) -> f (m (b, a)) -> f (m (b, a))
+inner alg = fmap (_ok alg)
+
+
+mergeAnn :: (Functor f, Monad m)
+  => f (m (Cofree f (b, a))) -> f (m a) -> f (m (Cofree f (b, a)))
+mergeAnn bs added = _ok
+  where
+    workAnn bs added = join $ workIn added <$> bs
+    workIn a (In ((b, _) :< c)) = (\inA -> In ((b, inA) :< c)) <$> a -}
+-- transforms the Cofree f a by
+-- -> applying a function taking a monad and returning it
+-- -> applying a function returning the monad and some extra information
+-- ->
+{-
+-- possibility to use the f (m a) and the f a
+bicataM :: (Traversable f, Functor f, Monad m)
+  => (f (m a) -> m (f a)) -> (f a -> m a) -> Term f -> m a
+bicataM malg alg = out >>> fmap (bicataM malg alg) >>> malg >=> alg
+
+-}
