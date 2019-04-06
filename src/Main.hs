@@ -22,18 +22,19 @@ import qualified InterpretTypes as DataDecl
 import Typeclass (runAddClasses)
 import RecursionSchemes
 import Sig
-import Erase
+import Run
 
 (<&>) = flip fmap
 
 main = (getArgs <&> head >>= readFile) <&> run >>= putStrLn
 
-data PassErr = TypeError TypeError | DeclErr DeclErr;
+data PassErr = TypeError TypeError | DeclErr DeclErr | RTError RunTimeError;
 
 instance Pretty PassErr where
   pretty = \case
     TypeError t -> "TypeError : " ++ pretty t
     DeclErr d -> "DeclarationError : " ++ pretty d
+    RTError d -> "RunTimeError : " ++ pretty d
 
 run :: String -> String
 run = L.pack
@@ -52,7 +53,7 @@ forget' (s, st) = do
   tell $ show st
   return (s, fmap forget st)
 
-passes :: [(String, Statement)] -> ExceptT PassErr (Writer String) Envs
+passes :: [(String, Statement)] -> ExceptT PassErr (Writer String) Value
 passes a = do
   let Program exprs datas classes insts sigs = sepDecls a
   tell $ "sigs : \n" ++ prettyL sigs ++ "\n"
@@ -68,14 +69,12 @@ passes a = do
   --tell $ pretty exprs
   env <- withExceptT TypeError $ inferTop env exprs
   tell $ "after infer : " ++ showKind env ++ "\n"
-  withExceptT TypeError $ checkInstances env insts
+  env <- withExceptT TypeError $ checkInstances env insts
+  withExceptT RTError $ runProgram env
 
-debug :: Either ParseError (Either PassErr Envs, String) -> String
+debug :: Either ParseError (Either PassErr Value, String) -> String
 debug = \case
   Left perr -> "ParseError : " ++ show perr
   Right (r, s) -> s ++ "\n" ++ case r of
     Left terr -> "TypeError : " ++ pretty terr
-    Right env -> pretty env ++ "\n\n Running ... \n\n"
-      ++ case runExcept (runProgram env) of
-        Left l -> "Error : " ++ pretty l
-        Right res -> "======\n" ++ pretty res
+    Right v -> pretty v

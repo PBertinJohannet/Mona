@@ -148,12 +148,6 @@ normalize (Forall _ (Qual q body)) =
         Just x -> TVar x
         Nothing -> error "type variable not in signature"
 
-lamInEnv :: String -> InferCons Type -> InferCons Type
-lamInEnv x e = do
-  tv <- fresh
-  t <- inEnv (x, Forall [] (Qual [] tv)) e
-  return (tv `mkArr` t)
-
 inEnv :: (Name, Scheme) -> InferCons a -> InferCons a
 inEnv (x, sc) m = do
   let scope e = remove e x `extend` (x, sc)

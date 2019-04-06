@@ -142,6 +142,18 @@ instance Show (ExprF String) where
     Lit n -> "Lit " ++ show n
     Fix n -> "Fix " ++ n
 
+instance Pretty a => Pretty (ExprF a) where
+  pretty = fmap pretty >>> show
+
+prettyShape :: ExprF a -> String
+prettyShape = \case
+  Var n -> "Var " ++ n
+  App a b -> "App "
+  Lam a b -> "Lam " ++ a
+  Case a b -> "Case "
+  Lit n -> "Lit " ++ show n
+  Fix n -> "Fix "
+
 instance PrettyHisto ExprF where
   prettyH = inParen <<< \case
     Var n -> n

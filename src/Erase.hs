@@ -1,5 +1,5 @@
 {-# LANGUAGE LambdaCase #-}
-module Run where
+module Erase where
 import RecursionSchemes
 import Syntax
 import Type
@@ -9,7 +9,6 @@ import Pretty
 import Control.Arrow
 import Control.Monad.Except
 import Control.Monad.Reader
-import Control.Monad.Writer
 import Data.Maybe
 import qualified Data.Map as Map
 
@@ -44,24 +43,17 @@ instance Pretty Value where
 
 newtype RuntimeEnv = RTEnv (Map.Map String (Interpret Value))
 
-instance Pretty RuntimeEnv where
-  pretty (RTEnv t) = mconcat . fmap showAssoc . Map.toList $ t
-    where showAssoc (n, s) = n ++ ", "
-
-type Interpret = ReaderT RuntimeEnv (ExceptT RunTimeError (Writer String))
+type Interpret = ReaderT RuntimeEnv (Except RunTimeError)
 
 extendRT :: RuntimeEnv -> (Name, Interpret Value) -> RuntimeEnv
 extendRT (RTEnv env) (x, s) = RTEnv $ Map.insert x s env
 
-removeRT :: RuntimeEnv -> Name -> RuntimeEnv
-removeRT (RTEnv env) n = RTEnv $ Map.delete n env
-
 inEnv :: (Name, Value) -> Interpret a -> Interpret a
 inEnv (x, sc) m = do
-  let scope e = removeRT e x `extendRT` (x, return sc)
+  let scope e = extendRT e (x, return sc)
   local scope m
 
-runProgram :: Envs -> ExceptT RunTimeError (Writer String) Value
+runProgram :: Envs -> Except RunTimeError Value
 runProgram (Envs d c e TAst {texprs = texps}) =
   let env = interpret <$> texps in
   case Map.lookup "main" env of
@@ -72,33 +64,21 @@ interpret :: TExpr -> Interpret Value
 interpret = cataCF $ (uncurry . uncurry) interpretAlg
 
 interpretAlg :: Location -> Type -> ExprF (Interpret Value) -> Interpret Value
-interpretAlg loc tp e = do
-  (RTEnv env) <- ask
-  tell $ "at : " ++ pretty loc ++ "\n"
-  tell $ "expr :" ++ prettyShape e ++ "\n"
-  tell $ "env :" ++ pretty (RTEnv env) ++ "\n"
-  res <- case e of
-    Lam x e -> do
-      thisEnv <- ask
-      return $ Func $ \val -> local (const thisEnv) (inEnv (x, val) e) -- adding is adding to nothing.
+interpretAlg loc tp = \case
+    Lam x e -> return $ Func $ \val -> inEnv (x, val) e
     k -> do
       k <- sequence k
       interpretAlg' loc tp k
-  tell $ "returning : " ++ pretty res ++ "\n\n"
-  return res
 
 interpretAlg' :: Location -> Type -> ExprF Value -> Interpret Value
 interpretAlg' loc tp = \case
   Lit l -> return $ Int l
   Var x -> do
     (RTEnv env) <- ask
-    --tell $ "env :" ++ pretty (RTEnv env)
     fromMaybe
       (throwError $ ShouldNotHappen $ "cannot find variable " ++ x)
       (Map.lookup x env)
-  App a b -> do
-    tell $ "computed b : " ++ pretty b ++ "before calling the function \n"
-    tell $ "computed a : " ++ pretty a ++ "before calling the function \n"
+  App a b ->
     case a of
       Func f -> f b
       e -> throwError $ ShouldNotHappen $ "applying a non function " ++ pretty a ++ " to an arg"
