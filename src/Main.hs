@@ -83,13 +83,13 @@ exec (TAst texprs comp) = do
   res <- runProgram $ createRunEnv allNatives texprs comp
   case res of
     Left err -> return $ pretty err
-    Right result -> return $ pretty result
+    Right result -> return "\n"
 
 debug :: Either ParseError (Either PassErr TAst, String) -> IO String
 debug = \case
   Left perr -> return $ "ParseError : " ++ show perr
   Right (r, s) -> do
     val <- case r of
-      Left terr -> return $ "RunTimeError " ++ pretty terr
+      Left terr -> return $ pretty terr
       Right v -> exec v
-    return $ s ++ "\n" ++ val
+    return $ "\n" ++ val
