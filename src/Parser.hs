@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
 
-module HMParser (
+module Parser (
   parseModule,
   toSyntax
 ) where
@@ -16,7 +16,7 @@ import qualified Data.Text.Lazy as L
 import RecursionSchemes
 import qualified Syntax as S
 
-import HMLexer
+import Lexer
 import Type
 
 import Control.Arrow

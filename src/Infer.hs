@@ -120,8 +120,8 @@ inferExprT cenv env ex tp = case runInfer env (runWriterT $ inferEq ex tp) of
   Right ((texp, expected), cs) -> do
     (preds, subst) <- runSolve cenv cs
     let (_, _, Qual _ found) = ann texp
-    tell $ "found : " ++ showKind (apply subst found) ++ "\n"
-    tell $ "expected : " ++ showKind (apply subst expected) ++ "\n"
+    tell $ "found : " ++ pretty (apply subst found) ++ "\n"
+    tell $ "expected : " ++ pretty (apply subst expected) ++ "\n"
     s0 <- checkStrict (apply subst found) (apply subst expected) False
     checkSubst s0
     let s1 = s0 `compose` subst

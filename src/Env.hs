@@ -40,7 +40,7 @@ import Control.Monad.Writer
 import Control.Monad.Reader
 import Control.Arrow
 import Pretty
-import Operators
+import Native
 import Data.List (uncons)
 import Data.Maybe (catMaybes)
 import Run

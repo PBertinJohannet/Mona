@@ -3,7 +3,7 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE DeriveFunctor #-}
 
-module InterpretTypes where
+module DataTypes where
 import Pretty
 import Syntax
 import Env
@@ -18,6 +18,7 @@ import Data.Maybe
 import Infer
 import Data.List (intercalate, find)
 import RecursionSchemes
+import Native
 import Run (Value(..), Run, makeRunPat, makeRunCons)
 
 type Interpret a = ReaderT Env (ExceptT TypeError (Writer String)) a;

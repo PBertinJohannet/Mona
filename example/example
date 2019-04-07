@@ -1,3 +1,11 @@
+sig flip = forall a b c . (a -> b -> c) -> b -> a -> c;
+let flip = \f a b -> (f b) a;
+
+data Fix = Unit;
+data Fix f = Fixed (f (Fix f));
+data Fix f = Fixed (f (Fix f));
+sig unfix = forall f . (Fix f) -> f (Fix f);
+let unfix = \(Fixed a) -> a;
 
 data Unit = Unit;
 data Bool = True | False;
@@ -10,15 +18,14 @@ class Print s = {
   sig print = s -> List (IO Unit);
 }
 
-data ListF f a = EndF | ConsF a (f a);
-data List a  = List ((fix ListF) a);
-let Cons = (\a b -> List(ConsF a b));
-sig End = forall a . List a;
-let End = List(EndF);
-
 inst List Int of Print = {
   let print = fmap printInt;
 }
+
+data ListF f a = EndF | ConsF a (f a);
+data List a  = List ((fix ListF) a);
+let Cons = (\a b -> List(ConsF a b));
+let End = List(EndF);
 
 inst List of Functor = {
   let fmap f = \(List l) -> case l of
@@ -26,4 +33,25 @@ inst List of Functor = {
     (ConsF a b) -> Cons (f a) (fmap f b);
 }
 
-let main = print [5];
+data Maybe a = Just a | Nothing;
+data Nat = Nat (Fix Maybe);
+let S = \(Nat i) -> Nat (Fixed (Just i));
+let Z = Nat (Fixed (Nothing));
+
+inst Maybe of Functor = {
+  let fmap f v = case v of
+    (Just j) -> Just (f j),
+    (Nothing) -> Nothing;
+}
+
+sig cata = forall a f . Functor f => ((f a) -> a) -> (Fix f) -> a
+let cata alg a = alg ((fmap (cata alg)) (unfix a));
+
+sig toInt = Nat -> Int;
+let toInt = \(Nat i) -> cata (\a -> case a of
+  (Just k) -> k + 1,
+  (Nothing) -> 0 ) i;
+
+let four = S (S (S (S Z)));
+
+let main = printInt (toInt four);

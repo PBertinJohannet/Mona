@@ -57,9 +57,7 @@ sig printAllLn = (List Int) -> List (IO Unit);
 let printAllLn = fmap printInt;
 
 sig fac = Int -> Int;
-let fac a = case (a == 0) of
-  (True) -> 1,
-  (False) -> a * (fac (a - 1));
+let fac a = if (a == 0) then  1 else a * (fac (a - 1));
 
 sig choose = forall a . Bool -> Int -> Int -> Int
 let choose c a b = case c of

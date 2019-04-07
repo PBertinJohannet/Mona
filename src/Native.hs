@@ -1,6 +1,6 @@
 {-# LANGUAGE LambdaCase #-}
 
-module Operators (
+module Native (
   toFunc,
   Binop(..),
   allOps,

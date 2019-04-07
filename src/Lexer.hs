@@ -1,4 +1,4 @@
-module HMLexer where
+module Lexer where
 
 import Text.Parsec
 import Text.Parsec.Text.Lazy

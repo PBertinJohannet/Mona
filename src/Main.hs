@@ -3,8 +3,7 @@
 {-# LANGUAGE LambdaCase #-}
 
 module Main where
-import HMParser
-
+import Parser
 import Control.Arrow
 import System.Environment
 import System.IO
@@ -18,13 +17,13 @@ import Type (Scheme, showKind)
 import Control.Monad.Writer
 import Control.Monad.Except
 import Control.Monad.State
-import qualified InterpretTypes as DataDecl
+import qualified DataTypes as DataDecl
 import Typeclass (runAddClasses)
 import RecursionSchemes
 import Sig
 import Run
-import Operators
 import Dispatch
+import Native
 import qualified Data.Map as Map
 
 (<&>) = flip fmap
@@ -83,7 +82,7 @@ exec (TAst texprs comp) = do
   res <- runProgram $ createRunEnv allNatives texprs comp
   case res of
     Left err -> return $ pretty err
-    Right result -> return "\n"
+    Right result -> return ""
 
 debug :: Either ParseError (Either PassErr TAst, String) -> IO String
 debug = \case
@@ -92,4 +91,4 @@ debug = \case
     val <- case r of
       Left terr -> return $ pretty terr
       Right v -> exec v
-    return $ "\n" ++ val
+    return $ val
