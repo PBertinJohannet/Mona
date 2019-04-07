@@ -182,3 +182,8 @@ let four = S (S (S (S Z)));
 
 let main = printInt (toInt four);
 ```
+prints four
+
+# Acknowledgments
+
+[These(https://web.cecs.pdx.edu/~mpj/thih/thih.pdf)] [two(http://dev.stephendiehl.com/fun/006_hindley_milner.html)] have helped me a lot making type inference work for mona.
