@@ -42,11 +42,13 @@ var s = TV{name = s, kind = Star}
 tvar :: String -> Type
 tvar s = TVar $ var s
 
-typeInt, typeBool, typeList :: Type
 typeInt  = TCon "Int" Star
 typeBool = TCon "Bool" Star
+typeUnit = TCon "Unit" Star
 typeChar = TCon "Char" Star
+typeIO = TCon "IO" $ Kfun Star Star
 typeList = TCon "List" $ Kfun Star Star
+typeString = TApp typeList typeString
 tArr = TCon "(->)" $ Kfun Star (Kfun Star Star)
 
 -- used to resolve kinds

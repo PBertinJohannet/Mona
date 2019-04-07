@@ -149,9 +149,7 @@ ifthen = do
   tr <- expr
   reserved "else"
   fl <- expr
-  return (App (App (App (Var "if") cond) tr) fl)
-
-
+  return $ Case cond [App (Var "~True") tr, App (Var "~False") fl]
 
 aexp :: Parser Expr
 aexp = withPos $

@@ -34,7 +34,16 @@ allOpsTypes :: [(Name, Scheme)]
 allOpsTypes = (\(a, b, c) -> (a, b)) <$> allOps
 
 allOps :: [NativeFunc]
-allOps  = ("if", ifOp, runIf): ops
+allOps  = endl:printInt:printChar: ops
+
+printInt :: NativeFunc
+printInt = ("printInt", printIntOp, runPrintInt)
+
+printChar :: NativeFunc
+printChar = ("printChar", printCharOp, runPrintChar)
+
+endl :: NativeFunc
+endl = ("endl", Forall [] $ Qual [] typeChar, runEndl)
 
 showOp :: Scheme
 showOp = Forall [var "a"] $ Qual [IsIn "Show" a] $ a `mkArr` mkList typeChar
@@ -51,12 +60,15 @@ listOp :: Scheme
 listOp = Forall [var "a"] $ Qual [] $ tvar "a" `mkArr` (la `mkArr` la)
   where la = mkList $ tvar "a"
 
--- if :: Bool -> a -> a
-ifOp :: Scheme
-ifOp = Forall [var "a"]
+printIntOp :: Scheme
+printIntOp = Forall []
   $ Qual []
-  $ typeBool `mkArr` (tvar "a" `mkArr` (tvar "a" `mkArr` tvar "a"))
+  $ typeInt `mkArr` TApp typeIO typeUnit
 
+printCharOp :: Scheme
+printCharOp = Forall []
+  $ Qual []
+  $ typeChar `mkArr` TApp typeIO typeUnit
 
 allClasses :: [(String, Class)]
 allClasses = [
@@ -79,17 +91,18 @@ allKinds = [
     ("Int", Forall [] $ Qual [] $ tvar "a"),
     ("|", Forall [var "a"] $ Qual [] $ tvar "a" `mkArr` (tvar "a" `mkArr` tvar "a")),
     ("Bool", Forall [] $ Qual [] $ tvar "a"),
-    ("Char", Forall [] $ Qual [] $ tvar "a")
+    ("Char", Forall [] $ Qual [] $ tvar "a"),
+    ("IO", Forall [var "a"] $ Qual [] $ tvar "a" `mkArr` tvar "a")
     ]
 
 -- (bool -> (a -> (a -> a)))
 
 ops :: [NativeFunc]
 ops = fmap (\(name, (a, b, c), r) -> (name, Forall [] $ Qual []  $ a `mkArr` (b `mkArr` c), r))
-  [("+", (typeInt, typeInt, typeInt), mkRun (+)),
-  ("*", (typeInt, typeInt, typeInt), mkRun (*)),
-  ("-", (typeInt, typeInt, typeInt), mkRun (-)),
+  [("+", (typeInt, typeInt, typeInt), mkRun "+" (+)),
+  ("*", (typeInt, typeInt, typeInt), mkRun "*"(*)),
+  ("-", (typeInt, typeInt, typeInt), mkRun "-"(-)),
   (".", (tvar "b" `mkArr` tvar "c",
         tvar "a" `mkArr` tvar "b",
         tvar "a" `mkArr` tvar "c"), runCompose),
-  ("==", (typeInt, typeInt, typeBool), mkRun (\a b -> fromEnum $ a == b))]
+  ("==", (typeInt, typeInt, typeBool), runEquals)]

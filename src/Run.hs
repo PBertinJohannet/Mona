@@ -49,7 +49,7 @@ instance Pretty RuntimeEnv where
   pretty (RTEnv t) = mconcat . fmap showAssoc . Map.toList $ t
     where showAssoc (n, s) = n ++ ", "
 
-type Run = ReaderT RuntimeEnv (ExceptT RunTimeError (Writer String))
+type Run = ReaderT RuntimeEnv (ExceptT RunTimeError IO)
 
 extendRT :: RuntimeEnv -> (Name, Run Value) -> RuntimeEnv
 extendRT (RTEnv env) (x, s) = RTEnv $ Map.insert x s env
@@ -67,34 +67,36 @@ type MapS a = Map.Map String a
 createRunEnv :: MapS Value -> MapS TExpr -> MapS (Run Value) -> MapS (Run Value)
 createRunEnv nat src = Map.union $ Map.union (return <$> nat) (interpret <$> src)
 
-runProgram :: Map.Map String (Run Value) -> ExceptT RunTimeError (Writer String) Value
+runProgram :: Map.Map String (Run Value) -> IO (Either RunTimeError Value)
 runProgram env = case Map.lookup "main" env of
-    Nothing -> throwError MainNotFound
-    Just m -> runReaderT m $ RTEnv env
+    Nothing -> return $ Left MainNotFound
+    Just m -> runExceptT $ runReaderT m $ RTEnv env
 
 interpret :: TExpr -> Run Value
-interpret = cataCF $ uncurry interpretAlg
+interpret = ($ ()) <<< cataCFLazy (uncurry interpretAlg)
 
-interpretAlg :: (Location, Subst, Qual Type) -> ExprF (Run Value) -> Run Value
-interpretAlg (loc, sub, Qual p tp) e = do
-  (RTEnv env) <- ask
-  tell $ "at : " ++ pretty loc ++ "\n"
-  tell $ "expr :" ++ prettyShape e ++ "\n"
+interpretAlg :: (Location, Subst, Qual Type) -> ExprF (() -> Run Value) -> Run Value
+interpretAlg b = \case
+  Case src pats -> do
+    src <- src ()
+    foldM (changeCase src) PatFail pats
+  e -> interpretAlg' b (($ ()) <$> e)
+
+interpretAlg' :: (Location, Subst, Qual Type) -> ExprF (Run Value) -> Run Value
+interpretAlg' (loc, sub, Qual p tp) e = do
   res <- case e of
     Lam x e -> do
       thisEnv <- ask
       return $ Func $ \val -> local (const thisEnv) (inEnv (x, val) e) -- adding is adding to nothing.
     k -> do
       k <- sequence k
-      interpretAlg' loc sub tp k
-  tell $ "returning : " ++ pretty res ++ "\n\n"
+      interpretAlg'' loc sub tp k
   return res
 
-interpretAlg' :: Location -> Subst -> Type -> ExprF Value -> Run Value
-interpretAlg' loc sub tp = \case
+interpretAlg'' :: Location -> Subst -> Type -> ExprF Value -> Run Value
+interpretAlg'' loc sub tp = \case
   Lit l -> return $ Int l
   Var x -> do
-    tell $ "tp is : " ++ pretty tp ++ "\n"
     (RTEnv env) <- ask
     fromMaybe
       (throwError $ ShouldNotHappen $ "cannot find variable " ++ x)
@@ -102,28 +104,20 @@ interpretAlg' loc sub tp = \case
   App a b ->
     case a of
       Func f -> f b
-      e -> throwError $ ShouldNotHappen $ "applying a non function " ++ pretty a ++ " to an arg"
+      e -> do
+        throwError $ ShouldNotHappen $ "applying a non function " ++ pretty a ++ " to an arg"
   Fix t1 -> case t1 of
     Func f -> f t1
     e -> throwError $ ShouldNotHappen $ "applying fix to a non function " ++ pretty t1
-  Case src pats -> foldM (changeCase src) PatFail pats
 
-changeCase :: Value -> Value -> Value -> Run Value
-changeCase src result other = case (result, other) of
-  (PatFail, Func f) -> f src
-  (ok, Func _) -> return ok
-  (_, a) -> throwError $ ShouldNotHappen $ "applying a non function pattern " ++ pretty a
-
-
-runIf :: Value
-runIf = Func (\c -> return $ Func (\t -> return $ Func (\f -> case c of
-  Int i -> return $ if i == 0 then f else t
-  a ->  throwError $ ShouldNotHappen $ "Non boolean in if " ++ pretty a)))
-
-mkRun :: (Int -> Int -> Int) -> Value
-mkRun f = Func (\a -> return $ Func (\b -> case (a, b) of
-  (Int a, Int b) -> return $ Int $ f a b
-  (a, b) -> throwError $ ShouldNotHappen $ "Non integer in native " ++ pretty a))
+changeCase :: Value -> Value -> (() -> Run Value) -> Run Value
+changeCase src result other = case result of
+  PatFail -> do
+    other <- other ()
+    case other of
+      Func f -> f src
+      a -> throwError $ ShouldNotHappen $ "applying a non function pattern " ++ pretty a
+  ok -> return ok
 
 runCompose :: Value
 runCompose = Func (\a -> return $ Func (\b -> case (a, b) of
@@ -140,7 +134,7 @@ construct tag n prods = return $ Func (\val -> construct tag (n-1) (prods ++ [va
 applyVal :: Value -> Value -> Run Value
 applyVal a b = case a of
   Func f -> f b
-  e -> throwError $ ShouldNotHappen $ "applying a non function " ++ pretty a ++ " to an arg"
+  e -> throwError $ ShouldNotHappen $ "applying a non function " ++ pretty a ++ " to an arg " ++ pretty e ++ "\n"
 
 makeRunPat :: (Int, String, [Expr]) -> (String, Run Value)
 makeRunPat (tag, name, _) = ("~" ++ name, return $ Func $ return . Func . runPat tag)
@@ -148,4 +142,37 @@ makeRunPat (tag, name, _) = ("~" ++ name, return $ Func $ return . Func . runPat
 runPat :: Int -> Value -> Value -> Run Value
 runPat tag func (Variant tag' _) | tag /= tag' = return PatFail
 runPat _ func (Variant _ (Prod vals)) = foldM applyVal func vals
-runPat _ _ v = throwError $ ShouldNotHappen "Pattern called on non Object"
+runPat _ _ v = throwError $ ShouldNotHappen $ "Pattern called on non Object" ++ pretty v
+
+unitVariant :: Int -> Value
+unitVariant i = Variant i $ Prod []
+
+-- base run functions.
+
+runPrintInt :: Value
+runPrintInt = Func (\case
+  Int c -> do
+    liftIO $ putStr $ show c
+    return $ unitVariant 0
+  e -> throwError $ ShouldNotHappen $ "excpecting an int to PrintInt" ++ pretty e)
+
+runEndl :: Value
+runEndl = Char '\n'
+
+runPrintChar :: Value
+runPrintChar = Func (\case
+  Char c -> do
+    liftIO $ putChar c
+    return $ unitVariant 0
+  _ -> throwError $ ShouldNotHappen "excpecting a char to PrintChar")
+
+runEquals :: Value
+runEquals = Func (\a -> return $ Func (\b -> case (a, b) of
+  (Int a, Int b) -> return $ if a == b then unitVariant 1 else unitVariant 0
+  (a, b) -> throwError $ ShouldNotHappen $ "Non integer in equals " ++ pretty a))
+
+mkRun :: String -> (Int -> Int -> Int) -> Value
+mkRun s f = Func (\a -> return $ Func (\b -> case (a, b) of
+  (Int a, Int b) -> do
+    return $ Int $ f a b
+  (a, b) -> throwError $ ShouldNotHappen $ "Non integer in native " ++ pretty a))

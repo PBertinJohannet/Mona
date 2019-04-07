@@ -14,7 +14,7 @@ type Subst = Map.Map TVar Type
 type TExpr = Cofree ExprF (Location, Subst, Qual Type); -- expression with information about performed substition (after type inference)
 
 instance Pretty (Location, Subst, Qual Type) where
-  pretty (l, s, t) = pretty t ++ " at " ++ pretty l
+  pretty (l, s, t) = "" -- pretty t ++ " at " ++ pretty l
 
 nullSubst :: Subst
 nullSubst = Map.empty

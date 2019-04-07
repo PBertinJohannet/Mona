@@ -4,6 +4,9 @@ let flip = \f a b -> (f b) a;
 sig add = Int -> Int -> Int
 let add a b = a + b;
 
+data Unit = Unit;
+data Bool = True | False;
+
 class Read a = {
   sig read = (List Char) -> a;
 };
@@ -44,4 +47,17 @@ let choseFrom a b c = b;
 
 let ot = func [1];
 
-let main = difmap (\x -> x) [[1]];
+sig printAllLn = (List Int) -> List (IO Unit);
+let printAllLn = fmap printInt;
+
+sig fac = Int -> Int;
+let fac a = case (a == 0) of
+  (True) -> 1,
+  (False) -> a * (fac (a - 1));
+
+sig choose = forall a . Bool -> Int -> Int -> Int
+let choose c a b = case c of
+  (False) -> a,
+  (True) -> (2 + b);
+
+let main = [printInt (fac 6), printChar endl];

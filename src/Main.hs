@@ -29,19 +29,18 @@ import qualified Data.Map as Map
 
 (<&>) = flip fmap
 
-main = (getArgs <&> head >>= readFile) <&> run >>= putStrLn
+main = (getArgs <&> head >>= readFile) >>= run >>= putStrLn
 
 data PassErr
  = TypeError TypeError
- | DispatchError DispatchError
- | RTError RunTimeError;
+ | DispatchError DispatchError;
 
 instance Pretty PassErr where
   pretty = \case
     TypeError t -> "TypeError : " ++ pretty t
-    RTError d -> "RunTimeError : " ++ pretty d
+    DispatchError d -> "RunTimeError : " ++ pretty d
 
-run :: String -> String
+run :: String -> IO String
 run = L.pack
   >>> parseModule "exampleHM"
   >>> fmap (passes >>> runExceptT >>> runWriter)
@@ -58,7 +57,7 @@ forget' (s, st) = do
   tell $ show st
   return (s, fmap forget st)
 
-passes :: [(String, Statement)] -> ExceptT PassErr (Writer String) Value
+passes :: [(String, Statement)] -> ExceptT PassErr (Writer String) TAst
 passes a = do
   let Program exprs datas classes insts sigs = sepDecls a
   tell $ "sigs : \n" ++ prettyL sigs ++ "\n"
@@ -77,12 +76,20 @@ passes a = do
   let (Envs _ _ _ TAst{compiled = comp}) = env
   (TAst texprs _) <- withExceptT DispatchError $ runDispatch env
   tell $ "now run  : \n\n" ++ showKind env ++ "\n\n\n"
-  tell $ "compiled : " ++ unwords (fst <$> Map.toList comp) ++ "\n"
-  withExceptT RTError $ runProgram $ createRunEnv allNatives texprs comp
+  return $ TAst texprs comp
 
-debug :: Either ParseError (Either PassErr Value, String) -> String
+exec :: TAst -> IO String
+exec (TAst texprs comp) = do
+  res <- runProgram $ createRunEnv allNatives texprs comp
+  case res of
+    Left err -> return $ pretty err
+    Right result -> return $ pretty result
+
+debug :: Either ParseError (Either PassErr TAst, String) -> IO String
 debug = \case
-  Left perr -> "ParseError : " ++ show perr
-  Right (r, s) -> s ++ "\n" ++ case r of
-    Left terr -> "TypeError : " ++ pretty terr
-    Right v -> pretty v
+  Left perr -> return $ "ParseError : " ++ show perr
+  Right (r, s) -> do
+    val <- case r of
+      Left terr -> return $ pretty terr
+      Right v -> exec v
+    return $ "\n" ++ val

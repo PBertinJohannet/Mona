@@ -62,6 +62,11 @@ data DispatchError
   = ShouldNotHappen String
   | MainNotFound
 
+instance Pretty DispatchError where
+  pretty = \case
+    ShouldNotHappen s -> "Should not happen : " ++ s ++ "\n"
+    MainNotFound -> "Main not found \n"
+
 type Dispatch a = ExceptT DispatchError (RWS Envs String DispatchState) a
 
 toWriter :: (Either DispatchError TAst, String) -> ExceptT DispatchError (Writer String) TAst
@@ -70,7 +75,7 @@ toWriter (a, b) = do
   (throwError ||| return) a
 
 runDispatch :: Envs -> ExceptT DispatchError (Writer String) TAst
-runDispatch envs = toWriter $ evalRWS (runExceptT (dispatch $ ast envs)) envs baseState--evalRWST (dispatch $ ast envs) envs baseState
+runDispatch envs = toWriter $ evalRWS (runExceptT (dispatch $ ast envs)) envs baseState
 
 class Dispatchable a where
   dispatch :: a -> Dispatch a

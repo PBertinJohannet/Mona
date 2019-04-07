@@ -123,6 +123,10 @@ cataCF :: (Functor f, Traversable f)
   => ((b, f a) -> a) -> Cofree f b -> a
 cataCF alg = sep >>> second (fmap (cataCF alg)) >>> alg
 
+cataCFLazy :: (Functor f, Traversable f)
+ => ((b, f (() -> a)) -> a) -> Cofree f b -> () -> a
+cataCFLazy alg = sep >>> second (fmap (cataCFLazy alg)) >>> alg >>> \x () -> x
+
 cataCF' :: (Functor f, Traversable f)
   => Algebra f a -> ((b, a) -> a) -> Cofree f b -> a
 cataCF' alg comb = cataCF (second alg >>> comb)
