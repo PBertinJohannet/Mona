@@ -31,7 +31,7 @@ Same thing.
 let add3 = \a b c -> a + b + c;
 ```
 
-# Condition
+## Condition
 
 Basic if-then-else condition.
 The clauses are lazily evaluated, allowing this example to produce a value in finite time.
@@ -40,7 +40,7 @@ The clauses are lazily evaluated, allowing this example to produce a value in fi
 let fac a = if (a == 0) then a else a * (fac (a - 1));
 ```
 
-# Explicit typing
+## Explicit typing
 
 Actually the previous example wont compile because fac is not defined. You have to give it a signature first.
 
@@ -49,7 +49,7 @@ sig fac = Int -> Int;
 let fac a = if (a == 0) then a else a * (fac (a - 1));
 ```
 
-# Fixed point combinator
+## Fixed point combinator
 
 Or you can use fix if you really don't want to write the signature.
 
@@ -68,7 +68,7 @@ data Maybe a = Just a | Nothing;
 
 ## Fixing a type
 
-Mona does not support recursion in types. You have to use the fix notation.
+Mona does not support recursion in types. You have to use Fix.
 
 ```
 data Nat = Nat (Fix Maybe);
@@ -76,7 +76,7 @@ data Nat = Nat (Fix Maybe);
 
 ## Patterns
 
-Once you have created a type you can pattern match on it.
+Once you have created a type you can pattern match on it, it is lazily evaluated like the if.
 
 ```
 sig isNone = Maybe Int -> Bool;
@@ -107,9 +107,11 @@ inst Maybe of Functor = {
 
 ## Printing to the terminal.
 
-Prints 720.
+Prints 7.
 
+```
 let main = printInt 7;
+```
 
 ## No prelude.
 
