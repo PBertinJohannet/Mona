@@ -38,7 +38,7 @@ data PassErr
 instance Pretty PassErr where
   pretty = \case
     TypeError t -> "TypeError : " ++ pretty t
-    DispatchError d -> "RunTimeError : " ++ pretty d
+    DispatchError d -> "DispatchError : " ++ pretty d
 
 run :: String -> IO String
 run = L.pack
@@ -90,6 +90,6 @@ debug = \case
   Left perr -> return $ "ParseError : " ++ show perr
   Right (r, s) -> do
     val <- case r of
-      Left terr -> return $ pretty terr
+      Left terr -> return $ "RunTimeError " ++ pretty terr
       Right v -> exec v
-    return $ "\n" ++ val
+    return $ s ++ "\n" ++ val

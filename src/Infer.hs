@@ -292,12 +292,14 @@ unifyMany t1 t2 = throwError $ UnificationMismatch t1 t2
 
 solver :: Constraints -> Solve ([Pred], Subst)
 solver (unions, ps) = do
-  tell $ "solve cls : \n" ++ prettyL ps ++ "\n"
-  tell $ "solve un : \n" ++ prettyL unions ++ "\n"
+  tell " ========= start solving =========\n\n "
+  tell $ "preds : " ++ show ps ++ "\n"
   sub <- unionSolve (nullSubst, unions)
+  tell $ "found sub : \n" ++ pretty sub ++ "\n"
+  tell $ "solve cls : \n" ++ prettyL (apply sub ps) ++ "\n"
   preds <- classSolve $ ClassSolver [] (apply sub ps)
+  tell $ "found preds : " ++ prettyL preds ++ "\n"
   return (preds, sub)
-
 
 unionSolve :: Unifier -> Solve Subst
 unionSolve (su, cs) =
@@ -326,9 +328,11 @@ solvePred (IsIn n t) = do
     Just cls -> isIn n cls t
 
 isIn :: String -> Class -> Type -> Solve [Pred]
-isIn cname (m, insts) = \case
-  TVar t -> return [IsIn cname $ TVar t]
-  t -> satisfyInsts (IsIn cname t) insts
+isIn cname (m, insts) e = do
+  tell $ "trying to satisfy : " ++ cname ++ " " ++ show e ++ " " ++ show insts ++ "\n"
+  case e of
+    TVar t -> return [IsIn cname $ TVar t]
+    t -> satisfyInsts (IsIn cname t) insts
 
 satisfyInsts :: Pred -> [Inst] -> Solve [Pred]
 satisfyInsts (IsIn c t) [] = throwError $ NotInClass c t
@@ -336,7 +340,7 @@ satisfyInsts s [i] = satisfyInst s i
 satisfyInsts s (i:is) = satisfyInst s i `catchError` \e -> satisfyInsts s is
 
 satisfyInst :: Pred -> Inst -> Solve [Pred]
-satisfyInst (IsIn c t) (Qual ps (IsIn _ t')) = do
+satisfyInst (IsIn c t) q@(Qual ps (IsIn _ t')) = do
   s <- unifies t' t `catchError` const (throwError $ NotInClass c t)
   return $ apply s ps
 

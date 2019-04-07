@@ -13,7 +13,7 @@ import Sig
 import Syntax
 import Control.Arrow
 import qualified Env (lookup)
-import Env (Envs, addClass, classEnv, addInstance, Env, dataEnv)
+import Env (Envs(..), addClass, classEnv, addInstance, Env, dataEnv)
 import Prelude hiding (head)
 import qualified Prelude
 import qualified Data.Map as Map
@@ -58,8 +58,9 @@ addInstances :: [InstDecl] -> Envs -> AddClass Envs
 addInstances [] env = return env
 addInstances ((name, tp, _):is) env = do
   env <- addInstances is env
+  let Envs e _ _ _ = env
+  tp <- replaceConsTypes [] e tp
   return env{classEnv = addInstance (classEnv env) name $ Qual [] $ IsIn [] tp}
-
 
 addClasses :: [ClassDecl] -> Envs -> AddClass Envs
 addClasses [] env = return env

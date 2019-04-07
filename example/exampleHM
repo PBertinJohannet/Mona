@@ -17,6 +17,12 @@ class Monad m = {
   sig return = forall a . m a;
   sig bind = forall a b . (a -> m b) -> (m a) -> (m b);
 }
+class Print s = {
+  sig print = s -> List (IO Unit);
+}
+
+data Maybe a = Nothing | Just a;
+
 inst Int of Read = {
   let read k = 1;
 }
@@ -30,7 +36,7 @@ let End = List(EndF);
 inst List of Functor = {
   let fmap f = \(List l) -> case l of
     (EndF) -> End,
-    (ConsF a b) -> (Cons (f a)) End;
+    (ConsF a b) -> Cons (f a) (fmap f b);
 }
 
 class NeedMul a = {
@@ -60,4 +66,33 @@ let choose c a b = case c of
   (False) -> a,
   (True) -> (2 + b);
 
-let main = [printInt (fac 6), printChar endl];
+sig sum = (List Int) -> Int
+let sum = \(List l) -> case l of
+  (EndF) -> 0,
+  (ConsF a b) -> a + (sum b);
+
+sig range = Int -> (List Int);
+let range a = case (a == 0) of
+  (True) -> [0],
+  (False) -> Cons a (range (a - 1));
+
+inst Maybe of Functor = {
+  let fmap f v = case v of
+    (Just j) -> Just (f j),
+    (Nothing) -> Nothing;
+}
+
+inst Int of Print = {
+  let print i = [printInt i];
+}
+
+sig append = forall a . a -> (List a) -> (List a);
+let append elem = \(List l) -> case l of
+  (EndF) -> [elem],
+  (ConsF a b) -> Cons a (append elem b);
+
+sig println = forall a . Print a => a -> List (IO Unit);
+let println a = append (printChar endl) (print a);
+
+sig main = List (IO Unit);
+let main = print [(sum (fmap fac (range 5)))];

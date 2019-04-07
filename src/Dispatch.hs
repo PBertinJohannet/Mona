@@ -35,6 +35,7 @@ next name ex sub disp = case Map.lookup name disp of
     return ()
   Nothing -> do
     tell $ "dispatching : " ++ name ++ "\n"
+    tell $ "body : " ++ pretty (apply sub ex) ++ "\n"
     ex <- dispatch $ apply sub ex
     modify $ register name ex
 
@@ -118,6 +119,7 @@ dispatchAlg = \case
     res <- case found of
       Just (ex, v) -> do
         let v = vr ++ pretty tp
+        tell $ "request dispatch of " ++ vr ++ " as " ++ v ++ "\n"
         modify $ addTarget v ex sub
         return v
       Nothing -> do

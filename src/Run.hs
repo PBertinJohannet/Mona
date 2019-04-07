@@ -22,7 +22,7 @@ data RunTimeError
 
 instance Pretty RunTimeError where
   pretty = \case
-    ShouldNotHappen s -> "Should not happen : " ++ s ++ "\n"
+    ShouldNotHappen s -> "Should never happen : " ++ s ++ "\n"
     DivByZero d -> "Division by zero at : " ++ pretty d ++ "\n"
     CaseMissing d -> "Incomplete case patterns at : " ++ pretty d ++ "\n"
     MainNotFound -> "Main not found\n"

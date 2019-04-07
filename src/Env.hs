@@ -82,7 +82,7 @@ instance ShowKind Env where
 
 instance Pretty ClassEnv where
   pretty (ClassEnv t) = mconcat . fmap showAssoc . Map.toList $ t
-    where showAssoc (n, s) = n ++ " : "++ pretty s ++ "\n"
+    where showAssoc (n, s) = n ++ " : "++ show s ++ "\n"
 
 instance Pretty Envs where
   pretty (Envs d v c e) =
