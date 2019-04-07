@@ -116,6 +116,7 @@ let main = printInt 7;
 ## No prelude.
 
 Mona does not support importing modules so you have to copy the basic prelude in your file.
+The interpreter needs some of these definitions to be exactly like that so don't try to change it.
 
 ```sig flip = forall a b c . (a -> b -> c) -> b -> a -> c;
 let flip = \f a b -> (f b) a;
@@ -156,7 +157,7 @@ inst List of Functor = {
 
 ## Complete example
 
-Folding Natrual numbers to Ints using a catamorphism on the Maybe functor :
+Folding Natural numbers to Ints using a catamorphism on the Maybe functor :
 
 ```
 data Maybe a = Just a | Nothing;
