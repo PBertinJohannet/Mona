@@ -34,8 +34,10 @@ next name ex sub disp = case Map.lookup name disp of
     tell $ name ++ " already dispatched"
     return ()
   Nothing -> do
+    tell $ "sub is : " ++ pretty sub ++ "\n"
     tell $ "dispatching : " ++ name ++ "\n"
-    tell $ "body : " ++ pretty (apply sub ex) ++ "\n"
+    tell $ "before : " ++ pretty ex ++ "\n"
+    tell $ "after : " ++ pretty (apply sub ex) ++ "\n"
     ex <- dispatch $ apply sub ex
     modify $ register name ex
 
@@ -109,17 +111,20 @@ findInExprs n preds = do
       IsIn _ tp : _ -> do
         let name = n ++ " " ++ pretty tp
         tell $ "searching for : " ++ name ++ "\n"
+        tell $ "in " ++ show (fst <$> Map.toList env) ++ "\n"
         return $ (,name) <$> Map.lookup name env
       _ -> return Nothing
 
 dispatchAlg :: ((Location, Subst, Qual Type), ExprF (Dispatch TExpr)) -> Dispatch TExpr
 dispatchAlg = \case
   ((loc, sub, Qual p tp), Var vr) -> do
+    --tell $ "sub is " ++ pretty sub ++ "\n"
     found <- findInExprs vr p
     res <- case found of
       Just (ex, v) -> do
         let v = vr ++ pretty tp
         tell $ "request dispatch of " ++ vr ++ " as " ++ v ++ "\n"
+        tell $ "body " ++ pretty ex ++ "\n"
         modify $ addTarget v ex sub
         return v
       Nothing -> do

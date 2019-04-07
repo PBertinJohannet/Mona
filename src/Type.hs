@@ -42,6 +42,9 @@ var s = TV{name = s, kind = Star}
 tvar :: String -> Type
 tvar s = TVar $ var s
 
+getV :: Type -> TVar
+getV (TVar t) = t 
+
 typeInt  = TCon "Int" Star
 typeBool = TCon "Bool" Star
 typeUnit = TCon "Unit" Star

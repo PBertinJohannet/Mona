@@ -92,6 +92,10 @@ inst Int of Print = {
   let print i = [printInt i];
 }
 
+inst List of Print = {
+  let print = fmap printInt;
+}
+
 sig append = forall a . a -> (List a) -> (List a);
 let append elem = \(List l) -> case l of
   (EndF) -> [elem],

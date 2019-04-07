@@ -109,8 +109,9 @@ inferExpr cenv env ex = case runInfer env (runWriterT $ infer ex) of
     tell $ "with type : " ++ pretty ty' ++ " solve => \n"
     tell $ "constraints : " ++ pretty cs ++ " go \n"
     (preds, subst) <- runSolve cenv cs
-    tell $ "before : " ++ pretty ty ++ "\n"
-    --tell $ "after : " ++ pretty (closeOver (apply subst ty) (apply subst preds)) ++ "\n"
+    tell $ "before : " ++ pretty (apply subst ty') ++ "\n" ++ pretty (apply subst ty) ++ "\n"
+    let (b, s) = (closeOver (apply subst ty) (apply subst preds) $ apply subst ty')
+    tell $ "after CO : " ++ pretty b ++ "\n" ++ pretty s ++ "\n"
     return (closeOver (apply subst ty) (apply subst preds) $ apply subst ty')
 
 inferExprT :: ClassEnv -> Env -> Expr -> Scheme -> ExceptLog (Scheme, TExpr)
@@ -123,7 +124,12 @@ inferExprT cenv env ex tp = case runInfer env (runWriterT $ inferEq ex tp) of
     tell $ "expected : " ++ showKind (apply subst expected) ++ "\n"
     s0 <- checkStrict (apply subst found) (apply subst expected) False
     checkSubst s0
-    return (closeOver (apply subst found) (apply subst preds) $ apply subst texp)
+    let s1 = s0 `compose` subst
+    tell $ "sub : " ++ pretty s1 ++ "\n"
+    tell $ "before : " ++ pretty (apply s1 texp) ++ "\n" ++ pretty (apply s1 found) ++ "\n"
+    let (b, s) = (closeOver (apply s1 found) (apply s1 preds) $ apply s1 texp)
+    tell $ "after COC : " ++ pretty b ++ "\n" ++ pretty s ++ "\n"
+    return (closeOver (apply s1 found) (apply s1 preds) $ apply s1 texp)
 
 runInfer :: Env -> Infer a -> Either TypeError a
 runInfer env m = runIdentity $ runExceptT $ evalStateT (runReaderT m env) initInfer
@@ -148,14 +154,15 @@ normalize (Forall _ (Qual q body), s) =
     normpred (IsIn n (TVar (TV k _))) = case fd k of
         Just x -> [IsIn n $ TVar x]
         Nothing -> []
+    normpred (IsIn n (TCon _ _)) = []
     normpred a = error $ "what ? " ++ show a
 
     normtype (TApp a b) = TApp (normtype a) (normtype b)
     normtype (TCon a k)   = TCon a k
-    normtype (TVar (TV a _))   =
+    normtype (TVar (TV a k)) =
       case fd a of
         Just x -> TVar x
-        Nothing -> error "type variable not in signature"
+        Nothing -> TVar (TV a k)
 
 inEnv :: (Name, Scheme) -> InferCons a -> InferCons a
 inEnv (x, sc) m = do
@@ -266,9 +273,7 @@ checkStrict (TApp t1 v1) (TApp t2 v2) c = do
   s1 <- checkStrict t1 t2 c
   s2 <- checkStrict (apply s1 v1) (apply s1 v2) c
   return $ s2 `compose` s1
-checkStrict t1 t2 _ = do
-  tell $ "try for : " ++ showKind t1 ++ " and " ++ showKind t2 ++ "\n"
-  throwError $ UnificationFail t1 t2
+checkStrict t1 t2 _ = throwError $ UnificationFail t1 t2
 
 type Unifier = (Subst, [Union])
 

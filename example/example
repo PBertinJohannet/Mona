@@ -1,0 +1,29 @@
+
+data Unit = Unit;
+data Bool = True | False;
+
+class Functor f = {
+  sig fmap = forall a b . (a -> b) -> (f a) -> f b;
+}
+
+class Print s = {
+  sig print = s -> List (IO Unit);
+}
+
+data ListF f a = EndF | ConsF a (f a);
+data List a  = List ((fix ListF) a);
+let Cons = (\a b -> List(ConsF a b));
+sig End = forall a . List a;
+let End = List(EndF);
+
+inst List Int of Print = {
+  let print = fmap printInt;
+}
+
+inst List of Functor = {
+  let fmap f = \(List l) -> case l of
+    (EndF) -> End,
+    (ConsF a b) -> Cons (f a) (fmap f b);
+}
+
+let main = print [5];

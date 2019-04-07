@@ -42,7 +42,7 @@ instance Pretty PassErr where
 
 run :: String -> IO String
 run = L.pack
-  >>> parseModule "exampleHM"
+  >>> parseModule "fileName"
   >>> fmap (passes >>> runExceptT >>> runWriter)
   >>> debug --debug . fmap (
 

@@ -83,6 +83,7 @@ checkSigs env (c, i) = mconcat <$> mapM (checkSig env c) i
 
 checkSig :: Env -> ClassDecl -> InstDecl -> AddClass [InstCheck]
 checkSig env (_, tv, funcs) (_, t, exprs) = do
+  t <- replaceConsTypes [] env t
   let baseSubst = Map.singleton (var tv) t
   groupStrict env (second (apply baseSubst) <$> funcs) (fmap (pretty t,) exprs)
 
