@@ -11,6 +11,7 @@ import Control.Monad.Writer
 import Data.Maybe
 import Data.List
 import qualified Data.Map as Map
+import Subst
 
 data RunTimeError
  = ShouldNotHappen String
@@ -72,26 +73,25 @@ runProgram env = case Map.lookup "main" env of
     Just m -> runReaderT m $ RTEnv env
 
 interpret :: TExpr -> Run Value
-interpret = cataCF $ (uncurry . uncurry) interpretAlg
+interpret = cataCF $ uncurry interpretAlg
 
-interpretAlg :: Location -> Type -> ExprF (Run Value) -> Run Value
-interpretAlg loc tp e = do
+interpretAlg :: (Location, Subst, Qual Type) -> ExprF (Run Value) -> Run Value
+interpretAlg (loc, sub, Qual p tp) e = do
   (RTEnv env) <- ask
   tell $ "at : " ++ pretty loc ++ "\n"
   tell $ "expr :" ++ prettyShape e ++ "\n"
-  tell $ "env :" ++ pretty (RTEnv env) ++ "\n"
   res <- case e of
     Lam x e -> do
       thisEnv <- ask
       return $ Func $ \val -> local (const thisEnv) (inEnv (x, val) e) -- adding is adding to nothing.
     k -> do
       k <- sequence k
-      interpretAlg' loc tp k
+      interpretAlg' loc sub tp k
   tell $ "returning : " ++ pretty res ++ "\n\n"
   return res
 
-interpretAlg' :: Location -> Type -> ExprF Value -> Run Value
-interpretAlg' loc tp = \case
+interpretAlg' :: Location -> Subst -> Type -> ExprF Value -> Run Value
+interpretAlg' loc sub tp = \case
   Lit l -> return $ Int l
   Var x -> do
     tell $ "tp is : " ++ pretty tp ++ "\n"
@@ -143,7 +143,7 @@ applyVal a b = case a of
   e -> throwError $ ShouldNotHappen $ "applying a non function " ++ pretty a ++ " to an arg"
 
 makeRunPat :: (Int, String, [Expr]) -> (String, Run Value)
-makeRunPat (tag, name, _) = (name, return $ Func $ return . Func . runPat tag)
+makeRunPat (tag, name, _) = ("~" ++ name, return $ Func $ return . Func . runPat tag)
 
 runPat :: Int -> Value -> Value -> Run Value
 runPat tag func (Variant tag' _) | tag /= tag' = return PatFail

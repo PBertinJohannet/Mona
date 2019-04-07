@@ -30,6 +30,18 @@ inst List of Functor = {
     (ConsF a b) -> (Cons (f a)) End;
 }
 
+class NeedMul a = {
+  sig func = forall b . Functor b => (b a) -> (b a);
+}
+
+inst Int of NeedMul = {
+  let func x = x;
+}
+
+let difmap f a = fmap (fmap f) a;
+
 let choseFrom a b c = b;
 
-let main = fmap (\x -> x) [[]];
+let ot = func [1];
+
+let main = difmap (\x -> x) [[1]];

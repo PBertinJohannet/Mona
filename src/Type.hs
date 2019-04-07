@@ -1,8 +1,6 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE DeriveFunctor #-}
-{-# LANGUAGE DeriveFoldable #-}
 
 module Type where
 import Pretty
@@ -31,6 +29,9 @@ type Inst  = Qual Pred
 -- forall a b c . a -> b
 data Scheme = Forall [TVar] (Qual Type)
   deriving (Show, Eq, Ord)
+
+mapPred :: (Type -> Type) -> Pred -> Pred
+mapPred f (IsIn s t) = IsIn s (f t)
 
 withPred :: String -> Pred -> Scheme -> Scheme
 withPred tv p (Forall tvars (Qual q ty)) = Forall (var tv:tvars) (Qual (p:q) ty)

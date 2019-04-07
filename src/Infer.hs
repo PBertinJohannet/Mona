@@ -1,6 +1,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 
 module Infer where
@@ -103,37 +104,38 @@ inferExpr :: ClassEnv -> Env -> Expr -> ExceptLog (Scheme, TExpr)
 inferExpr cenv env ex = case runInfer env (runWriterT $ infer ex) of
   Left err -> throwError err
   Right (ty', cs) -> do
-    let ty = snd $ ann ty'
+    let (_, _, Qual _ ty) = ann ty'
     --tell $ "found : "++ pretty ty ++ "\n"
     tell $ "with type : " ++ pretty ty' ++ " solve => \n"
     tell $ "constraints : " ++ pretty cs ++ " go \n"
     (preds, subst) <- runSolve cenv cs
     tell $ "before : " ++ pretty ty ++ "\n"
-    tell $ "after : " ++ pretty (closeOver (apply subst ty) (apply subst preds)) ++ "\n"
-    return (closeOver (apply subst ty) (apply subst preds), apply subst ty')
+    --tell $ "after : " ++ pretty (closeOver (apply subst ty) (apply subst preds)) ++ "\n"
+    return (closeOver (apply subst ty) (apply subst preds) $ apply subst ty')
 
 inferExprT :: ClassEnv -> Env -> Expr -> Scheme -> ExceptLog (Scheme, TExpr)
 inferExprT cenv env ex tp = case runInfer env (runWriterT $ inferEq ex tp) of
   Left err -> throwError err
   Right ((texp, expected), cs) -> do
     (preds, subst) <- runSolve cenv cs
-    let found = snd $ ann texp
+    let (_, _, Qual _ found) = ann texp
     --tell $ "found : " ++ pretty (apply subst found) ++ "\n"
     --tell $ "expected : " ++ pretty (apply subst expected) ++ "\n"
     s0 <- checkStrict (apply subst found) (apply subst expected) False
     checkSubst s0
-    return (closeOver (apply subst found) (apply subst preds), apply subst texp)
+    return (closeOver (apply subst found) (apply subst preds) $ apply subst texp)
 
 runInfer :: Env -> Infer a -> Either TypeError a
 runInfer env m = runIdentity $ runExceptT $ evalStateT (runReaderT m env) initInfer
 
 -- | Canonicalize and return the polymorphic toplevel type.
-closeOver :: Type -> [Pred] -> Scheme
-closeOver t p = (normalize . generalise Env.empty p) t
+closeOver :: Type -> [Pred] -> TExpr -> (Scheme, TExpr)
+closeOver t p s = (normalize . generalise Env.empty p) (t, s)
 
-normalize :: Scheme -> Scheme
-normalize (Forall _ (Qual q body)) =
-  Forall (map snd ord) (Qual (q >>= normpred) (normtype body))
+normalize :: (Scheme, TExpr) -> (Scheme, TExpr)
+normalize (Forall _ (Qual q body), s) =
+  (Forall (map snd ord) (Qual (q >>= normpred) (normtype body)),
+  mapRes normtype s)
   where
     ord = zip (nub $ fv body) (map var lettersSim)
 
@@ -160,14 +162,14 @@ inEnv (x, sc) m = do
   let scope e = remove e x `extend` (x, sc)
   local scope m
 
-instantiate :: Scheme -> InferCons (Qual Type) -- replace by fresh variables
+instantiate :: Scheme -> InferCons (Subst, Qual Type) -- replace by fresh variables
 instantiate (Forall as (Qual preds t)) = do
   as' <- mapM (const fresh) as
   let s = Map.fromList $ zip as as'
-  return $ Qual (apply s preds) (apply s t)
+  return (s, Qual (apply s preds) (apply s t))
 
-generalise :: Env -> [Pred] -> Type -> Scheme
-generalise env p t = Forall as $ Qual p t
+generalise :: Env -> [Pred] -> (Type, TExpr) -> (Scheme, TExpr)
+generalise env p (t, s) = (Forall as $ Qual p t, s)
   where as = Set.toList $ ftv env `Set.difference` ftv t
 
 fresh :: InferCons Type
@@ -180,7 +182,7 @@ fresh = do
 noConstraints :: Constraints
 noConstraints = ([], [])
 
-lookupEnv :: Name -> InferCons (Qual Type)
+lookupEnv :: Name -> InferCons (Subst, Qual Type)
 lookupEnv x = do
   (TypeEnv env) <- ask
   case Map.lookup x env of
@@ -189,57 +191,59 @@ lookupEnv x = do
 
 inferEq :: Expr -> Scheme -> InferCons (TExpr, Type)
 inferEq e t0 = do
-  Qual q t1 <- instantiate t0
+  (_, Qual q t1) <- instantiate t0
   t2 <- infer e
   return (t2, t1)
 
 infer :: Expr -> InferCons TExpr
-infer = cataCF inferAlg'
+infer = cataCF inferAlgM
 
 getTp :: TExpr -> Type
-getTp (In ((_, t) :< _)) = t
+getTp (In ((_, _, Qual q t) :< _)) = t
 
-inferAlg' :: (Location, ExprF (InferCons TExpr)) -> InferCons TExpr
-inferAlg' = \case
+noSub :: Type -> InferCons (Qual Type, Subst)
+noSub = return . (, nullSubst) . Qual []
+
+inferAlgM :: (Location, ExprF (InferCons TExpr)) -> InferCons TExpr
+inferAlgM = \case
     (l, Lam x e) -> do
         tv <- fresh
         e' <- inEnv (x, Forall [] (Qual [] tv)) e
         let t = getTp e'
-        return $ In $ (l, tv `mkArr` t) :< Lam x e'
+        return $ In $ (l, nullSubst, Qual [] $ tv `mkArr` t) :< Lam x e'
     (l, k) -> do
         k <- sequence k
         let tpk = getTp <$> k
-        tp <- inferAlg tpk
-        -- k <- censor (const noConstraints) $ sequence k -- already applied in the previous sequence
-        return (In $ (l, tp) :< k)
+        (tp, sub) <- inferAlg tpk
+        return (In $ (l, sub, tp) :< k)
 
-inferAlg :: ExprF Type -> InferCons Type
+inferAlg :: ExprF Type -> InferCons (Qual Type, Subst)
 inferAlg = \case
       Lit _ -> do
         tell noConstraints
-        return typeInt
+        noSub typeInt
 
       Case sourceT (t:ts) -> do
         let exprEq = mconcat $ curry union t <$> ts
         destT <- fresh
         tell $ union (t, sourceT `mkArr` destT) <> exprEq
-        return destT
+        noSub destT
 
       Var x -> do
         env <- ask
-        (Qual p t) <- lookupEnv x -- `catchError` \e -> lookupEnv $ pretty env
+        (sub, Qual p t) <- lookupEnv x -- `catchError` \e -> lookupEnv $ pretty env
         tell $ predicate p
-        return t
+        return (Qual p t, sub)
 
       App t1 t2 -> do
         tv <- fresh
         tell $ union (t1, t2 `mkArr` tv)
-        return tv
+        noSub tv
 
       Fix t1 -> do
         tv <- fresh
         tell $ union (tv `mkArr` tv, t1)
-        return tv
+        noSub tv
 
 checkSubst :: Subst -> ExceptLog Subst
 checkSubst sub = Map.elems >>> nub >>> check $ sub

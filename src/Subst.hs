@@ -3,7 +3,6 @@
 module Subst where
 
 import Type
-import Env
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Control.Arrow
@@ -12,6 +11,10 @@ import Syntax
 import RecursionSchemes
 
 type Subst = Map.Map TVar Type
+type TExpr = Cofree ExprF (Location, Subst, Qual Type); -- expression with information about performed substition (after type inference)
+
+instance Pretty (Location, Subst, Qual Type) where
+  pretty (l, s, t) = pretty t ++ " at " ++ pretty l
 
 nullSubst :: Subst
 nullSubst = Map.empty
@@ -42,14 +45,6 @@ instance Substituable a => Substituable [a] where
   apply = fmap . apply
   ftv = foldr (Set.union . ftv) Set.empty
 
-instance Substituable Env where
-  apply s (TypeEnv env) = TypeEnv (Map.map (apply s) env)
-  ftv (TypeEnv env) = ftv (Map.elems env)
-
-instance Substituable ClassEnv where
-  apply s (ClassEnv c) = ClassEnv (Map.map (apply s) c)
-  ftv (ClassEnv c) = ftv (Map.elems c)
-
 instance Substituable Class where
   apply s (n, insts) = (n, fmap (apply s) insts)
   ftv (n, insts) = foldr (Set.union . ftv) Set.empty insts
@@ -63,8 +58,18 @@ instance Substituable Pred where
   ftv (IsIn _ t) =  ftv t
 
 instance Substituable TExpr where
-  apply s (In ((loc, tp) :< ex)) = In $ (loc, apply s tp) :< fmap (apply s) ex
+  apply s (In ((loc, sub, tp) :< ex)) = In $ (loc, s `compose` sub, apply s tp) :< fmap (apply s) ex
   ftv _ = Set.empty
+
+mapRes :: (Type -> Type) -> TExpr -> TExpr
+mapRes func = mapAnn
+  (\(loc, sub, Qual q tp) -> (loc, sub, Qual (mapPred func <$> q) $ func tp))
+
+cleanup :: Subst -> Subst
+cleanup subst = Map.fromList $ filter (notLocal . fst) $ Map.toList subst
+  where
+    notLocal (TV ('\'':_) _) = False
+    notLocal _ = True
 
 compose :: Subst -> Subst -> Subst
 compose s1 s2 = Map.map (apply s1) s2 `Map.union` s1

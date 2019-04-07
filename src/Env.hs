@@ -1,5 +1,3 @@
-{-# LANGUAGE LambdaCase #-}
-
 module Env (
   TAst(..),
   Env(..),
@@ -20,7 +18,7 @@ module Env (
   alterClass,
   addClass,
   ClassEnv(..),
-  DeclErr,
+  keysK,
   baseEnvs,
   letters,
   addInstance,
@@ -46,6 +44,7 @@ import Operators
 import Data.List (uncons)
 import Data.Maybe (catMaybes)
 import Run
+import Subst
 
 -------------------------------------------------------------------------------
 -- Typing Environment
@@ -65,9 +64,13 @@ data TAst = TAst { texprs :: Map.Map Name TExpr, compiled :: Map.Map Name (Run V
 
 data Envs = Envs{ dataEnv :: Env, varEnv :: Env, classEnv :: ClassEnv, ast :: TAst}
 
+keysK :: TAst -> String
+keysK (TAst t c) = mconcat . fmap showAssoc . Map.toList $ t
+  where showAssoc (n, _) = n  ++ "\n"
+
 instance Pretty TAst where
   pretty (TAst t c) = mconcat . fmap showAssoc . Map.toList $ t
-    where showAssoc (n, s) = n ++ " : "++ pretty s ++ "\n"
+    where showAssoc (n, t) = n ++ " : "++ pretty t ++ "\n\n"
 
 instance Pretty Env where
   pretty (TypeEnv t) = mconcat . fmap showAssoc . Map.toList $ t
@@ -164,13 +167,10 @@ instance Monoid Env where
   mempty = empty
   mappend = merge
 
-data DeclErr
-  = AlreadyDefined String
-  | UnknownClass String
-  | EmptyType String;
+instance Substituable Env where
+  apply s (TypeEnv env) = TypeEnv (Map.map (apply s) env)
+  ftv (TypeEnv env) = ftv (Map.elems env)
 
-instance Pretty DeclErr where
-  pretty = \case
-    AlreadyDefined s -> "Type is already defined : " ++ s
-    UnknownClass s -> "Class is unknown : " ++ s
-    EmptyType s -> "Empty type : " ++ s
+instance Substituable ClassEnv where
+  apply s (ClassEnv c) = ClassEnv (Map.map (apply s) c)
+  ftv (ClassEnv c) = ftv (Map.elems c)

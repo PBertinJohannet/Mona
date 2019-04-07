@@ -69,6 +69,7 @@ interpretTop (Envs dat e cenv tast) name tvars expr inferedType calls = do
   (env, expr1) <- flattenArgs name expr inferedType
   uk <- local (const env) $ createType name tvars calls
   tell $ "created : \n" ++ pretty uk ++ "\n"
+  tell $ "compiled : \n" ++ unwords (fst <$> addRuns (obj uk)) ++ "\n"
   return $ Envs
     (extend dat (name, Forall (var <$> tvars) $ Qual [] (tp uk)))
     (extends e $ consts uk ++ patterns uk)

@@ -24,17 +24,21 @@ import RecursionSchemes
 import Sig
 import Run
 import Operators
+import Dispatch
+import qualified Data.Map as Map
 
 (<&>) = flip fmap
 
 main = (getArgs <&> head >>= readFile) <&> run >>= putStrLn
 
-data PassErr = TypeError TypeError | DeclErr DeclErr | RTError RunTimeError;
+data PassErr
+ = TypeError TypeError
+ | DispatchError DispatchError
+ | RTError RunTimeError;
 
 instance Pretty PassErr where
   pretty = \case
     TypeError t -> "TypeError : " ++ pretty t
-    DeclErr d -> "DeclarationError : " ++ pretty d
     RTError d -> "RunTimeError : " ++ pretty d
 
 run :: String -> String
@@ -70,8 +74,10 @@ passes a = do
   --tell $ pretty exprs
   env <- withExceptT TypeError $ inferTop env exprs
   env <- withExceptT TypeError $ checkInstances env insts
-  let (Envs _ _ _ TAst{texprs = texprs, compiled = comp}) = env
+  let (Envs _ _ _ TAst{compiled = comp}) = env
+  (TAst texprs _) <- withExceptT DispatchError $ runDispatch env
   tell $ "now run  : \n\n" ++ showKind env ++ "\n\n\n"
+  tell $ "compiled : " ++ unwords (fst <$> Map.toList comp) ++ "\n"
   withExceptT RTError $ runProgram $ createRunEnv allNatives texprs comp
 
 debug :: Either ParseError (Either PassErr Value, String) -> String

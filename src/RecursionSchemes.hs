@@ -135,6 +135,9 @@ cataCFM_ :: (Functor f, Traversable f, Monad m)
  => (f a -> m a) -> Cofree f b -> m a
 cataCFM_ alg = sep >>> snd >>> fmap (cataCFM_ alg) >>> sequence >=> alg
 
+mapAnn :: (Functor f, Traversable f) => (a -> b) -> Cofree f a -> Cofree f b
+mapAnn f = cataCF (\(a, b) -> In $ f a :< b)
+
 anaCF :: (Functor f)
   => (a -> Either (f a) (b, a)) -> b -> a -> Cofree f b
 anaCF alg def = alg >>> (keep ||| uncurry (anaCF alg))
