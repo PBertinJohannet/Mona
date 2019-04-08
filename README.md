@@ -80,7 +80,7 @@ Once you have created a type you can pattern match on it, it is lazily evaluated
 
 ```
 sig isNone = Maybe Int -> Bool;
-let toIntA a = case a of
+let isNone a = case a of
   (Just k) -> False,
   (Nothing) -> True;
 ```
