@@ -46,7 +46,7 @@ Actually the previous example wont compile because fac is not defined. You have 
 
 ```
 sig fac = Int -> Int;
-let fac a = if (a == 0) then a else a * (fac (a - 1));
+let fac a = if (a == 0) then 1 else a * (fac (a - 1));
 ```
 
 ## Fixed point combinator
@@ -54,7 +54,7 @@ let fac a = if (a == 0) then a else a * (fac (a - 1));
 Or you can use fix if you really don't want to write the signature.
 
 ```
-let facf f a = if a == 0 then a else a (f (a - 1));
+let facf f a = if a == 0 then 1 else a (f (a - 1));
 let fac = fix facf;
 ```
 
