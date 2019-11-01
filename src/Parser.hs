@@ -276,8 +276,8 @@ parsePreds = do
   reservedOp "=>"
   return preds
 
-inSig :: Parser (String, Scheme)
-inSig = do
+sigIn :: Parser (String, Scheme)
+sigIn = do
   reserved "sig"
   name <- identifier
   reservedOp "="
@@ -292,6 +292,15 @@ inLet = do
   reservedOp "="
   body <- expr
   return (name, foldr Lam body args)
+
+consDecl :: Parser (String, Type)
+consDecl = do
+  reserved "|"
+  name <- identifier
+  reserved "="
+  x <- parseType
+  optional semi
+  return (name, x)
 
 type Binding = (String, Statement)
 type BindingAnn = (String, StatementAnn)
@@ -309,7 +318,7 @@ instdecl = do
   return ("", S.Inst cls tp vals)
 
 sig :: Parser Binding
-sig = second S.Sig <$> inSig
+sig = second S.Sig <$> sigIn
 
 classdecl :: Parser Binding
 classdecl = do
@@ -318,7 +327,7 @@ classdecl = do
   typename <- identifier
   reservedOp "="
   reservedOp "{"
-  sigs <- many $ do {x <- inSig; semi; return x}
+  sigs <- many $ do {x <- sigIn; semi; return x}
   reservedOp "}"
   return (name, S.Class name typename sigs)
 
@@ -343,16 +352,8 @@ typedecl = do
   name <- identifier
   tvars <- many identifier
   reservedOp "="
-  body <- expr
+  body <- many consDecl
   return (name, S.TypeDecl tvars body)
-
-constructor :: Parser Expr
-constructor = do
-  name <- identifier
-  e <- option (Var "") expr
-  return $ case e of
-    Var "" -> Var name
-    e -> App (Var name) e
 
 decl :: Parser Binding
 decl = try letrecdecl <|> letdecl <|> typedecl <|> sig <|> classdecl <|> instdecl

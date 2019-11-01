@@ -85,15 +85,24 @@ allClasses = [
       Qual [IsIn "Show" $ tvar "a"] $ IsIn "Show" $ mkList $ tvar "a"
       ]))]
 
-allKinds :: [(String, Scheme)]
+{-allKinds :: [(String, Scheme)]
 allKinds = [
     ("List", Forall [var "a"] $ Qual [] $ tvar "a" `mkArr` tvar "a"),
     ("Int", Forall [] $ Qual [] $ tvar "a"),
-    ("|", Forall [var "a"] $ Qual [] $ tvar "a" `mkArr` (tvar "a" `mkArr` tvar "a")),
+    ("(->)", Forall [var "a"] $ Qual [] $ tvar "a" `mkArr` (tvar "a" `mkArr` tvar "a")),
     ("Bool", Forall [] $ Qual [] $ tvar "a"),
     ("Char", Forall [] $ Qual [] $ tvar "a"),
     ("IO", Forall [var "a"] $ Qual [] $ tvar "a" `mkArr` tvar "a")
-    ]
+    ]-}
+allKinds :: [(String, Kind)]
+allKinds = [
+    ("List", Kfun Star Star),
+    ("Int", Star),
+    ("(->)", Kfun Star (Kfun Star Star)),
+    ("Bool", Star),
+    ("Char", Star),
+    ("IO", Kfun Star Star)
+  ]
 
 -- (bool -> (a -> (a -> a)))
 

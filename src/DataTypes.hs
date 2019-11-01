@@ -1,57 +1,148 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeSynonymInstances #-}
-{-# LANGUAGE DeriveFunctor #-}
 
 module DataTypes where
 import Pretty
 import Syntax
-import Env
-import qualified Env (lookup)
+import Env (lookup, KEnv(..), Envs(..), letters)
 import Type
 import Control.Monad.Writer
 import Control.Monad.Reader
 import Control.Monad.Except
+import Control.Monad.State
 import qualified Data.Map as Map
 import Control.Arrow
 import Data.Maybe
-import Infer
 import Data.List (intercalate, find)
 import RecursionSchemes
 import Native
+import Subst
+import Infer (TypeError, InferState(..), initInfer)
 import Run (Value(..), Run, makeRunPat, makeRunCons)
 
-type Interpret a = ReaderT Env (ExceptT TypeError (Writer String)) a;
+runDataDecls :: [DataDecl] -> Envs -> ExceptT TypeError (Writer String) Envs
+runDataDecls ds env = foldM runDataDecl env ds
 
-type Object = [(Int, String, [Expr])]
+runDataDecl :: Envs-> DataDecl -> ExceptT TypeError (Writer String) Envs
+runDataDecl envs@(Envs d v cenv tast) (name, tvars, schemes) = do
+  tell "\nenv now : \n"
+  tell $ pretty (dataEnv envs)
+  tell "do : \n"
+  tell $ prettyL schemes
+  let typeExpr = foldr (tvar >>> flip TApp) (tvar name) tvars
+  --tell $ "match : \n" ++ pretty typeExpr ++ " with " ++ pretty (snd $ Prelude.head schemes) ++ "\n"
+  --(_, res) <- runSolve (ClassEnv Map.empty) ((Union . (typeExpr,) . snd) <$> schemes, [])
+  -- tell $ pretty res
+  tell "\ntry no 3  : \n"
+  --runInferKinds envs (snd <$> schemes)
+  res <- runInferKind name tvars d printBase
+  return envs
 
-instance Pretty Object where
-  pretty = fmap pretty' >>> unwords
-    where pretty' (v, n, e) = inParen $ "Variant " ++ show v ++ inParen n ++ " " ++ prettyL e
+type KindVarEnv = Map.Map String KindVar
 
-data UK = UK{
-  tname :: String,
-  tvars :: [TVar],
-  tcons :: Type,
-  tp :: Type,
-  kd :: Kind,
-  obj :: Object,
-  patterns :: [(String, Scheme)],
-  consts :: [(String, Scheme)]};
+toLocalKinEnv :: KEnv -> KindVarEnv
+toLocalKinEnv (KindEnv kinds) = kTok <$> kinds
+  where
+    kTok = \case
+      Kfun a b -> KVarFun (kTok a) (kTok b)
+      Star -> KVarStar
 
-instance ShowKind (String, Scheme) where
-  showKind (s, t) = s ++ " = " ++ showKind t ++ "\n"
+type InferKind = ReaderT KindVarEnv (StateT InferState (ExceptT TypeError (Writer String)))
 
-instance Pretty UK where
-  pretty (UK tname tvars tcons tp kd obj pats cst) =
-    tname ++ " : " ++ pretty kd
-    ++ "\nconstructing : " ++ pretty tcons
-    ++ "\n of type  : " ++ pretty tp
-    ++ "\n with tvars : " ++ unwords (showKind <$> tvars)
-    ++ "\n constructors : \n" ++ showKind cst ++ "\n"
-    ++ "\n object : \n" ++ pretty obj ++ "\n"
-    ++ "\n and patterns : \n" ++ showKind pats ++ "\n"
+runInferKind ::  String -> [String] -> KEnv -> InferKind a -> ExceptT TypeError (Writer String) a
+runInferKind name tvars kenv inf = evalStateT (runReaderT (makeBase name tvars inf) $ toLocalKinEnv kenv) initInfer
 
+data KindVar = KVarStar | KVarFun KindVar KindVar | KVar String
+
+instance Pretty KindVar where
+  pretty = \case
+    KVarStar -> "*"
+    KVarFun KVarStar KVarStar -> "* -> *"
+    KVarFun (KVar s) (KVar s') -> s ++ " -> " ++ s'
+    KVarFun KVarStar k -> "* -> " ++ pretty k
+    KVarFun (KVar s) k -> s ++ " -> " ++ pretty k
+    KVarFun k k' -> "(" ++ pretty k ++ ") -> " ++ pretty k'
+
+extends :: KindVarEnv -> [(Name, KindVar)] -> KindVarEnv
+extends env xs = Map.union (Map.fromList xs) env
+
+fresh :: InferKind KindVar
+fresh = do
+  s <- get
+  put s{count = count s + 1}
+  return $ KVar (letters !! count s)
+
+inEnv :: [(Name, KindVar)] -> InferKind a -> InferKind a
+inEnv x m = do
+  let scope e = foldr Map.delete e (fst <$> x) `extends` x
+  local scope m
+
+makeBase :: String -> [String] -> InferKind a -> InferKind a
+makeBase name tvars p = do
+  locals <- makeBaseEnv name tvars
+  inEnv locals p
+
+makeBaseEnv :: String -> [String] -> InferKind [(Name, KindVar)]
+makeBaseEnv name [] = return [(name, KVarStar)]
+makeBaseEnv name (tvar:tvars) = do
+  (KVar a) <- fresh
+  next <- makeBaseEnv a tvars
+  tell $ "adding : " ++ pretty (name, KVarFun (KVar tvar) (KVar a))
+  return $ (name, KVarFun (KVar tvar) (KVar a)):next
+
+printBase :: InferKind String
+printBase = do
+  env <- ask
+  tell $ prettyM env
+  return "oker"
+
+  {-
+runInferKinds :: Envs -> [Type] -> ExceptT TypeError (Writer String) Envs
+runInferKinds envs tps = do
+  tps <- mapM (runInferKind envs) tps
+  return envs
+
+runInferKind :: Envs -> Type -> ExceptT TypeError (Writer String) Type
+runInferKind (Envs d v cenv tast) tp = do
+  (tps, cons) <- runInferExc d $ runWriterT $ inferKind tp
+  tell "types : "
+  tell $ pretty tps ++ "\n"
+  tell "constraints : \n"
+  tell $ pretty cons
+  (_, sub) <- runSolve cenv cons
+  tell "now solved : \n"
+  tell $ pretty sub ++ "end \n\n"
+  return tps
+
+runInferExc :: KEnv -> Infer a -> ExceptT TypeError (Writer String) a
+runInferExc env m = case runInfer env m of
+  Left e -> throwError e
+  Right res -> return res
+
+inferKinds :: [Type] -> InferCons [Type]
+inferKinds = mapM inferKind
+
+inferKind :: Type -> InferCons Type
+inferKind = \case
+  TApp a b -> do
+    res <- fresh
+    a' <- inferKind a
+    b' <- inferKind b
+    tell $ union (a', b' `mkArr` res)
+    return res
+  TCon x k -> do
+    env <- ask
+    (_, Qual _ t) <- lookupEnv x -- `catchError` \e -> lookupEnv $ pretty env
+    return t
+
+  TVar x -> return $ TVar x
+
+makeAppAlg :: String -> [String] -> CofreeF ExprF Location [String]
+makeAppAlg s = (Loc ("", 0, 0) :<) . \case
+  [] -> Var s
+  [v] -> Var v
+  (tvar:tvars) -> App [tvar] tvars
 interpret :: [(String, [String], Expr)] -> Envs -> ExceptT TypeError (Writer String) Envs
 interpret ds env = foldM (flip runInterpret) env ds
 
@@ -237,3 +328,4 @@ simplifyUnit = \case
   TApp (TApp (TCon "(->)" _) (TCon "()" _)) b -> b
   TApp a b -> TApp (simplifyUnit a) b
   e -> e
+-}

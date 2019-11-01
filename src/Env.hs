@@ -1,9 +1,11 @@
 module Env (
   TAst(..),
   Env(..),
+  KEnv(..),
   Envs(..),
   empty,
   lookup,
+  lookupKind,
   remove,
   extend,
   extendAst,
@@ -60,9 +62,11 @@ newtype ClassEnv = ClassEnv {classes :: Map.Map Name Class} deriving (Eq, Show)
 
 newtype Env = TypeEnv { types :: Map.Map Name Scheme } deriving (Eq, Show)
 
+newtype KEnv = KindEnv { kinds :: Map.Map Name Kind } deriving (Eq, Show)
+
 data TAst = TAst { texprs :: Map.Map Name TExpr, compiled :: Map.Map Name (Run Value)}
 
-data Envs = Envs{ dataEnv :: Env, varEnv :: Env, classEnv :: ClassEnv, ast :: TAst}
+data Envs = Envs{ dataEnv :: KEnv, varEnv :: Env, classEnv :: ClassEnv, ast :: TAst}
 
 keysK :: TAst -> String
 keysK (TAst t c) = mconcat . fmap showAssoc . Map.toList $ t
@@ -79,6 +83,10 @@ instance Pretty Env where
 instance ShowKind Env where
   showKind (TypeEnv t) = mconcat . fmap showAssoc . Map.toList $ t
     where showAssoc (n, s) = n ++ " : "++ showKind s ++ "\n"
+
+instance Pretty KEnv where
+  pretty (KindEnv t) = mconcat . fmap showAssoc . Map.toList $ t
+    where showAssoc (n, s) = n ++ " : "++ pretty s ++ "\n"
 
 instance Pretty ClassEnv where
   pretty (ClassEnv t) = mconcat . fmap showAssoc . Map.toList $ t
@@ -118,8 +126,8 @@ baseEnv = TypeEnv (Map.fromList allOpsTypes)
 baseClasses :: ClassEnv
 baseClasses = ClassEnv (Map.fromList allClasses)
 
-kindEnv :: Env
-kindEnv = TypeEnv (Map.fromList allKinds)
+kindEnv :: KEnv
+kindEnv = KindEnv (Map.fromList allKinds)
 
 baseSource :: TAst
 baseSource = TAst Map.empty Map.empty
@@ -144,6 +152,9 @@ extends env xs = env { types = Map.union (Map.fromList xs) (types env) }
 
 lookup :: Name -> Env -> Maybe Scheme
 lookup key (TypeEnv tys) = Map.lookup key tys
+
+lookupKind :: Name -> KEnv -> Maybe Kind
+lookupKind key (KindEnv tys) = Map.lookup key tys
 
 merge :: Env -> Env -> Env
 merge (TypeEnv a) (TypeEnv b) = TypeEnv (Map.union a b)

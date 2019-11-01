@@ -13,7 +13,7 @@ import Sig
 import Syntax
 import Control.Arrow
 import qualified Env (lookup)
-import Env (Envs(..), addClass, classEnv, addInstance, Env, dataEnv)
+import Env (Envs(..), KEnv, addClass, classEnv, addInstance, Env, dataEnv)
 import Prelude hiding (head)
 import qualified Prelude
 import qualified Data.Map as Map
@@ -78,16 +78,16 @@ runAddClasses c i env = do
   schems <- mconcat <$> mapM (checkSigs $ dataEnv env) cls
   return (env, schems)
 
-checkSigs :: Env -> (ClassDecl, [InstDecl]) -> AddClass [InstCheck]
+checkSigs :: KEnv -> (ClassDecl, [InstDecl]) -> AddClass [InstCheck]
 checkSigs env (c, i) = mconcat <$> mapM (checkSig env c) i
 
-checkSig :: Env -> ClassDecl -> InstDecl -> AddClass [InstCheck]
+checkSig :: KEnv -> ClassDecl -> InstDecl -> AddClass [InstCheck]
 checkSig env (_, tv, funcs) (_, t, exprs) = do
   t <- replaceConsTypes [] env t
   let baseSubst = Map.singleton (var tv) t
   groupStrict env (second (apply baseSubst) <$> funcs) (fmap (pretty t,) exprs)
 
-groupStrict :: Env -> [(String, Scheme)] -> [(String, (String, Expr))] -> AddClass [InstCheck]
+groupStrict :: KEnv -> [(String, Scheme)] -> [(String, (String, Expr))] -> AddClass [InstCheck]
 groupStrict dEnv a b = foldM inGroup [] (zip (sortOn fst a) (sortOn (fst . snd) b))
   where
     inGroup lst ((a, b), (s, (a', b'))) =

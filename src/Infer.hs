@@ -185,7 +185,6 @@ fresh = do
   put s{count = count s + 1}
   return $ tvar (letters !! count s)
 
-
 noConstraints :: Constraints
 noConstraints = ([], [])
 

@@ -32,6 +32,7 @@ main = (getArgs <&> head >>= readFile) >>= run >>= putStrLn
 
 data PassErr
  = TypeError TypeError
+ | StringError String
  | DispatchError DispatchError;
 
 instance Pretty PassErr where
@@ -63,7 +64,7 @@ passes a = do
   tell $ "datas show : \n" ++ show datas
   tell $ "exprs : \n" ++ prettyL exprs
   tell $ "datas : \n" ++ prettyDatas datas
-  env <- withExceptT TypeError $ DataDecl.interpret datas baseEnvs
+  env <- withExceptT TypeError $ DataDecl.runDataDecls datas baseEnvs
   (env, insts) <- withExceptT TypeError $ runAddClasses classes insts env
   tell $ "inst to check : " ++ prettyL insts ++ "\n"
   env <- withExceptT TypeError $ addSigs sigs env
@@ -88,7 +89,8 @@ debug :: Either ParseError (Either PassErr TAst, String) -> IO String
 debug = \case
   Left perr -> return $ "ParseError : " ++ show perr
   Right (r, s) -> do
+    putStrLn s
     val <- case r of
       Left terr -> return $ pretty terr
       Right v -> exec v
-    return $ val
+    return val

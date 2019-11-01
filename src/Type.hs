@@ -43,7 +43,7 @@ tvar :: String -> Type
 tvar s = TVar $ var s
 
 getV :: Type -> TVar
-getV (TVar t) = t 
+getV (TVar t) = t
 
 typeInt  = TCon "Int" Star
 typeBool = TCon "Bool" Star

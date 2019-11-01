@@ -34,6 +34,7 @@ data Field = FieldS String | FieldApp Field Field deriving (Show, Eq, Ord)
 type Decl = (String, Statement)
 type ExprDecl = (String, Expr)
 type ClassDecl = (String, String, [(String, Scheme)]);
+type DataDecl = (String, [String], [(String, Type)])
 type InstDecl = (String, Type, [(String, Expr)]);
 type InstCheck = (String, Scheme, Expr)
 
@@ -42,7 +43,7 @@ instance Pretty InstCheck where
 
 data StatementF a
  = Expr a
- | TypeDecl [String] a
+ | TypeDecl [String] [(String, Type)]
  | Class String String [(String, Scheme)]
  | Inst String Type [(String, a)]
  | Sig Scheme
@@ -52,13 +53,13 @@ type Statement = StatementF Expr;
 
 data Program = Program{
   exprs :: [ExprDecl],
-  datas :: [(String, [String], Expr)],
+  datas :: [DataDecl],
   clasdecls :: [ClassDecl],
   instances :: [InstDecl],
   signatures :: [(String, Scheme)]}
 
-prettyDatas :: [(String, [String], Expr)] -> String
-prettyDatas = unwords . fmap (\(a, b, c) -> a ++ " " ++ unwords b ++ " = " ++ pretty c)
+prettyDatas :: [DataDecl] -> String
+prettyDatas = unwords . fmap (\(a, b, c) -> a ++ " (" ++ unwords b ++ ") ::\n " ++ prettyL c ++ "\n\n")
 
 sepDecls :: [Decl] -> Program
 sepDecls [] = Program [] [] [] [] []
