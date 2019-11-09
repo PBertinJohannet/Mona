@@ -1,11 +1,13 @@
+{-# LANGUAGE TypeSynonymInstances #-}
+
 module Env (
   TAst(..),
+  EnvF(..),
   Env(..),
   KEnv(..),
   Envs(..),
   empty,
   lookup,
-  lookupKind,
   remove,
   extend,
   extendAst,
@@ -60,9 +62,10 @@ lettersSim = [1..] >>= flip replicateM ['a'..'z']
 
 newtype ClassEnv = ClassEnv {classes :: Map.Map Name Class} deriving (Eq, Show)
 
-newtype Env = TypeEnv { types :: Map.Map Name Scheme } deriving (Eq, Show)
+newtype EnvF a = TypeEnv { types :: Map.Map Name a } deriving (Eq, Show)
 
-newtype KEnv = KindEnv { kinds :: Map.Map Name Kind } deriving (Eq, Show)
+type Env = EnvF Scheme;
+type KEnv = EnvF Kind;
 
 data TAst = TAst { texprs :: Map.Map Name TExpr, compiled :: Map.Map Name (Run Value)}
 
@@ -76,17 +79,13 @@ instance Pretty TAst where
   pretty (TAst t c) = mconcat . fmap showAssoc . Map.toList $ t
     where showAssoc (n, t) = n ++ " : "++ pretty t ++ "\n\n"
 
-instance Pretty Env where
+instance Pretty a => Pretty (EnvF a) where
   pretty (TypeEnv t) = mconcat . fmap showAssoc . Map.toList $ t
     where showAssoc (n, s) = n ++ " : "++ pretty s ++ "\n"
 
-instance ShowKind Env where
+instance ShowKind a => ShowKind (EnvF a) where
   showKind (TypeEnv t) = mconcat . fmap showAssoc . Map.toList $ t
     where showAssoc (n, s) = n ++ " : "++ showKind s ++ "\n"
-
-instance Pretty KEnv where
-  pretty (KindEnv t) = mconcat . fmap showAssoc . Map.toList $ t
-    where showAssoc (n, s) = n ++ " : "++ pretty s ++ "\n"
 
 instance Pretty ClassEnv where
   pretty (ClassEnv t) = mconcat . fmap showAssoc . Map.toList $ t
@@ -127,7 +126,7 @@ baseClasses :: ClassEnv
 baseClasses = ClassEnv (Map.fromList allClasses)
 
 kindEnv :: KEnv
-kindEnv = KindEnv (Map.fromList allKinds)
+kindEnv = TypeEnv (Map.fromList allKinds)
 
 baseSource :: TAst
 baseSource = TAst Map.empty Map.empty
@@ -135,31 +134,28 @@ baseSource = TAst Map.empty Map.empty
 withCompiled :: TAst -> [(Name, Run Value)] -> TAst
 withCompiled env vals = env{compiled = Map.union (compiled env) (Map.fromList vals)}
 
-empty :: Env
+empty :: EnvF a
 empty = TypeEnv Map.empty
 
 extendAst :: TAst -> (Name, TExpr) -> TAst
 extendAst env (x, s) = env { texprs = Map.insert x s (texprs env) }
 
-extend :: Env -> (Name, Scheme) -> Env
+extend :: EnvF a -> (Name, a) -> EnvF a
 extend env (x, s) = env { types = Map.insert x s (types env) }
 
-remove :: Env -> Name -> Env
+remove :: EnvF a -> Name -> EnvF a
 remove (TypeEnv env) var = TypeEnv (Map.delete var env)
 
-extends :: Env -> [(Name, Scheme)] -> Env
+extends :: EnvF a -> [(Name, a)] -> EnvF a
 extends env xs = env { types = Map.union (Map.fromList xs) (types env) }
 
-lookup :: Name -> Env -> Maybe Scheme
+lookup :: Name -> EnvF a -> Maybe a
 lookup key (TypeEnv tys) = Map.lookup key tys
 
-lookupKind :: Name -> KEnv -> Maybe Kind
-lookupKind key (KindEnv tys) = Map.lookup key tys
-
-merge :: Env -> Env -> Env
+merge :: EnvF a -> EnvF a -> EnvF a
 merge (TypeEnv a) (TypeEnv b) = TypeEnv (Map.union a b)
 
-mergeEnvs :: [Env] -> Env
+mergeEnvs :: [EnvF a] -> EnvF a
 mergeEnvs = foldl' merge empty
 
 singleton :: Name -> Scheme -> Env
@@ -174,11 +170,11 @@ fromList xs = TypeEnv (Map.fromList xs)
 toList :: Env -> [(Name, Scheme)]
 toList (TypeEnv env) = Map.toList env
 
-instance Monoid Env where
+instance Monoid (EnvF a) where
   mempty = empty
   mappend = merge
 
-instance Substituable Env where
+instance Substituable a => Substituable (EnvF a) where
   apply s (TypeEnv env) = TypeEnv (Map.map (apply s) env)
   ftv (TypeEnv env) = ftv (Map.elems env)
 

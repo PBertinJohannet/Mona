@@ -235,7 +235,7 @@ parsePred = do
   return $ IsIn cls tp
 
 parseType :: Parser Type
-parseType = mychainr ((tvar <$> identifier) <|> inParen parseType) parseArrow
+parseType = mychainl ((tvar <$> identifier) <|> inParen parseType) parseArrow
 
 inParen :: Parser a -> Parser a
 inParen p = do

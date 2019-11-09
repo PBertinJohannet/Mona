@@ -50,6 +50,7 @@ data TypeError
   | UnknownClass String
   | WrongKind String Kind
   | UnificationFail Type Type
+  | KindUnificationFail String String
   | UndeclaredClass String
   | MultipleDecl String
   | UnknownCommand String
@@ -68,6 +69,7 @@ instance Pretty TypeError where
     MultipleDecl s -> s ++ " Multiple declarations : " ++ s
     SignatureMismatch s -> "Signature does not match : " ++ pretty s
     UnificationFail t t' -> "Cannot unify : " ++ pretty t ++ " with "++pretty t'
+    KindUnificationFail t t' -> "Cannot unify : " ++ t ++ " with "++ t'
     UnificationMismatch t t' -> "Mismatch : Cannot unify : " ++ prettyL t ++ " with "++prettyL t'
 
 type ExceptLog a = ExceptT TypeError (Writer String) a;

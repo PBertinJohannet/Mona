@@ -1,0 +1,27 @@
+data Term x =
+  | K = Term (a -> b -> a);
+  | S = (Term ((a -> b -> c))  -> (a -> b) -> a -> c);
+  | Const = a -> Term a;
+  | Apply = (Term (a -> b)) -> (Term a) -> Term b;
+
+data Apply x a =
+  | Applied = (x a) -> Apply x a;
+
+let eval = \(Apply (Apply (K x) y)) -> x;
+
+data Empty = | Empty = Empty;
+data NonEmpty = | NonEmpty = NonEmpty;
+data List x y =
+  | Nil = List a Empty;
+  | Cons = a -> (List a b) ->  List a NonEmpty;
+
+sig safeHead = forall x . (List x NonEmpty) -> x;
+let safeHead = \(Cons a b) -> a;
+
+
+data MyList x =
+  | Nil = MyList u;
+  | Const = a -> (List a) -> MyList a;
+
+data Apply x a =
+  | Applied = (x a) -> Apply x a;

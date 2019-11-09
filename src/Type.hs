@@ -5,13 +5,12 @@
 module Type where
 import Pretty
 import Control.Arrow
-import RecursionSchemes
 import Data.List
 
 data TVar = TV{name :: String, kind :: Kind}
   deriving (Show, Eq, Ord)
 
-data Kind = Star | Kfun Kind Kind deriving (Show, Eq, Ord)
+data Kind = KVar String | Star | Kfun Kind Kind deriving (Show, Eq, Ord)
 
 data Qual t = Qual{preds :: [Pred], head :: t} deriving (Show, Eq, Ord)
 
@@ -163,6 +162,9 @@ instance ShowKind Scheme where
 
 instance Pretty Kind where
   pretty = \case
+    KVar a -> a
+    Kfun (KVar a) (KVar b) -> a ++ " -> " ++ b
+    Kfun (KVar a) k -> a ++ " -> " ++ pretty k
     Star -> "*"
     Kfun Star Star -> "* -> *"
     Kfun Star k -> "* -> " ++ pretty k

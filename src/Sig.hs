@@ -35,7 +35,7 @@ instance ReplaceCons Type where
       return $ TApp a1 b1
     TVar t@(TV name _) -> case find (== t) tvars of
       Just tv -> return $ TVar tv
-      Nothing -> case Env.lookupKind name env of
+      Nothing -> case Env.lookup name env of
         Just k -> return $ TCon name k
         Nothing -> throwError $ UnboundVariable name
     t -> return t
