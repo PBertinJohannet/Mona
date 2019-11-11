@@ -96,7 +96,6 @@ allKinds = [
     ]-}
 allKinds :: [(String, Kind)]
 allKinds = [
-    ("List", Kfun Star Star),
     ("Int", Star),
     ("(->)", Kfun Star (Kfun Star Star)),
     ("Bool", Star),

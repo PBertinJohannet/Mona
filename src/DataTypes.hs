@@ -36,6 +36,7 @@ runDataDecl :: Envs-> DataDecl -> ExceptT DataDeclError (Writer String) Envs
 runDataDecl envs@(Envs d v cenv tast) (name, tvars, schemes) = do
   let typeExpr = foldr (tvar >>> flip TApp) (tvar name) tvars
   res <- runInferKind d $ inferKinds name tvars (snd <$> schemes)
+  tell $ "for : " ++ name ++ " found : " ++  pretty res ++ "\n"
   return envs
 
 inferKinds :: String -> [String] -> [Type] -> InferKind Kind
@@ -47,7 +48,6 @@ inferKinds name tvars tps = do
   let res = mconcat (union k <$> ks)
   sub <- unionSolve (Map.empty, res)
   return (apply sub k)
-
 
 type InferKind = ReaderT KEnv (StateT InferState (ExceptT DataDeclError (Writer String)))
 

@@ -1,2 +1,30 @@
 data MyList x =
   | Cons = a -> (MyList a) -> MyList a;
+  | Nil = MyList j;
+  | Two = a -> MyList a -> MyList a;
+
+data ADT x a =
+  | Right = a -> ADT x a;
+  | Left = x -> ADT x a;
+  | Prod = x -> a -> ADT x a;
+
+data Apply x a =
+  | Apply = x a -> Apply x a;
+
+data Term x =
+  | K = Term (a -> b -> a);
+  | S = (Term ((a -> b -> c))  -> (a -> b) -> a -> c);
+  | Const = a -> Term a;
+  | Apply = (Term (a -> b)) -> (Term a) -> Term b;
+
+data NonEmpty = | NonEmpty = NonEmpty;
+data Empty = | Empty = Empty;
+
+data Fix f = | Fix = f (Fix f) -> Fix f;
+
+data List x y =
+  | Nil = List a Empty;
+  | Cons = a -> List a b ->  List a NonEmpty;
+
+sig safeHead = forall x . (List x NonEmpty) -> x;
+let safeHead = \(Cons a b) -> a;
