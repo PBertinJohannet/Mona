@@ -21,7 +21,8 @@ import Infer (InferState(..), initInfer)
 import Run (Value(..), Run, makeRunPat, makeRunCons)
 
 data DataDeclError
- = KindUnificationFail Kind Kind
+ = NoConstructor String
+ | KindUnificationFail Kind Kind
  | DoesNotAppear String deriving (Show, Eq)
 
 instance Pretty DataDeclError where
@@ -37,12 +38,15 @@ runDataDecl envs@(Envs d v cenv tast) (name, tvars, schemes) = do
   res <- runInferKind d $ inferKinds name tvars (snd <$> schemes)
   return envs
 
-inferKinds :: String -> [String] -> [Type] -> InferKind ()
+inferKinds :: String -> [String] -> [Type] -> InferKind Kind
+inferKinds name tvars [] = throwError $ NoConstructor name
 inferKinds name tvars tps = do
   res <- makeBaseEnv name tvars
-  res' <- mapM (inferConstraints res name) tps
-  tell $ "found all : " ++ prettyL res'
-  return ()
+  k:ks <- mapM (inferConstraints res name) tps
+  tell $ "found all : [" ++ prettyL (k:ks) ++ "]"
+  let res = mconcat (union k <$> ks)
+  sub <- unionSolve (Map.empty, res)
+  return (apply sub k)
 
 
 type InferKind = ReaderT KEnv (StateT InferState (ExceptT DataDeclError (Writer String)))

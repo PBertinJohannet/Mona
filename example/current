@@ -1,6 +1,2 @@
 data MyList x =
-  | Nil = MyList u;
-  | Const = a -> (MyList a) -> MyList a;
-
-data Apply x a =
-  | Applied = (x a) -> Apply x a;
+  | Cons = a -> (MyList a) -> MyList a;

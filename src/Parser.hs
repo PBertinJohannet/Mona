@@ -198,6 +198,22 @@ mychainr p op = do {a <- p; rest a}
 mychainl :: Parser a -> Parser (a -> a -> a) -> Parser a
 mychainl p = mychainlfirst p id
 
+
+mychainrl :: Parser a -> Parser (a -> a -> a) -> Parser (a -> a -> a) -> Parser a
+mychainrl p opr opl = do {a <- p; rest a}
+  where
+    rest a = more a <|> return a
+    more a = left a <|> right a
+    left a = do
+      f <- opl
+      b <- p
+      rest (f a b)
+    right a = do
+      f <- opr
+      b <- p
+      res <- rest b
+      return $ f a res
+
 parseOperation =
   do spaces
      symbol <- string "+"
@@ -235,7 +251,7 @@ parsePred = do
   return $ IsIn cls tp
 
 parseType :: Parser Type
-parseType = mychainl ((tvar <$> identifier) <|> inParen parseType) parseArrow
+parseType = mychainrl ((tvar <$> identifier) <|> inParen parseType) parseArrow parseApp
 
 inParen :: Parser a -> Parser a
 inParen p = do
@@ -244,15 +260,15 @@ inParen p = do
   char ')'
   return r
 
+parseApp :: Parser (Type -> Type -> Type)
+parseApp = return TApp
+
 parseArrow :: Parser (Type -> Type -> Type)
 parseArrow = do
-  spaces
-  symbol <- string "->"
-       <|> string ""
-  spaces
-  return $ case symbol of
-   "" -> TApp
-   _ -> mkArr
+ spaces
+ symbol <- string "->"
+ spaces
+ return mkArr
 
 parseForall :: Parser [TVar]
 parseForall = do
