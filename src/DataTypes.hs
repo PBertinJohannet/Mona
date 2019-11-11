@@ -5,7 +5,7 @@
 module DataTypes where
 import Pretty
 import Syntax
-import Env (lookup, KEnv(..), Envs(..), letters, extends)
+import Env (lookup, KEnv(..), Envs(..), letters, extends, extend)
 import Type
 import Control.Monad.Writer
 import Control.Monad.Reader
@@ -37,7 +37,7 @@ runDataDecl envs@(Envs d v cenv tast) (name, tvars, schemes) = do
   let typeExpr = foldr (tvar >>> flip TApp) (tvar name) tvars
   res <- runInferKind d $ inferKinds name tvars (snd <$> schemes)
   tell $ "for : " ++ name ++ " found : " ++  pretty res ++ "\n"
-  return envs
+  return $ Envs (extend d (name, res)) v cenv tast
 
 inferKinds :: String -> [String] -> [Type] -> InferKind Kind
 inferKinds name tvars [] = throwError $ NoConstructor name
