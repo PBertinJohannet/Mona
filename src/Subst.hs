@@ -73,3 +73,6 @@ cleanup subst = Map.fromList $ filter (notLocal . fst) $ Map.toList subst
 
 compose :: Subst -> Subst -> Subst
 compose s1 s2 = Map.map (apply s1) s2 `Map.union` s1
+
+withFtv :: Type -> Scheme
+withFtv t = Forall (Set.toList $ ftv t) $ Qual [] t

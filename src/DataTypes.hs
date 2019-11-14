@@ -19,6 +19,7 @@ import RecursionSchemes
 import Native
 import Infer (InferState(..), initInfer)
 import Run (Value(..), Run, makeRunPat, makeRunCons)
+import Subst (withFtv)
 
 data DataDeclError
  = NoConstructor String
@@ -28,23 +29,24 @@ data DataDeclError
 instance Pretty DataDeclError where
   pretty = show
 
-
 runDataDecls :: [DataDecl] -> Envs -> ExceptT DataDeclError (Writer String) Envs
 runDataDecls ds env = foldM runDataDecl env ds
 
 runDataDecl :: Envs-> DataDecl -> ExceptT DataDeclError (Writer String) Envs
 runDataDecl envs@(Envs d v cenv tast) (name, tvars, schemes) = do
-  let typeExpr = foldr (tvar >>> flip TApp) (tvar name) tvars
-  res <- runInferKind d $ inferKinds name tvars (snd <$> schemes)
-  tell $ "for : " ++ name ++ " found : " ++  pretty res ++ "\n"
-  return $ Envs (extend d (name, res)) v cenv tast
+  kind <- runInferKind d $ inferKinds name tvars (snd <$> schemes)
+  --tell $ "for " ++ name ++ " texpt is " ++ pretty typeExpr ++ "\n"
+  let v' = foldr (flip extend) v $ fmap (second withFtv) schemes
+  --tell $ "for : " ++ name ++ " found : " ++  pretty res ++ "\n"
+  return $ Envs (extend d (name, kind)) v' cenv tast
+
 
 inferKinds :: String -> [String] -> [Type] -> InferKind Kind
 inferKinds name tvars [] = throwError $ NoConstructor name
 inferKinds name tvars tps = do
   res <- makeBaseEnv name tvars
   k:ks <- mapM (inferConstraints res name) tps
-  tell $ "found all : [" ++ prettyL (k:ks) ++ "]"
+  --tell $ "found all : [" ++ prettyL (k:ks) ++ "]"
   let res = mconcat (union k <$> ks)
   sub <- unionSolve (Map.empty, res)
   return (apply sub k)
@@ -68,20 +70,12 @@ fresh = do
   return $ KVar (letters !! count s)
 
 makeBaseEnv :: String -> [String] -> InferKind Constraints
-makeBaseEnv name [] = do
-  tell $ "adding " ++ name ++ " : *"
-  return [(KVar name, Star)]
+makeBaseEnv name [] = return [(KVar name, Star)]
 makeBaseEnv name (tvar:tvars) = do
   (KVar a) <- fresh
   next <- makeBaseEnv a tvars
-  tell $ "adding : " ++ pretty (name, Kfun (KVar tvar) (KVar a))
+  --tell $ "adding : " ++ pretty (name, Kfun (KVar tvar) (KVar a))
   return ((KVar name, Kfun (KVar tvar) (KVar a)):next)
-
-printBase :: InferKind String
-printBase = do
-  env <- ask
-  tell $ pretty env
-  return "oker"
 
 type Constraints = [(Kind, Kind)]
 
@@ -91,13 +85,13 @@ instance Pretty (Kind, Kind) where
 inferConstraints :: Constraints -> String -> Type -> InferKind Kind
 inferConstraints cs name t = do
   env <- ask
-  tell "==============="
-  tell $ "\n base : \n" ++ pretty env
+  --tell "==============="
+  --tell $ "\n base : \n" ++ pretty env
   (cons, _) <- generateConstraints t
-  tell $ pretty t
-  tell $ "cons found : " ++ show (fmap pretty (cs ++ cons)) ++ "\n"
+  --tell $ pretty t
+  --tell $ "cons found : " ++ show (fmap pretty (cs ++ cons)) ++ "\n"
   sol <- unionSolve (Map.empty, cs ++ cons)
-  tell $ "found : " ++ prettyM sol ++ "\n"
+  --tell $ "found : " ++ prettyM sol ++ "\n"
   case Map.lookup name sol of
     Just a -> return a
     Nothing -> throwError $ DoesNotAppear name
@@ -138,12 +132,7 @@ unionSolve (su, cs) =
   case cs of
     [] -> return su
     (t1, t2) : cs1 -> do
-      tell $ "unify : " ++ pretty t1 ++ " and " ++ pretty t2 ++ "\n"
       su1 <- unifies t1 t2
-      tell $ "apply : " ++ prettyM su1 ++ "\n"
-      tell $ "sub was : " ++ prettyM su ++ "\n"
-      tell $ "sub becomes : " ++ prettyM (su1 `compose` su) ++ "\n"
-      tell $ "\ncons is : " ++ show (pretty <$> (applyT su1 <$> cs1)) ++ "\n"
       unionSolve (su1 `compose` su, applyT su1 <$> cs1)
 
 unifies :: Kind -> Kind -> InferKind Subst

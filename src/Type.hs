@@ -90,7 +90,6 @@ extractKind = \case
   TApp (TApp (TCon "(->)" _) a) b -> Kfun (extractKind a) (extractKind b)
   TApp a b -> Kfun (extractKind a) (extractKind b)
 
-
 class HasKind a where
   getKind :: a -> Kind
 
