@@ -33,23 +33,30 @@ runDataDecls :: [DataDecl] -> Envs -> ExceptT DataDeclError (Writer String) Envs
 runDataDecls ds env = foldM runDataDecl env ds
 
 runDataDecl :: Envs-> DataDecl -> ExceptT DataDeclError (Writer String) Envs
-runDataDecl envs@(Envs d v cenv tast) (name, tvars, schemes) = do
-  kind <- runInferKind d $ inferKinds name tvars (snd <$> schemes)
-  --tell $ "for " ++ name ++ " texpt is " ++ pretty typeExpr ++ "\n"
-  let v' = foldr (flip extend) v $ fmap (second withFtv) schemes
+runDataDecl envs@(Envs d v cenv tast) (name, tvars, types) = do
+  (kind, cons) <- runInferKind d $ inferKinds name tvars (snd <$> types)
+  let consSchemes = makeCons (fst <$> types) name cons
+  let patsSchemes = consToPat <$> consSchemes
+  let v' = foldr (flip extend) v $ consSchemes ++ patsSchemes
   --tell $ "for : " ++ name ++ " found : " ++  pretty res ++ "\n"
   return $ Envs (extend d (name, kind)) v' cenv tast
 
+makeCons :: [String] -> String -> [Type] -> [(String, Scheme)]
+makeCons consNames tpName types = do
+  (n, t) <- zip consNames types
+  let a = makeTypeConstant tpName t
+  return (n, withFtv a)
 
-inferKinds :: String -> [String] -> [Type] -> InferKind Kind
+inferKinds :: String -> [String] -> [Type] -> InferKind (Kind, [Type])
 inferKinds name tvars [] = throwError $ NoConstructor name
 inferKinds name tvars tps = do
   res <- makeBaseEnv name tvars
-  k:ks <- mapM (inferConstraints res name) tps
+  kinds@((k, t):ks) <- mapM (inferConstraints res name) tps
   --tell $ "found all : [" ++ prettyL (k:ks) ++ "]"
-  let res = mconcat (union k <$> ks)
+  let res = mconcat (union k . fst <$> ks)
   sub <- unionSolve (Map.empty, res)
-  return (apply sub k)
+  let typesWithKinds =  mapKind (apply sub) . snd <$> kinds
+  return (apply sub k, typesWithKinds)
 
 type InferKind = ReaderT KEnv (StateT InferState (ExceptT DataDeclError (Writer String)))
 
@@ -82,34 +89,34 @@ type Constraints = [(Kind, Kind)]
 instance Pretty (Kind, Kind) where
   pretty (a, b) = pretty a ++ " <=> " ++ pretty b
 
-inferConstraints :: Constraints -> String -> Type -> InferKind Kind
+inferConstraints :: Constraints -> String -> Type -> InferKind (Kind, Type)
 inferConstraints cs name t = do
   env <- ask
   --tell "==============="
   --tell $ "\n base : \n" ++ pretty env
-  (cons, _) <- generateConstraints t
+  (cons, _, tp) <- generateConstraints t
   --tell $ pretty t
   --tell $ "cons found : " ++ show (fmap pretty (cs ++ cons)) ++ "\n"
   sol <- unionSolve (Map.empty, cs ++ cons)
-  --tell $ "found : " ++ prettyM sol ++ "\n"
+  let tpWithKinds = mapKind (apply sol) tp
   case Map.lookup name sol of
-    Just a -> return a
+    Just a -> return (a, tpWithKinds)
     Nothing -> throwError $ DoesNotAppear name
 
 union :: Kind -> Kind -> Constraints
 union a b = [(a, b)]
 
-generateConstraints :: Type -> InferKind (Constraints, Kind)
+generateConstraints :: Type -> InferKind (Constraints, Kind, Type)
 generateConstraints = \case
   TVar (TV a _) -> do
     k <- lookupEnv a
-    return ([], k)
-  TCon s k -> return ([], k)
+    return ([], k, TVar (TV a k))
+  TCon s k -> return ([], k, TCon s k)
   TApp a b -> do
     ret <- fresh
-    (consA, ka) <- generateConstraints a
-    (consB, kb) <- generateConstraints b
-    return (consA ++ consB ++ union ka (Kfun kb ret), ret)
+    (consA, ka, ta) <- generateConstraints a
+    (consB, kb, tb) <- generateConstraints b
+    return (consA ++ consB ++ union ka (Kfun kb ret), ret, TApp ta tb)
 
 type Subst = Map.Map String Kind
 

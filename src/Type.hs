@@ -32,6 +32,41 @@ data Scheme = Forall [TVar] (Qual Type)
 mapPred :: (Type -> Type) -> Pred -> Pred
 mapPred f (IsIn s t) = IsIn s (f t)
 
+mapKind :: (Kind -> Kind) -> Type -> Type
+mapKind f = \case
+  TVar (TV a k) -> TVar (TV a $ f k)
+  TCon s k -> TCon s $ f k
+  TApp a b -> TApp (mapKind f a) (mapKind f b)
+
+makeTypeConstant :: String -> Type -> Type
+makeTypeConstant n = \case
+  TVar (TV a k) -> if a == n then TCon n k else TVar (TV a k)
+  TCon s k -> TCon s k
+  TApp a b -> TApp (makeTypeConstant n a) (makeTypeConstant n b)
+
+data NonEmpty a = Only a | a :+: (NonEmpty a) deriving (Eq, Show)
+
+-- transforms a constructor's type to a pattern's type :
+-- List :: a -> List a -> List a becomes ~List :: List a -> (a -> List a -> b) -> b
+-- more generaly :
+-- Cons :: a -> T becomes ~Cons :: T -> ((a -> b) -> b)
+-- Cons :: a -> b -> T becomes ~Cons :: T -> ((a -> b -> c) -> c)
+-- Cons :: T becomes ~Cons :: T -> b -> b
+consToPat :: (String, Scheme) -> (String, Scheme)
+consToPat (name, Forall t (Qual p h)) = ("~" ++ name, Forall (retVar:t) newHead)
+  where
+    newHead = Qual p (consToPat' (sepArgs h) [])
+
+    consToPat' :: NonEmpty Type -> [Type] -> Type
+    consToPat' (Only t) b = t `mkArr` (foldr mkArr retType b `mkArr` retType)
+    consToPat' (a :+: t) b = consToPat' t (a:b)
+
+    retType = TVar retVar
+    retVar = TV "~'patret" Star
+
+    mkCons :: Type -> Type -> Type
+    mkCons t b = t `mkArr` (b `mkArr` b)
+
 withPred :: String -> Pred -> Scheme -> Scheme
 withPred tv p (Forall tvars (Qual q ty)) = Forall (var tv:tvars) (Qual (p:q) ty)
 
@@ -67,6 +102,11 @@ setReturn :: Type -> Type -> Type
 setReturn = \case
   TApp (TApp (TCon "(->)" k) a) b -> TApp (TApp (TCon "(->)" k) a) . setReturn b
   _ -> id
+
+sepArgs :: Type -> NonEmpty Type
+sepArgs = \case
+  TApp (TApp (TCon "(->)" k) a) b -> a :+: sepArgs b
+  e -> Only e
 
 getReturn :: Type -> Type
 getReturn = \case

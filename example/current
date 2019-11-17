@@ -8,8 +8,8 @@ data ADT x a =
   | Left = x -> ADT x a;
   | Prod = x -> a -> ADT x a;
 
-data Apply x a =
-  | Apply = x a -> Apply x a;
+data App x a =
+  | App = x a -> App x a;
 
 data Term x =
   | K = Term (a -> b -> a);
