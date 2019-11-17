@@ -56,7 +56,7 @@ let fac = fix (\f a -> if a == 0 then a else a (f (a - 1)));
 
 ## GADT Syntax
 
-Data declarations uses a similar syntax than Haskell's GADTs.
+Data declarations uses a similar syntax to Haskell's GADTs.
 
 You can, for example use it to create a safe head function.
 ```
