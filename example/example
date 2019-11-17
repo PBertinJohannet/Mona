@@ -1,41 +1,18 @@
-sig flip = forall a b c . (a -> b -> c) -> b -> a -> c;
-let flip = \f a b -> (f b) a;
+data Fix f = | Fix = f (Fix f) -> Fix f;
 
-data Fix =
-  | Fix = f (Fix f) -> Fix f;
 sig unfix = forall f . (Fix f) -> f (Fix f);
 let unfix = \(Fix a) -> a;
-
-data Unit = Unit;
-data Bool = True | False;
 
 class Functor f = {
   sig fmap = forall a b . (a -> b) -> (f a) -> f b;
 }
 
-class Print s = {
-  sig print = s -> List (IO Unit);
-}
-
-inst List Int of Print = {
-  let print = fmap printInt;
-}
-
-data ListF f a = EndF | ConsF a (f a);
-data List a  = List ((fix ListF) a);
-let Cons = (\a b -> List(ConsF a b));
-let End = List(EndF);
-
-inst List of Functor = {
-  let fmap f = \(List l) -> case l of
-    (EndF) -> End,
-    (ConsF a b) -> Cons (f a) (fmap f b);
-}
-
-data Maybe a = Just a | Nothing;
-data Nat = Nat (Fix Maybe);
-let S = \(Nat i) -> Nat (Fixed (Just i));
-let Z = Nat (Fixed (Nothing));
+data Maybe a =
+  | Just = a -> Maybe a
+  | Nothing = Maybe a;
+data Nat = | Nat = Fix Maybe -> Nat;
+let S = \(Nat i) -> Nat (Fix (Just i));
+let Z = Nat (Fix (Nothing));
 
 inst Maybe of Functor = {
   let fmap f v = case v of

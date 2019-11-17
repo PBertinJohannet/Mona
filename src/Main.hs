@@ -91,7 +91,7 @@ debug :: Either ParseError (Either PassErr TAst, String) -> IO String
 debug = \case
   Left perr -> return $ "ParseError : " ++ show perr
   Right (r, s) -> do
-    putStrLn s
+    --putStrLn s
     case r of
       Left terr -> return $ pretty terr
       Right v -> exec v

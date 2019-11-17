@@ -8,86 +8,82 @@ Mona is a purely functional programming language featuring :
 * Type classes
 * Higher kinded types
 * Kind inference
+* Kind polymorphism
 * Pattern matching
-* Sum and Product types
+* Generalized Algebraic Data Types
 * A very small set of native functions
 * Bugs (not too much hopefully)
 
 # Examples
 
-## Function
+## Defining functions
 
-Adding 3 numbers.
-
-```
-let add3 a b c = a + b + c;
-```
-
-## Lambda
-
-Same thing.
+Function definitions start with `let`, You can declare arguments on the left of the equal or use the lambda syntax.
 
 ```
-let add3 = \a b c -> a + b + c;
+let add3Sim a b c = a + b + c;
+let add3Lam = \a b c -> a + b + c;
 ```
 
-## Condition
+## Branching
 
-Basic if-then-else condition.
-The clauses are lazily evaluated, allowing this example to produce a value in finite time.
+Branching is done through if-then-else and pattern matching, the first being just sugar for the second. The clauses of the patterns are lazily evaluated.
 
 ```
 let fac a = if (a == 0) then a else a * (fac (a - 1));
+
+let isNone a = case a of
+  (Just k) -> False,
+  (Nothing) -> True;
 ```
 
 ## Explicit typing
 
-Actually the previous example wont compile because fac is not defined. You have to give it a signature first.
+You can specify function's types using the `sig` keyword. It is especially necessary for recursion because the name of the function is not known at compile time.
 
 ```
 sig fac = Int -> Int;
 let fac a = if (a == 0) then a else a * (fac (a - 1));
 ```
 
-## Fixed point combinator
+## Fix
 
-Or you can use fix if you really don't want to write the signature.
-
-```
-let facf f a = if a == 0 then a else a (f (a - 1));
-let fac = fix facf;
-```
-
-## Declaring a type
-
-There is only one way of declaring a type, similar to the data declaration in haskell.
+If you want to use recursion in lambdas you can use the `fix` keyword.
 
 ```
-data Maybe a = Just a | Nothing;
+let fac = fix (\f a -> if a == 0 then a else a (f (a - 1)));
 ```
 
-## Fixing a type
+## GADT Syntax
 
-Mona does not support recursion in types. You have to use Fix.
+Data declarations uses a similar syntax than Haskell's GADTs.
+
+You can, for example use it to create a safe head function.
+```
+
+data NonEmpty = | NonEmpty = NonEmpty;
+data Empty = | Empty = Empty;
+
+data List x y =
+  | Nil = List Empty a;
+  | Cons = a -> List b a -> List NonEmpty a;
+
+sig safeHead = forall x . (List NonEmpty x) -> x;
+let safeHead = \(Cons a b) -> a;
+
+let main = printInt (safeHead (Cons 2 Nil));
 
 ```
-data Nat = Nat (Fix Maybe);
-```
 
-## Patterns
-
-Once you have created a type you can pattern match on it, it is lazily evaluated like the if.
+This code will then fail to compile :
 
 ```
-sig isNone = Maybe Int -> Bool;
-let toIntA a = case a of
-  (Just k) -> False,
-  (Nothing) -> True;
+let main = printInt (safeHead Nil);
 ```
 
 ## TypeClasses
 
-The famous functor.
+You can declare type classes using the `class` keyword.
 
 ```
 class Functor f = {
@@ -95,7 +91,7 @@ class Functor f = {
 }
 ```
 
-With an instance.
+And instance with the `inst` keyword.
 
 ```
 inst Maybe of Functor = {
@@ -115,44 +111,19 @@ let main = printInt 7;
 
 ## No prelude.
 
-Mona does not support importing modules so you have to copy the basic prelude in your file.
-The interpreter needs some of these definitions to be exactly like that so don't try to change it.
+Mona does not support importing modules yet (but it will soon I promise) and the if-then-else relies on the existence of the `Bool` datatype. In the same way, the `print` function relies on the existence of the `Print` class. `flip` is also needed so you have to include them at the top of the file.
 
-```sig flip = forall a b c . (a -> b -> c) -> b -> a -> c;
+```
+sig flip = forall a b c . (a -> b -> c) -> b -> a -> c;
 let flip = \f a b -> (f b) a;
 
-data Fix = Unit;
-data Fix f = Fixed (f (Fix f));
-data Fix f = Fixed (f (Fix f));
-sig unfix = forall f . (Fix f) -> f (Fix f);
-let unfix = \(Fixed a) -> a;
-
-data Unit = Unit;
-data Bool = True | False;
-
-class Functor f = {
-  sig fmap = forall a b . (a -> b) -> (f a) -> f b;
-}
+data Bool =
+  | True = Bool;
+  | False = Bool;
 
 class Print s = {
   sig print = s -> List (IO Unit);
 }
-
-inst List Int of Print = {
-  let print = fmap printInt;
-}
-
-data ListF f a = EndF | ConsF a (f a);
-data List a  = List ((fix ListF) a);
-let Cons = (\a b -> List(ConsF a b));
-let End = List(EndF);
-
-inst List of Functor = {
-  let fmap f = \(List l) -> case l of
-    (EndF) -> End,
-    (ConsF a b) -> Cons (f a) (fmap f b);
-}
-
 ```
 
 ## Complete example
@@ -160,10 +131,21 @@ inst List of Functor = {
 Folding Natural numbers to Ints using a catamorphism on the Maybe functor :
 
 ```
-data Maybe a = Just a | Nothing;
-data Nat = Nat (Fix Maybe);
-let S = \(Nat i) -> Nat (Fixed (Just i));
-let Z = Nat (Fixed (Nothing));
+data Fix f = | Fix = f (Fix f) -> Fix f;
+
+sig unfix = forall f . (Fix f) -> f (Fix f);
+let unfix = \(Fix a) -> a;
+
+class Functor f = {
+  sig fmap = forall a b . (a -> b) -> (f a) -> f b;
+}
+
+data Maybe a =
+  | Just = a -> Maybe a
+  | Nothing = Maybe a;
+data Nat = | Nat = Fix Maybe -> Nat;
+let S = \(Nat i) -> Nat (Fix (Just i));
+let Z = Nat (Fix (Nothing));
 
 inst Maybe of Functor = {
   let fmap f v = case v of
@@ -184,6 +166,20 @@ let four = S (S (S (S Z)));
 let main = printInt (toInt four);
 ```
 prints four
+
+# Changelog
+
+## 17/10/2019
+ - Changed data syntax to GADT
+ - Added support for polymorphic kinds
+ - Arrows associate to the left in type signatures
+ - Run time Error messages carry a little bit more information
+
+# TODO
+ - Import modules
+ - Better error messages
+ - compilation
+
 
 # Acknowledgments
 
