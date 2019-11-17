@@ -43,7 +43,7 @@ You can specify function's types using the `sig` keyword. It is especially neces
 
 ```
 sig fac = Int -> Int;
-let fac a = if (a == 0) then a else a * (fac (a - 1));
+let fac a = if (a == 0) then 1 else a * (fac (a - 1));
 ```
 
 ## Fix
