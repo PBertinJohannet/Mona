@@ -124,8 +124,8 @@ runCompose = Func (\a -> return $ Func (\b -> case (a, b) of
   (Func a, Func b) -> return $ Func (a <=< b)
   (a, b) -> throwError $ ShouldNotHappen $ "Non func in native " ++ pretty a))
 
-makeRunCons :: (Int, String, [Expr]) -> (String, Run Value)
-makeRunCons (tag, name, exprs) = (name, construct tag (length exprs) [])
+makeRunCons :: Int -> (Int, String) -> (String, Run Value)
+makeRunCons maxTag (tag, name) = (name, construct tag maxTag [])
 
 construct :: Int -> Int -> [Value] -> Run Value
 construct tag 0 prods = return $ Variant tag $ Prod prods
@@ -136,8 +136,8 @@ applyVal a b = case a of
   Func f -> f b
   e -> throwError $ ShouldNotHappen $ "applying a non function " ++ pretty a ++ " to an arg " ++ pretty e ++ "\n"
 
-makeRunPat :: (Int, String, [Expr]) -> (String, Run Value)
-makeRunPat (tag, name, _) = ("~" ++ name, return $ Func $ return . Func . runPat tag)
+makeRunPat :: (Int, String) -> (String, Run Value)
+makeRunPat (tag, name) = ("~" ++ name, return $ Func $ return . Func . runPat tag)
 
 runPat :: Int -> Value -> Value -> Run Value
 runPat tag func (Variant tag' _) | tag /= tag' = return PatFail
