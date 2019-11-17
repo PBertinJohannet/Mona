@@ -10,7 +10,7 @@ import System.IO
 import qualified Data.Text.Lazy as L
 import Env
 import Syntax
-import Infer
+import qualified Infer
 import Text.Parsec (ParseError, SourcePos)
 import Pretty
 import Type (Scheme, showKind)
@@ -31,8 +31,7 @@ import qualified Data.Map as Map
 main = (getArgs <&> head >>= readFile) >>= run >>= putStrLn
 
 data PassErr
- = TypeError TypeError
- | StringError String
+ = TypeError Infer.TypeError
  | DataDeclError DataDecl.DataDeclError
  | DispatchError DispatchError;
 
@@ -50,7 +49,7 @@ run = L.pack
 
 instance Pretty (Scheme, Expr) where
   pretty (s, e) = "check : " ++ pretty s ++ " vs " ++ pretty e ++ "\n"
-
+{-
 forgetPos :: [(String, Statement)] -> ExceptT PassErr (Writer String) [(String, StatementF Forgot)]
 forgetPos = mapM forget'
 
@@ -58,7 +57,7 @@ forget' :: (String, Statement) -> ExceptT PassErr (Writer String) (String, State
 forget' (s, st) = do
   tell $ show st
   return (s, fmap forget st)
-
+-}
 passes :: [(String, Statement)] -> ExceptT PassErr (Writer String) TAst
 passes a = do
   let Program exprs datas classes insts sigs = sepDecls a
@@ -73,8 +72,8 @@ passes a = do
   tell $ "after sigs : " ++ showKind env ++ "\n"
   --tell $ pretty env
   --tell $ pretty exprs
-  env <- withExceptT TypeError $ inferTop env exprs
-  env <- withExceptT TypeError $ checkInstances env insts
+  env <- withExceptT TypeError $ Infer.inferTop env exprs
+  env <- withExceptT TypeError $ Infer.checkInstances env insts
   let (Envs _ _ _ TAst{compiled = comp}) = env
   (TAst texprs _) <- withExceptT DispatchError $ runDispatch env
   tell $ "now run  : \n\n" ++ showKind env ++ "\n\n\n"
@@ -90,8 +89,7 @@ exec (TAst texprs comp) = do
 debug :: Either ParseError (Either PassErr TAst, String) -> IO String
 debug = \case
   Left perr -> return $ "ParseError : " ++ show perr
-  Right (r, s) -> do
-    --putStrLn s
+  Right (r, s) ->
     case r of
       Left terr -> return $ pretty terr
       Right v -> exec v

@@ -19,31 +19,52 @@ import Control.Arrow
 import Subst
 import qualified Data.Map as Map
 import qualified Data.Set as Set
-import Data.List (nub, find, length)
+import Data.List (nub, find, length, intercalate)
 import Pretty
 import RecursionSchemes
 
-newtype Union = Union (Type, Type) deriving Show;
+newtype Union = Union (Type, Type, Location) deriving Show;
 
 instance Pretty Union where
-  pretty (Union (a, b)) = pretty a ++ " should unify with : " ++ pretty b ++ "\n"
+  pretty (Union (a, b, _)) = pretty a ++ " should unify with : " ++ pretty b ++ "\n"
 
-type Constraints = ([Union], [Pred])
+type Constraints = ([Union], [(Pred, Location)])
+
+instance Pretty (Pred, Location) where
+  pretty (a, b) = pretty a
 
 instance Pretty Constraints where
   pretty (a, b) = prettyL a ++ " => " ++ prettyL b ++ "\n"
 
-union :: (Type, Type) -> Constraints
-union u = ([Union u], [])
+union :: Location -> (Type, Type) -> Constraints
+union loc (a, b) = ([Union (a, b, loc)], [])
 
-predicate :: [Pred] -> Constraints
-predicate p = ([], p)
+predicate :: [Pred] -> Location -> Constraints
+predicate p l = ([], (,l) <$> p)
 
 instance Substituable Union where
-  apply s (Union (a, b)) = Union (apply s a, apply s b)
-  ftv (Union (a, b)) = ftv a `Set.union` ftv b
+  apply s (Union (a, b, c)) = Union (apply s a, apply s b, c)
+  ftv (Union (a, b, _)) = ftv a `Set.union` ftv b
 
-data TypeError
+instance Substituable (Pred, Location) where
+  apply s (a, b) = (apply s a, b)
+  ftv (a, _) = ftv a
+
+data TypeError = TypeError TypeErrorV [Location];
+
+instance Pretty TypeError where
+  pretty (TypeError v []) = pretty v ++ " at <no location info>"
+  pretty (TypeError v loc) = pretty v ++ " at " ++ intercalate " at " (pretty <$> loc)
+
+throwErrorV :: MonadError TypeError m => TypeErrorV -> m a
+throwErrorV variant = throwError (TypeError variant [])
+
+withErrorLoc :: MonadError TypeError m => m a -> Location -> m a
+withErrorLoc a loc = a `catchError` withLoc
+  where
+    withLoc (TypeError variant a) = throwError $ TypeError variant (loc:a)
+
+data TypeErrorV
   = UnboundVariable String
   | InfiniteType Type
   | NotInClass String Type
@@ -57,7 +78,7 @@ data TypeError
   | SignatureMismatch Subst
   | UnificationMismatch [Type] [Type] deriving (Show, Eq);
 
-instance Pretty TypeError where
+instance Pretty TypeErrorV where
   pretty = \case
     UnboundVariable s -> "Variable not in scope : "++ s
     InfiniteType t -> "Cannot create infinite type : "++pretty t
@@ -89,17 +110,16 @@ runSolve env cs = runReaderT (solver cs) env
 
 checkInstances :: Envs -> [InstCheck] -> ExceptLog Envs
 checkInstances env [] = return env
-checkInstances (Envs d env cenv tast) ((name, sc, ex):xs) = do
+checkInstances (Envs d env cenv tast) ((loc, name, sc, ex):xs) = do
   (_, texp) <- inferExprT cenv env ex sc
   checkInstances (Envs d env cenv (extendAst tast (name, texp))) xs
 
-inferTop :: Envs -> [(String, Expr)] -> ExceptLog Envs
+inferTop :: Envs -> [(Location, String, Expr)] -> ExceptLog Envs
 inferTop env [] = return env
-inferTop (Envs d env cenv tast) ((name, ex):xs) = do
-  --tell $ "infering : " ++ pretty ex ++ "\n"
+inferTop (Envs d env cenv tast) ((loc, name, ex):xs) = do
   (tp, texp) <- case Env.lookup name env of
-    Nothing -> inferExpr cenv env ex
-    Just sc -> inferExprT cenv env ex sc
+    Nothing -> inferExpr cenv env ex `withErrorLoc` loc
+    Just sc -> inferExprT cenv env ex sc `withErrorLoc` loc
   inferTop (Envs d (extend env (name, tp)) cenv (extendAst tast (name, texp))) xs
 
 inferExpr :: ClassEnv -> Env -> Expr -> ExceptLog (Scheme, TExpr)
@@ -112,7 +132,7 @@ inferExpr cenv env ex = case runInfer env (runWriterT $ infer ex) of
     tell $ "constraints : " ++ pretty cs ++ " go \n"
     (preds, subst) <- runSolve cenv cs
     tell $ "before : " ++ pretty (apply subst ty') ++ "\n" ++ pretty (apply subst ty) ++ "\n"
-    let (b, s) = (closeOver (apply subst ty) (apply subst preds) $ apply subst ty')
+    let (b, s) = closeOver (apply subst ty) (apply subst preds) $ apply subst ty'
     tell $ "after CO : " ++ pretty b ++ "\n" ++ pretty s ++ "\n"
     return (closeOver (apply subst ty) (apply subst preds) $ apply subst ty')
 
@@ -120,18 +140,18 @@ inferExprT :: ClassEnv -> Env -> Expr -> Scheme -> ExceptLog (Scheme, TExpr)
 inferExprT cenv env ex tp = case runInfer env (runWriterT $ inferEq ex tp) of
   Left err -> throwError err
   Right ((texp, expected), cs) -> do
-    tell $ "doing : " ++ pretty ex ++ "\n"
+    --tell $ "doing : " ++ pretty ex ++ "\n"
     (preds, subst) <- runSolve cenv cs
     let (_, _, Qual _ found) = ann texp
-    tell $ "found : " ++ pretty (apply subst found) ++ "\n"
-    tell $ "expected : " ++ pretty (apply subst expected) ++ "\n"
+    --tell $ "found : " ++ pretty (apply subst found) ++ "\n"
+    --tell $ "expected : " ++ pretty (apply subst expected) ++ "\n"
     s0 <- checkStrict (apply subst found) (apply subst expected) False
     checkSubst s0
     let s1 = s0 `compose` subst
-    tell $ "sub : " ++ pretty s1 ++ "\n"
-    tell $ "before : " ++ pretty (apply s1 texp) ++ "\n" ++ pretty (apply s1 found) ++ "\n"
-    let (b, s) = (closeOver (apply s1 found) (apply s1 preds) $ apply s1 texp)
-    tell $ "after COC : " ++ pretty b ++ "\n" ++ pretty s ++ "\n"
+    --tell $ "sub : " ++ pretty s1 ++ "\n"
+    --tell $ "before : " ++ pretty (apply s1 texp) ++ "\n" ++ pretty (apply s1 found) ++ "\n"
+    let (b, s) = closeOver (apply s1 found) (apply s1 preds) $ apply s1 texp
+    --tell $ "after COC : " ++ pretty b ++ "\n" ++ pretty s ++ "\n"
     return (closeOver (apply s1 found) (apply s1 preds) $ apply s1 texp)
 
 runInfer :: Env -> Infer a -> Either TypeError a
@@ -196,7 +216,7 @@ lookupEnv x = do
   (TypeEnv env) <- ask
   case Map.lookup x env of
     Just s -> instantiate s
-    Nothing -> throwError $ UnboundVariable $ show x
+    Nothing -> throwErrorV $ UnboundVariable $ show x
 
 inferEq :: Expr -> Scheme -> InferCons (TExpr, Type)
 inferEq e t0 = do
@@ -223,42 +243,42 @@ inferAlgM = \case
     (l, k) -> do
         k <- sequence k
         let tpk = getTp <$> k
-        (tp, sub) <- inferAlg tpk
+        (tp, sub) <- inferAlg l tpk
         return (In $ (l, sub, tp) :< k)
 
-inferAlg :: ExprF Type -> InferCons (Qual Type, Subst)
-inferAlg = \case
+inferAlg :: Location -> ExprF Type -> InferCons (Qual Type, Subst)
+inferAlg l = \case
       Lit _ -> do
         tell noConstraints
         noSub typeInt
 
       Case sourceT (t:ts) -> do
-        let exprEq = mconcat $ curry union t <$> ts
+        let exprEq = mconcat $ curry (union l) t <$> ts
         destT <- fresh
-        tell $ union (t, sourceT `mkArr` destT) <> exprEq
+        tell $ union l (t, sourceT `mkArr` destT) <> exprEq
         noSub destT
 
       Var x -> do
         env <- ask
         (sub, Qual p t) <- lookupEnv x -- `catchError` \e -> lookupEnv $ pretty env
-        tell $ predicate p
+        tell $ predicate p l
         return (Qual p t, sub)
 
       App t1 t2 -> do
         tv <- fresh
-        tell $ union (t1, t2 `mkArr` tv)
+        tell $ union l (t1, t2 `mkArr` tv)
         noSub tv
 
       Fix t1 -> do
         tv <- fresh
-        tell $ union (tv `mkArr` tv, t1)
+        tell $ union l (tv `mkArr` tv, t1)
         noSub tv
 
 checkSubst :: Subst -> ExceptLog Subst
 checkSubst sub = Map.elems >>> nub >>> check $ sub
   where check l = if length l == Map.size sub
                   then return sub
-                  else throwError $ SignatureMismatch sub
+                  else throwErrorV $ SignatureMismatch sub
 
 checkStrict :: Type -> Type -> Bool -> ExceptLog Subst
 checkStrict t1 t2 _ | t1 == t2 = return nullSubst
@@ -275,7 +295,7 @@ checkStrict (TApp t1 v1) (TApp t2 v2) c = do
   s1 <- checkStrict t1 t2 c
   s2 <- checkStrict (apply s1 v1) (apply s1 v2) c
   return $ s2 `compose` s1
-checkStrict t1 t2 _ = throwError $ UnificationFail t1 t2
+checkStrict t1 t2 _ = throwErrorV $ UnificationFail t1 t2
 
 type Unifier = (Subst, [Union])
 
@@ -287,7 +307,7 @@ unifies t1 t2 | t1 == t2 = return nullSubst
 unifies (TVar v) t = bind v t
 unifies t (TVar v) = bind v t
 unifies (TApp t1 t2) (TApp t3 t4) = unifyMany [t1, t2] [t3, t4]
-unifies t1 t2 = throwError $ UnificationFail t1 t2
+unifies t1 t2 = throwErrorV $ UnificationFail t1 t2
 
 unifyMany :: [Type] -> [Type] -> Solve Subst
 unifyMany [] [] = return nullSubst
@@ -295,7 +315,7 @@ unifyMany (t1 : ts1) (t2 : ts2) = do
   s1 <- unifies t1 t2
   s2 <- unifyMany (apply s1 ts1) (apply s1 ts2)
   return $ s2 `compose` s1
-unifyMany t1 t2 = throwError $ UnificationMismatch t1 t2
+unifyMany t1 t2 = throwErrorV $ UnificationMismatch t1 t2
 
 solver :: Constraints -> Solve ([Pred], Subst)
 solver (unions, ps) = do
@@ -312,26 +332,26 @@ unionSolve :: Unifier -> Solve Subst
 unionSolve (su, cs) =
   case cs of
     [] -> return su
-    Union (t1, t2) : cs1 -> do
+    Union (t1, t2, loc) : cs1 -> do
       --tell $ "unify : " ++ pretty t1 ++ " and " ++ pretty t2 ++ "\n"
-      su1 <- unifies t1 t2
+      su1 <- unifies t1 t2 `withErrorLoc` loc
       --tell $ "found : " ++ pretty su1 ++ "\n"
       unionSolve (su1 `compose` su, apply su1 cs1)
 
-data ClassSolver = ClassSolver{found :: [Pred], remain :: [Pred]};
+data ClassSolver = ClassSolver{found :: [Pred], remain :: [(Pred, Location)]};
 
 classSolve :: ClassSolver -> Solve [Pred]
 classSolve = \case
   ClassSolver founds [] -> return founds
-  ClassSolver founds (p:ps) -> do
-    preds <- solvePred p
-    classSolve $ ClassSolver (founds ++ preds) ps
+  ClassSolver founds ((p, loc):ps) -> do
+    preds <- solvePred p `withErrorLoc` loc
+    classSolve (ClassSolver (founds ++ preds) ps) `withErrorLoc` loc
 
 solvePred :: Pred -> Solve [Pred]
 solvePred (IsIn n t) = do
   ClassEnv cenv <- ask
   case Map.lookup n cenv of
-    Nothing -> throwError $ UnknownClass n
+    Nothing -> throwErrorV $ UnknownClass n
     Just cls -> isIn n cls t
 
 isIn :: String -> Class -> Type -> Solve [Pred]
@@ -342,19 +362,19 @@ isIn cname (m, insts) e = do
     t -> satisfyInsts (IsIn cname t) insts
 
 satisfyInsts :: Pred -> [Inst] -> Solve [Pred]
-satisfyInsts (IsIn c t) [] = throwError $ NotInClass c t
+satisfyInsts (IsIn c t) [] = throwErrorV $ NotInClass c t
 satisfyInsts s [i] = satisfyInst s i
 satisfyInsts s (i:is) = satisfyInst s i `catchError` \e -> satisfyInsts s is
 
 satisfyInst :: Pred -> Inst -> Solve [Pred]
 satisfyInst (IsIn c t) q@(Qual ps (IsIn _ t')) = do
-  s <- unifies t' t `catchError` const (throwError $ NotInClass c t)
+  s <- unifies t' t `catchError` const (throwErrorV $ NotInClass c t)
   return $ apply s ps
 
 -- tries to unify a and t
 bind :: TVar -> Type -> Solve Subst
 bind a t | t == TVar a = return nullSubst -- bind a t =
-         | occursCheck a t = throwError $ InfiniteType t
+         | occursCheck a t = throwErrorV $ InfiniteType t
          | otherwise = return $ Map.singleton a t
 
 occursCheck :: Substituable a => TVar -> a -> Bool

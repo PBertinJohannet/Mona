@@ -31,14 +31,15 @@ data Expr
   | Position SourcePos Expr
   deriving (Eq, Ord)
 
-type Statement = S.StatementF Expr
-type StatementAnn = S.StatementF S.Expr
+type NakedStatement = S.StatementF Expr
+type Statement = (S.Location, S.StatementF Expr)
+type StatementAnn = (S.Location, S.StatementF S.Expr)
 
 toLoc :: SourcePos -> S.Location
 toLoc s = S.Loc (sourceName s, sourceLine s, sourceColumn s)
 
 toSyntax :: SourcePos -> [Binding] -> [BindingAnn]
-toSyntax s = fmap $ second (fmap $ annotate (toLoc s))
+toSyntax s = fmap $ second $ second $ fmap (annotate (toLoc s))
 
 annotate :: S.Location -> Expr -> S.Expr
 annotate = anaCF myAlg
@@ -59,6 +60,12 @@ withPos p = do
   pos <- getPosition
   e <- p
   return $ Position pos e
+
+posInTuple :: Parser (a, b) -> Parser (S.Location, a, b)
+posInTuple p = do
+  pos <- getPosition
+  (x, y) <- p
+  return (toLoc pos, x, y)
 
 -- returns the transformed function.
 pat :: Parser (Expr -> Expr)
@@ -190,8 +197,8 @@ mychainlfirst p f op = do {a <- f <$> p; rest a}
 mychainr :: Parser a -> Parser (a -> a -> a) -> Parser a
 mychainr p op = do {a <- p; rest a}
   where rest a = (do  f <- op
-                      b <- p
-                      res <- rest b
+                      k <- p
+                      res <- rest k
                       return $ f a res)
                     <|> return a
 
@@ -318,10 +325,11 @@ consDecl = do
   optional semi
   return (name, x)
 
+type NakedBinding = (String, NakedStatement)
 type Binding = (String, Statement)
 type BindingAnn = (String, StatementAnn)
 
-instdecl :: Parser Binding
+instdecl :: Parser NakedBinding
 instdecl = do
   reserved "inst"
   tp <- parseType
@@ -333,26 +341,26 @@ instdecl = do
   reservedOp "}"
   return ("", S.Inst cls tp vals)
 
-sig :: Parser Binding
+sig :: Parser NakedBinding
 sig = second S.Sig <$> sigIn
 
-classdecl :: Parser Binding
+classdecl :: Parser NakedBinding
 classdecl = do
   reserved "class"
   name <- identifier
   typename <- identifier
   reservedOp "="
   reservedOp "{"
-  sigs <- many $ do {x <- sigIn; semi; return x}
+  sigs <- many $ posInTuple $ do {x <- sigIn; semi; return x}
   reservedOp "}"
   return (name, S.Class name typename sigs)
 
-letdecl :: Parser Binding
+letdecl :: Parser NakedBinding
 letdecl = do
   (n, e) <- inLet
   return (n, S.Expr e)
 
-letrecdecl :: Parser Binding
+letrecdecl :: Parser NakedBinding
 letrecdecl = do
   reserved "let"
   reserved "rec"
@@ -362,7 +370,7 @@ letrecdecl = do
   body <- expr
   return (name, S.Expr $ Fix $ Lam name $ foldr Lam body arg)
 
-typedecl :: Parser Binding
+typedecl :: Parser NakedBinding
 typedecl = do
   reserved "data"
   name <- identifier
@@ -371,14 +379,15 @@ typedecl = do
   body <- many consDecl
   return (name, S.TypeDecl tvars body)
 
-decl :: Parser Binding
+decl :: Parser NakedBinding
 decl = try letrecdecl <|> letdecl <|> typedecl <|> sig <|> classdecl <|> instdecl
 
 top :: Parser Binding
 top = do
-  x <- decl
+  pos <- getPosition
+  (name, s) <- decl
   optional semi
-  return x
+  return (name, (toLoc pos, s))
 
 modl ::  Parser (SourcePos, [Binding])
 modl = do

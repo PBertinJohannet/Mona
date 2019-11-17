@@ -32,45 +32,51 @@ type Forgot = Term ExprF -- expression without any information
 data Field = FieldS String | FieldApp Field Field deriving (Show, Eq, Ord)
 
 type Decl = (String, Statement)
-type ExprDecl = (String, Expr)
-type ClassDecl = (String, String, [(String, Scheme)]);
-type DataDecl = (String, [String], [(String, Type)])
-type InstDecl = (String, Type, [(String, Expr)]);
-type InstCheck = (String, Scheme, Expr)
+type ExprDecl = (Location, String, Expr)
+type ClassDecl = (Location, String, String, [(Location, String, Scheme)]);
+type DataDecl = (Location, String, [String], [(String, Type)])
+type InstDecl = (Location, String, Type, [(String, Expr)]);
+type InstCheck = ([Location], String, Scheme, Expr)
+
+instance Pretty (Location, String, Scheme) where
+  pretty (loc, n, sc) = n ++ " :: " ++ pretty sc
+
+instance Pretty (Location, String, Expr) where
+  pretty (loc, n, ex) = n ++ " :: " ++ pretty ex
 
 instance Pretty InstCheck where
-  pretty (n, sc, ex) = n ++ " :: " ++ pretty sc ++ inParen (pretty ex)
+  pretty (loc, n, sc, ex) = n ++ " :: " ++ pretty sc ++ inParen (pretty ex)
 
 data StatementF a
  = Expr a
  | TypeDecl [String] [(String, Type)]
- | Class String String [(String, Scheme)]
+ | Class String String [(Location, String, Scheme)]
  | Inst String Type [(String, a)]
  | Sig Scheme
  deriving (Functor, Foldable, Traversable, Show)
 
-type Statement = StatementF Expr;
+type Statement = (Location, StatementF Expr);
 
 data Program = Program{
   exprs :: [ExprDecl],
   datas :: [DataDecl],
   clasdecls :: [ClassDecl],
   instances :: [InstDecl],
-  signatures :: [(String, Scheme)]}
+  signatures :: [(Location, String, Scheme)]}
 
 prettyDatas :: [DataDecl] -> String
-prettyDatas = unwords . fmap (\(a, b, c) -> a ++ " (" ++ unwords b ++ ") ::\n " ++ prettyL c ++ "\n\n")
+prettyDatas = unwords . fmap (\(loc, a, b, c) -> a ++ " (" ++ unwords b ++ ") ::\n " ++ prettyL c ++ "\n\n")
 
 sepDecls :: [Decl] -> Program
 sepDecls [] = Program [] [] [] [] []
 sepDecls (d:ds) =
   let prog = sepDecls ds in
   case d of
-    (n, Inst s t e) -> prog{instances = (s, t, e) : instances prog}
-    (s, TypeDecl tvars e) -> prog{datas = (s, tvars, e): datas prog}
-    (s, Expr e) -> prog{exprs = (s, e): exprs prog}
-    (s, Class nm vr sigs) -> prog{clasdecls = (nm, vr, sigs): clasdecls prog}
-    (s, Sig e) -> prog{signatures = (s, e): signatures prog}
+    (n, (loc, Inst s t e)) -> prog{instances = (loc, s, t, e) : instances prog}
+    (s, (loc, TypeDecl tvars e)) -> prog{datas = (loc, s, tvars, e): datas prog}
+    (s, (loc, Expr e)) -> prog{exprs = (loc, s, e): exprs prog}
+    (s, (loc, Class nm vr sigs)) -> prog{clasdecls = (loc, nm, vr, sigs): clasdecls prog}
+    (s, (loc, Sig e)) -> prog{signatures = (loc, s, e): signatures prog}
 
 appC :: Expr -> Expr -> Expr
 appC a@(In (l :< _)) b = In $ l :< App a b
@@ -166,4 +172,4 @@ instance Pretty Location where
 instance Pretty (ClassDecl, [InstDecl]) where
   pretty (c, i) = prettycls c ++ " \n => \n "++ unwords (show <$> i) ++ "\n"
      where
-       prettycls (a, b, l) = a ++ " : " ++ b  ++ " -> " ++ prettyL l ++ "\n"
+       prettycls (loc, a, b, l) = a ++ " : " ++ b  ++ " -> " ++ prettyL l ++ "\n"

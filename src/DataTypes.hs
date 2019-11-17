@@ -33,7 +33,7 @@ runDataDecls :: [DataDecl] -> Envs -> ExceptT DataDeclError (Writer String) Envs
 runDataDecls ds env = foldM runDataDecl env ds
 
 runDataDecl :: Envs-> DataDecl -> ExceptT DataDeclError (Writer String) Envs
-runDataDecl envs@(Envs d v cenv tast) (name, tvars, types) = do
+runDataDecl envs@(Envs d v cenv tast) (loc, name, tvars, types) = do
   (kind, cons) <- runInferKind d $ inferKinds name tvars (snd <$> types)
   tell $ "for "  ++ name ++ " cons are : " ++ prettyL cons
   let consSchemes = makeCons (fst <$> types) name cons

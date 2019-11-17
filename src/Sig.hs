@@ -1,6 +1,7 @@
 {-# LANGUAGE LambdaCase #-}
 module Sig where
 
+import Syntax
 import Type
 import Env
 import Control.Monad.Except
@@ -12,11 +13,11 @@ import qualified Env (lookup)
 
 type AddSig a = ExceptT TypeError (Writer String) a
 
-addSigs :: [(String, Scheme)] -> Envs -> AddSig Envs
+addSigs :: [(Location, String, Scheme)] -> Envs -> AddSig Envs
 addSigs [] env = return env
-addSigs ((name, scheme):ss) env = do
+addSigs ((loc, name, scheme):ss) env = do
   Envs d v c t <- addSigs ss env
-  withCons <- replaceConsTypes [] d scheme
+  withCons <- replaceConsTypes [] d scheme `withErrorLoc` loc
   return $ Envs d (v `extend` (name, withCons)) c t
 
 class ReplaceCons a where
@@ -37,5 +38,5 @@ instance ReplaceCons Type where
       Just tv -> return $ TVar tv
       Nothing -> case Env.lookup name env of
         Just k -> return $ TCon name k
-        Nothing -> throwError $ UnboundVariable name
+        Nothing -> throwErrorV $ UnboundVariable name
     t -> return t
