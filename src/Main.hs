@@ -21,7 +21,7 @@ import qualified DataTypes as DataDecl
 import Typeclass (runAddClasses)
 import RecursionSchemes
 import Sig
-import Run
+import qualified Run
 import Dispatch
 import Native
 import qualified Data.Map as Map
@@ -82,7 +82,7 @@ passes a = do
 
 exec :: TAst -> IO String
 exec (TAst texprs comp) = do
-  res <- runProgram $ createRunEnv allNatives texprs comp
+  res <- Run.runProgram $ Run.createRunEnv allNatives texprs comp
   case res of
     Left err -> return $ pretty err
     Right result -> return ""

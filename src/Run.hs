@@ -43,6 +43,11 @@ instance Pretty Value where
     Prod ps -> inParen $ intercalate "," (pretty <$> ps)
     Func f -> "<function>"
 
+debug :: Value -> Run String
+debug = \case
+  Func f -> pretty <$> f (Int 1)
+  e -> return $ pretty e
+
 newtype RuntimeEnv = RTEnv (Map.Map String (Run Value))
 
 instance Pretty RuntimeEnv where
@@ -124,8 +129,8 @@ runCompose = Func (\a -> return $ Func (\b -> case (a, b) of
   (Func a, Func b) -> return $ Func (a <=< b)
   (a, b) -> throwError $ ShouldNotHappen $ "Non func in native " ++ pretty a))
 
-makeRunCons :: Int -> (Int, String) -> (String, Run Value)
-makeRunCons maxTag (tag, name) = (name, construct tag maxTag [])
+makeRunCons :: (Int, Int, String) -> (String, Run Value)
+makeRunCons (nbVals, tag, name) = (name, construct tag nbVals [])
 
 construct :: Int -> Int -> [Value] -> Run Value
 construct tag 0 prods = return $ Variant tag $ Prod prods
@@ -137,12 +142,14 @@ applyVal a b = case a of
   e -> throwError $ ShouldNotHappen $ "applying a non function " ++ pretty a ++ " to an arg " ++ pretty e ++ "\n"
 
 makeRunPat :: (Int, String) -> (String, Run Value)
-makeRunPat (tag, name) = ("~" ++ name, return $ Func $ return . Func . runPat tag)
+makeRunPat (tag, name) = ("~" ++ name, return $ Func $ return . Func . runPat name tag)
 
-runPat :: Int -> Value -> Value -> Run Value
-runPat tag func (Variant tag' _) | tag /= tag' = return PatFail
-runPat _ func (Variant _ (Prod vals)) = foldM applyVal func vals
-runPat _ _ v = throwError $ ShouldNotHappen $ "Pattern called on non Object" ++ pretty v
+runPat :: String -> Int -> Value -> Value -> Run Value
+runPat _ tag func (Variant tag' _) | tag /= tag' = return PatFail
+runPat _ _ func (Variant _ (Prod vals)) = foldM applyVal func vals
+runPat s _ _ v = do
+  val <- debug v
+  throwError $ ShouldNotHappen $ "Pattern called on non Object" ++ val ++ " at : " ++ s
 
 unitVariant :: Int -> Value
 unitVariant i = Variant i $ Prod []

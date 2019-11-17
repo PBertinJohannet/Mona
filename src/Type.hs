@@ -46,6 +46,11 @@ makeTypeConstant n = \case
 
 data NonEmpty a = Only a | a :+: (NonEmpty a) deriving (Eq, Show)
 
+lenMinusOne :: NonEmpty a -> Int
+lenMinusOne = \case
+  Only a -> 0
+  a :+: b -> 1 + lenMinusOne b
+
 -- transforms a constructor's type to a pattern's type :
 -- List :: a -> List a -> List a becomes ~List :: List a -> (a -> List a -> b) -> b
 -- more generaly :

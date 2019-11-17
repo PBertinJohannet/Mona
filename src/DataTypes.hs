@@ -39,10 +39,11 @@ runDataDecl envs@(Envs d v cenv tast) (name, tvars, types) = do
   let consSchemes = makeCons (fst <$> types) name cons
   let patsSchemes = consToPat <$> consSchemes
   let v' = foldr (flip extend) v $ consSchemes ++ patsSchemes
-  let runCons = makeRunCons (length types) <$> zip [0..] (fst <$> types)
+  let runCons = makeRunCons <$> zip3 (lenMinusOne . sepArgs . snd <$> types) [0..] (fst <$> types)
   let runPats = makeRunPat <$> zip [0..] (fst <$> types)
   let tast' = withCompiled tast $ runPats ++ runCons
   return $ Envs (extend d (name, kind)) v' cenv tast'
+
 
 makeCons :: [String] -> String -> [Type] -> [(String, Scheme)]
 makeCons consNames tpName types = do

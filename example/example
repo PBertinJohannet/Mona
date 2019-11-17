@@ -1,11 +1,10 @@
 sig flip = forall a b c . (a -> b -> c) -> b -> a -> c;
 let flip = \f a b -> (f b) a;
 
-data Fix = Unit;
-data Fix f = Fixed (f (Fix f));
-data Fix f = Fixed (f (Fix f));
+data Fix =
+  | Fix = f (Fix f) -> Fix f;
 sig unfix = forall f . (Fix f) -> f (Fix f);
-let unfix = \(Fixed a) -> a;
+let unfix = \(Fix a) -> a;
 
 data Unit = Unit;
 data Bool = True | False;
