@@ -172,7 +172,7 @@ prints four
 ## 17/10/2019
  - Changed data syntax to GADT
  - Added support for polymorphic kinds
- - Arrows associate to the left in type signatures
+ - Arrows associate to the right in type signatures
  - Run time Error messages carry a little bit more information
 
 # TODO
