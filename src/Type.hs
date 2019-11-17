@@ -49,17 +49,17 @@ data NonEmpty a = Only a | a :+: (NonEmpty a) deriving (Eq, Show)
 -- transforms a constructor's type to a pattern's type :
 -- List :: a -> List a -> List a becomes ~List :: List a -> (a -> List a -> b) -> b
 -- more generaly :
--- Cons :: a -> T becomes ~Cons :: T -> ((a -> b) -> b)
--- Cons :: a -> b -> T becomes ~Cons :: T -> ((a -> b -> c) -> c)
--- Cons :: T becomes ~Cons :: T -> b -> b
+-- Cons :: a -> T becomes ~Cons :: (a -> b) -> T -> b
+-- Cons :: a -> b -> T becomes ~Cons :: (a -> b -> c) -> (T -> c)
+-- Cons :: T becomes ~Cons :: b -> T -> b
 consToPat :: (String, Scheme) -> (String, Scheme)
 consToPat (name, Forall t (Qual p h)) = ("~" ++ name, Forall (retVar:t) newHead)
   where
     newHead = Qual p (consToPat' (sepArgs h) [])
 
     consToPat' :: NonEmpty Type -> [Type] -> Type
-    consToPat' (Only t) b = t `mkArr` (foldr mkArr retType b `mkArr` retType)
-    consToPat' (a :+: t) b = consToPat' t (a:b)
+    consToPat' (Only t) b = foldr mkArr retType b `mkArr` (t `mkArr` retType)
+    consToPat' (a :+: t) b = consToPat' t $ b ++ [a]
 
     retType = TVar retVar
     retVar = TV "~'patret" Star

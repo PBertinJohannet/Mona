@@ -120,6 +120,7 @@ inferExprT :: ClassEnv -> Env -> Expr -> Scheme -> ExceptLog (Scheme, TExpr)
 inferExprT cenv env ex tp = case runInfer env (runWriterT $ inferEq ex tp) of
   Left err -> throwError err
   Right ((texp, expected), cs) -> do
+    tell $ "doing : " ++ pretty ex ++ "\n"
     (preds, subst) <- runSolve cenv cs
     let (_, _, Qual _ found) = ann texp
     tell $ "found : " ++ pretty (apply subst found) ++ "\n"

@@ -35,10 +35,11 @@ runDataDecls ds env = foldM runDataDecl env ds
 runDataDecl :: Envs-> DataDecl -> ExceptT DataDeclError (Writer String) Envs
 runDataDecl envs@(Envs d v cenv tast) (name, tvars, types) = do
   (kind, cons) <- runInferKind d $ inferKinds name tvars (snd <$> types)
+  tell $ "for "  ++ name ++ " cons are : " ++ prettyL cons
   let consSchemes = makeCons (fst <$> types) name cons
   let patsSchemes = consToPat <$> consSchemes
   let v' = foldr (flip extend) v $ consSchemes ++ patsSchemes
-  --tell $ "for : " ++ name ++ " found : " ++  pretty res ++ "\n"
+  --tell $ "for : " ++ name ++ "s found : " ++  pretty res ++ "\n"
   return $ Envs (extend d (name, kind)) v' cenv tast
 
 makeCons :: [String] -> String -> [Type] -> [(String, Scheme)]
@@ -63,12 +64,12 @@ type InferKind = ReaderT KEnv (StateT InferState (ExceptT DataDeclError (Writer 
 runInferKind :: KEnv -> InferKind a -> ExceptT DataDeclError (Writer String) a
 runInferKind kenv inf = evalStateT (runReaderT inf kenv) initInfer
 
-lookupEnv :: String -> InferKind Kind
+lookupEnv :: String -> InferKind (Kind, Type)
 lookupEnv s = do
   res <- Env.lookup s <$> ask
   case res of
-    Just a -> return a
-    Nothing -> return $ KVar s
+    Just a -> return (a, TCon s a)
+    Nothing -> return (KVar s, TVar $ TV s (KVar s))
 
 fresh :: InferKind Kind
 fresh = do
@@ -109,8 +110,8 @@ union a b = [(a, b)]
 generateConstraints :: Type -> InferKind (Constraints, Kind, Type)
 generateConstraints = \case
   TVar (TV a _) -> do
-    k <- lookupEnv a
-    return ([], k, TVar (TV a k))
+    (k, t) <- lookupEnv a
+    return ([], k, t)
   TCon s k -> return ([], k, TCon s k)
   TApp a b -> do
     ret <- fresh
