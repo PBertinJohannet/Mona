@@ -1,6 +1,5 @@
 Test suite tests: RUNNING...
-"test/safeList.md" (line 24, column 1):
-unexpected end of input
-expecting "```"
+"test/safeList.md" (line 2, column 2):
+unexpected "`"
 Test suite tests: PASS
 Test suite logged to: dist/test/mona-0.1.0.0-tests.log

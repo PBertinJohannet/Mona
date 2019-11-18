@@ -22,13 +22,14 @@ parseLevelDecl i = do
 
 -- will fail if ``` is in the code but I'll correct it when it happens
 parseCode :: Parser String
-parseCode = inBetween "```" "```" (many $ noneOf "'")
+parseCode = inBetween "```" "```" (many $ noneOf "`")
 
 parseExpected :: Parser Test
 parseExpected = do
   pos <- getPosition
   string ">>>"
   res <- many (noneOf "\n")
+  char '\n'
   pos' <- getPosition
   return $ End res pos pos'
 
@@ -39,11 +40,23 @@ inBetween begin end p = do
   string end
   return res
 
+comment :: Parser String
+comment = many ((do
+  char '`'
+  noneOf "`")
+  <|> (do
+  string "``"
+  noneOf "`")
+  <|> noneOf "`#>")
+
 parseHigherLevel :: Int -> Parser Test
 parseHigherLevel i = do
   (j, titl) <- parseLevelDecl i
+  comment
   code <- parseCode
-  next <- many (parseHigherLevel (j + 1) <|> parseExpected)
+  comment
+  next <- many (parseHigherLevel (j + 1)) <|> (return <$> parseExpected)
+  comment
   return (BaseCode titl code next)
 
 parseAnyLevel :: Parser Test
