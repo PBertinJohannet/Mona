@@ -1,5 +1,5 @@
 Test suite tests: RUNNING...
-"test/safeList.md" (line 2, column 2):
-unexpected "`"
+Cases: 2  Tried: 0  Errors: 0  Failures: 0Cases: 2  Tried: 1  Errors: 0  Failures: 0                                          Cases: 2  Tried: 2  Errors: 0  Failures: 0
+Cases: 2  Tried: 0  Errors: 0  Failures: 0Cases: 2  Tried: 1  Errors: 0  Failures: 0                                          Cases: 2  Tried: 2  Errors: 0  Failures: 0
 Test suite tests: PASS
 Test suite logged to: dist/test/mona-0.1.0.0-tests.log

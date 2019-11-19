@@ -14,10 +14,10 @@ let safeHead = \(Cons a b) -> a;
 ```
 let main = printInt (safeHead (Cons 2 Nil));
 ```
->>> ok
+>>>compiled successfully
 
 ## Err
 ```
 let main = printInt (safeHead Nil);
 ```
->>> ohohoh
+>>>TypeError : Cannot unify : NonEmpty with Empty at fileName 13:1 at fileName 13:21

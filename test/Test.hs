@@ -4,7 +4,9 @@ import Mona
 import qualified TestParser as P
 import Control.Arrow
 import Text.Parsec
+import System.Directory
 import qualified Data.Text.Lazy as L
+import System.Path.Glob
 
 asTest :: P.Test -> [Test]
 asTest = fmap shouldGive . asTest'
@@ -37,10 +39,11 @@ runTestFile name = do
   case P.parseModule name f of
     Left e -> print e
     Right t -> do
-      c <- runTestTT $ TestLabel name $ TestList (t >>= asTest)
-      print c
+      runTestTT $ TestLabel name $ TestList $ asTest t
+      return ()
 
 main :: IO ()
 main = do
-  runTestFile "test/safeList.md"
+  files <- glob "test/*.md"
+  traverse runTestFile files
   return ()

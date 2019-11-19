@@ -9,7 +9,7 @@ type Name = String
 
 data Test
   = BaseCode Name String [Test]
-  | End String SourcePos SourcePos;
+  | End String SourcePos SourcePos deriving Show;
 
 -- parses a title of level at least i
 parseLevelDecl :: Int -> Parser (Int, String)
@@ -41,13 +41,7 @@ inBetween begin end p = do
   return res
 
 comment :: Parser String
-comment = many ((do
-  char '`'
-  noneOf "`")
-  <|> (do
-  string "``"
-  noneOf "`")
-  <|> noneOf "`#>")
+comment = many (noneOf "`#>")
 
 parseHigherLevel :: Int -> Parser Test
 parseHigherLevel i = do
@@ -55,12 +49,12 @@ parseHigherLevel i = do
   comment
   code <- parseCode
   comment
-  next <- many (parseHigherLevel (j + 1)) <|> (return <$> parseExpected)
+  next <- many1 (parseHigherLevel (j + 1)) <|> (return <$> parseExpected)
   comment
   return (BaseCode titl code next)
 
 parseAnyLevel :: Parser Test
 parseAnyLevel = parseHigherLevel 0
 
-parseModule ::  FilePath -> L.Text -> Either ParseError [Test]
-parseModule = parse (sepBy parseAnyLevel (string "\n"))
+parseModule ::  FilePath -> L.Text -> Either ParseError Test
+parseModule = parse parseAnyLevel
