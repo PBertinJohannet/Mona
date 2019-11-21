@@ -44,20 +44,6 @@ mergeMaps (((loc, s), d):ds) cls = do
     Just (c, insts) -> return $ Map.alter (fmap $ second (d:)) s inner
     Nothing -> throwError $ TypeError (UndeclaredClass s) [loc]
 
-{-
-group :: [[ClassDecl]] -> [[InstDecl]] -> AddClass [(ClassDecl, [InstDecl])]
-group ([c]:cs) (i:is) =
-  if sel2 c == sel2 (Prelude.head i)
-    then do
-      base <- group cs is
-      return $ (c, i):base
-    else do
-      base <- group cs (i:is)
-      return $ (c, i):base
-group [] (i:is) = throwError $ UndeclaredClass $ sel1 (Prelude.head i)
-group (c:cs) _ = throwError $ MultipleDecl $ sel1 (Prelude.head c)
--}
-
 addInstances :: [InstDecl] -> Envs -> AddClass Envs
 addInstances [] env = return env
 addInstances ((loc, name, tp, _):is) env = do
@@ -99,4 +85,4 @@ groupStrict dEnv locs a b = foldM inGroup [] (zip (sortOn sel2of3 a) (sortOn (fs
       then do
         b <- replaceConsTypes [] dEnv b `withErrorLoc` l
         return $ (locs, unwords [a, s], b, b'):lst
-      else throwError $ TypeError (UnificationFail (tvar a) (tvar a')) (l:locs)
+      else throwError $ TypeError (NotAClassFunction a') (l:locs)

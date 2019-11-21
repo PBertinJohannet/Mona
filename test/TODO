@@ -1,12 +1,6 @@
 
 
 
-108:    Nothing -> throwError $ DoesNotAppear name
-
-src/Typeclass.hs
-45:    Nothing -> throwError $ TypeError (UndeclaredClass s) [loc]
-57:group [] (i:is) = throwError $ UndeclaredClass $ sel1 (Prelude.head i)
-58:group (c:cs) _ = throwError $ MultipleDecl $ sel1 (Prelude.head c)
 102:      else throwError $ TypeError (UnificationFail (tvar a) (tvar a')) (l:locs)
 
 src/Infer.hs
