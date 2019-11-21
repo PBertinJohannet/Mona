@@ -26,7 +26,9 @@ data DataDeclError
  | DoesNotAppear String deriving (Show, Eq)
 
 instance Pretty DataDeclError where
-  pretty = show
+  pretty = \case
+    KindUnificationFail a b -> "(KindUnificationFail) Could not unify kinds " ++ pretty a ++ " and  " ++ pretty b
+    
 
 runDataDecls :: [DataDecl] -> Envs -> ExceptT DataDeclError (Writer String) Envs
 runDataDecls ds env = foldM runDataDecl env ds

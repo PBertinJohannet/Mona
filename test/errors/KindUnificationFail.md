@@ -18,15 +18,16 @@ Here, `MyTuple` is of kind `* -> * -> *` and it expects a type of kind `*` as fi
 data Wrong a =
   | Wrong = MyTuple MyTuple a -> Wrong a;
 ```
->>> error
+>>>DataDeclError : (KindUnificationFail) Could not unify kinds * and  * -> * -> *
 
 ## Mismatch between multiple constructors
 
 If the infered kinds are different between the constructors you also have a mismatch.
+Here the `a` type parameter is declared as `* -> * -> *` in the first constructor and `*` in the second.
 
 ```
 data AlsoWrong a b =
   | Also = AlsoWrong MyTuple Int;
   | Wrong = AlsoWrong Int MyTuple;
 ```
->>> error
+>>>DataDeclError : (KindUnificationFail) Could not unify kinds * -> * -> * and  *

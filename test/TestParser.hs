@@ -41,7 +41,13 @@ inBetween begin end p = do
   return res
 
 comment :: Parser String
-comment = many (noneOf "`#>")
+comment = mconcat <$> many (try (onlyOne '`') <|> try (onlyOne '>') <|> ((:[]) <$> noneOf "`#>"))
+
+onlyOne :: Char -> Parser String
+onlyOne c = do
+  res <- char c
+  res' <- noneOf [c]
+  return [res, res']
 
 parseHigherLevel :: Int -> Parser Test
 parseHigherLevel i = do
