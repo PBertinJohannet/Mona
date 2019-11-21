@@ -23,12 +23,13 @@ import Subst (withFtv)
 
 data DataDeclError
  = KindUnificationFail Kind Kind
- | DoesNotAppear String deriving (Show, Eq)
+ | WrongReturnType String Type Type deriving (Show, Eq)
 
 instance Pretty DataDeclError where
   pretty = \case
     KindUnificationFail a b -> "(KindUnificationFail) Could not unify kinds " ++ pretty a ++ " and  " ++ pretty b
-    
+    WrongReturnType a b c -> "(WrongReturnType) signature's return type should be an application of " ++ a ++ " but it is an application of " ++ pretty c ++ " (in : " ++ pretty b ++ ")"
+
 
 runDataDecls :: [DataDecl] -> Envs -> ExceptT DataDeclError (Writer String) Envs
 runDataDecls ds env = foldM runDataDecl env ds
@@ -57,6 +58,7 @@ inferKinds :: String -> [String] -> NonEmpty Type -> InferKind (Kind, [Type])
 inferKinds name tvars tps = do
   res <- makeBaseEnv name tvars
   kinds@((k, t) :+: ks) <- mapM (inferConstraints res name) tps
+  mapM_ (checkEndsWith name) tps
   let res = mconcat (union k . fst <$> ks)
   sub <- unionSolve (Map.empty, res)
   let typesWithKinds =  mapKind (apply sub) . snd <$> kinds
@@ -93,6 +95,14 @@ type Constraints = [(Kind, Kind)]
 instance Pretty (Kind, Kind) where
   pretty (a, b) = pretty a ++ " <=> " ++ pretty b
 
+checkEndsWith :: String -> Type -> InferKind ()
+checkEndsWith name t = checkIs $ leftMostType $ lastSafe $ sepArgs t
+  where
+    checkIs :: Type -> InferKind ()
+    checkIs (TCon a _) | a == name = return ()
+    checkIs (TVar (TV a _)) | a == name = return ()
+    checkIs e = throwError $ WrongReturnType name t e
+
 inferConstraints :: Constraints -> String -> Type -> InferKind (Kind, Type)
 inferConstraints cs name t = do
   env <- ask
@@ -105,7 +115,7 @@ inferConstraints cs name t = do
   let tpWithKinds = mapKind (apply sol) tp
   case Map.lookup name sol of
     Just a -> return (a, tpWithKinds)
-    Nothing -> throwError $ DoesNotAppear name
+    Nothing -> throwError $ WrongReturnType name t t
 
 union :: Kind -> Kind -> Constraints
 union a b = [(a, b)]

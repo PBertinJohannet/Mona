@@ -1,11 +1,7 @@
 
-src/Sig.hs
-41:        Nothing -> throwErrorV $ UnboundVariableInSig name
 
-src/DataTypes.hs
-55:inferKinds name tvars [] = throwError $ NoConstructor name
+
 108:    Nothing -> throwError $ DoesNotAppear name
-157:unifies k1 k2 = throwError $ KindUnificationFail k1 k2
 
 src/Typeclass.hs
 45:    Nothing -> throwError $ TypeError (UndeclaredClass s) [loc]

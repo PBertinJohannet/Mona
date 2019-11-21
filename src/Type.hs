@@ -52,6 +52,12 @@ data NonEmpty a = a :+: [a] deriving (Eq, Show, Functor, Foldable, Traversable)
 asList :: NonEmpty a -> [a]
 asList (a :+: b) = a : b
 
+lastSafe :: NonEmpty a -> a
+lastSafe = \case
+  a :+: [] -> a
+  a :+: [b] -> b
+  a :+: (b:bs) -> lastSafe (b :+: bs)
+
 lenMinusOne :: NonEmpty a -> Int
 lenMinusOne (a :+: b) = length b
 
@@ -116,6 +122,11 @@ sepArgs :: Type -> NonEmpty Type
 sepArgs = \case
   TApp (TApp (TCon "(->)" k) a) b -> a :+: asList (sepArgs b)
   e -> e :+: []
+
+leftMostType :: Type -> Type
+leftMostType = \case
+  TApp a b -> leftMostType a
+  t -> t
 
 getReturn :: Type -> Type
 getReturn = \case
