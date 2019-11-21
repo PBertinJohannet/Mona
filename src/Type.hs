@@ -1,6 +1,9 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveFoldable #-}
+{-# LANGUAGE DeriveTraversable #-}
 
 module Type where
 import Pretty
@@ -44,12 +47,13 @@ makeTypeConstant n = \case
   TCon s k -> TCon s k
   TApp a b -> TApp (makeTypeConstant n a) (makeTypeConstant n b)
 
-data NonEmpty a = Only a | a :+: (NonEmpty a) deriving (Eq, Show)
+data NonEmpty a = a :+: [a] deriving (Eq, Show, Functor, Foldable, Traversable)
+
+asList :: NonEmpty a -> [a]
+asList (a :+: b) = a : b
 
 lenMinusOne :: NonEmpty a -> Int
-lenMinusOne = \case
-  Only a -> 0
-  a :+: b -> 1 + lenMinusOne b
+lenMinusOne (a :+: b) = length b
 
 -- transforms a constructor's type to a pattern's type :
 -- List :: a -> List a -> List a becomes ~List :: List a -> (a -> List a -> b) -> b
@@ -63,8 +67,8 @@ consToPat (name, Forall t (Qual p h)) = ("~" ++ name, Forall (retVar:t) newHead)
     newHead = Qual p (consToPat' (sepArgs h) [])
 
     consToPat' :: NonEmpty Type -> [Type] -> Type
-    consToPat' (Only t) b = foldr mkArr retType b `mkArr` (t `mkArr` retType)
-    consToPat' (a :+: t) b = consToPat' t $ b ++ [a]
+    consToPat' (t :+: []) b = foldr mkArr retType b `mkArr` (t `mkArr` retType)
+    consToPat' (a :+: (t:ts)) b = consToPat' (t :+: ts) $ b ++ [a]
 
     retType = TVar retVar
     retVar = TV "~'patret" Star
@@ -110,8 +114,8 @@ setReturn = \case
 
 sepArgs :: Type -> NonEmpty Type
 sepArgs = \case
-  TApp (TApp (TCon "(->)" k) a) b -> a :+: sepArgs b
-  e -> Only e
+  TApp (TApp (TCon "(->)" k) a) b -> a :+: asList (sepArgs b)
+  e -> e :+: []
 
 getReturn :: Type -> Type
 getReturn = \case

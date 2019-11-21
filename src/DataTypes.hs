@@ -22,8 +22,7 @@ import Run (Value(..), Run, makeRunPat, makeRunCons)
 import Subst (withFtv)
 
 data DataDeclError
- = NoConstructor String
- | KindUnificationFail Kind Kind
+ = KindUnificationFail Kind Kind
  | DoesNotAppear String deriving (Show, Eq)
 
 instance Pretty DataDeclError where
@@ -36,11 +35,12 @@ runDataDecl :: Envs-> DataDecl -> ExceptT DataDeclError (Writer String) Envs
 runDataDecl envs@(Envs d v cenv tast) (loc, name, tvars, types) = do
   (kind, cons) <- runInferKind d $ inferKinds name tvars (snd <$> types)
   tell $ "for "  ++ name ++ " cons are : " ++ prettyL cons
-  let consSchemes = makeCons (fst <$> types) name cons
+  let typeList = asList types
+  let consSchemes = makeCons (fst <$> typeList) name cons
   let patsSchemes = consToPat <$> consSchemes
   let v' = foldr (flip extend) v $ consSchemes ++ patsSchemes
-  let runCons = makeRunCons <$> zip3 (lenMinusOne . sepArgs . snd <$> types) [0..] (fst <$> types)
-  let runPats = makeRunPat <$> zip [0..] (fst <$> types)
+  let runCons = makeRunCons <$> zip3 (lenMinusOne . sepArgs . snd <$> typeList) [0..] (fst <$> typeList)
+  let runPats = makeRunPat <$> zip [0..] (fst <$> typeList)
   let tast' = withCompiled tast $ runPats ++ runCons
   return $ Envs (extend d (name, kind)) v' cenv tast'
 
@@ -51,16 +51,14 @@ makeCons consNames tpName types = do
   let a = makeTypeConstant tpName t
   return (n, withFtv a)
 
-inferKinds :: String -> [String] -> [Type] -> InferKind (Kind, [Type])
-inferKinds name tvars [] = throwError $ NoConstructor name
+inferKinds :: String -> [String] -> NonEmpty Type -> InferKind (Kind, [Type])
 inferKinds name tvars tps = do
   res <- makeBaseEnv name tvars
-  kinds@((k, t):ks) <- mapM (inferConstraints res name) tps
-  --tell $ "found all : [" ++ prettyL (k:ks) ++ "]"
+  kinds@((k, t) :+: ks) <- mapM (inferConstraints res name) tps
   let res = mconcat (union k . fst <$> ks)
   sub <- unionSolve (Map.empty, res)
   let typesWithKinds =  mapKind (apply sub) . snd <$> kinds
-  return (apply sub k, typesWithKinds)
+  return (apply sub k, asList typesWithKinds)
 
 type InferKind = ReaderT KEnv (StateT InferState (ExceptT DataDeclError (Writer String)))
 

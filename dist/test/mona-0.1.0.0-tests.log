@@ -3,5 +3,8 @@ Test suite tests: RUNNING...
 Cases: 2  Tried: 0  Errors: 0  Failures: 0Cases: 2  Tried: 1  Errors: 0  Failures: 0                                          Cases: 2  Tried: 2  Errors: 0  Failures: 0
 Cases: 1  Tried: 0  Errors: 0  Failures: 0                                          Cases: 1  Tried: 1  Errors: 0  Failures: 0
 Cases: 1  Tried: 0  Errors: 0  Failures: 0                                          Cases: 1  Tried: 1  Errors: 0  Failures: 0
+"test/errors/KindUnificationFail.md" (line 4, column 42):
+unexpected ">"
+expecting "```"
 Test suite tests: PASS
 Test suite logged to: dist/test/mona-0.1.0.0-tests.log

@@ -31,7 +31,6 @@ type Forgot = Term ExprF -- expression without any information
 
 data Field = FieldS String | FieldApp Field Field deriving (Show, Eq, Ord)
 
-type NonEmpty a = (a, [a]);
 
 type Decl = (String, Statement)
 type ExprDecl = (Location, String, Expr)
@@ -51,7 +50,7 @@ instance Pretty InstCheck where
 
 data StatementF a
  = Expr a
- | TypeDecl [String] [(String, Type)]
+ | TypeDecl [String] (NonEmpty (String, Type))
  | Class String String [(Location, String, Scheme)]
  | Inst String Type [(String, a)]
  | Sig Scheme
@@ -67,7 +66,7 @@ data Program = Program{
   signatures :: [(Location, String, Scheme)]}
 
 prettyDatas :: [DataDecl] -> String
-prettyDatas = unwords . fmap (\(loc, a, b, c) -> a ++ " (" ++ unwords b ++ ") ::\n " ++ prettyL c ++ "\n\n")
+prettyDatas = unwords . fmap (\(loc, a, b, c) -> a ++ " (" ++ unwords b ++ ") ::\n " ++ show c ++ "\n\n")
 
 sepDecls :: [Decl] -> Program
 sepDecls [] = Program [] [] [] [] []

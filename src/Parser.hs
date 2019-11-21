@@ -67,6 +67,12 @@ posInTuple p = do
   (x, y) <- p
   return (toLoc pos, x, y)
 
+manyOne :: Parser a -> Parser (NonEmpty a)
+manyOne p = do
+  a <- p
+  others <- many p
+  return $ a :+: others
+
 -- returns the transformed function.
 pat :: Parser (Expr -> Expr)
 pat = patternId <|> patternParen
