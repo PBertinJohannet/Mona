@@ -38,5 +38,5 @@ instance ReplaceCons Type where
       Just tv -> return $ TVar tv
       Nothing -> case Env.lookup name env of
         Just k -> return $ TCon name k
-        Nothing -> throwErrorV $ UnboundVariable name
+        Nothing -> throwErrorV $ UnboundVariableInType name
     t -> return t

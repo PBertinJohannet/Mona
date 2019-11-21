@@ -65,7 +65,8 @@ withErrorLoc a loc = a `catchError` withLoc
     withLoc (TypeError variant a) = throwError $ TypeError variant (loc:a)
 
 data TypeErrorV
-  = UnboundVariable String
+  = UnboundVariableInType String
+  | UnboundVariable String
   | InfiniteType Type
   | NotInClass String Type
   | UnknownClass String
@@ -80,6 +81,7 @@ data TypeErrorV
 
 instance Pretty TypeErrorV where
   pretty = \case
+    UnboundVariableInType s -> "Type variable not in scope : "++ s
     UnboundVariable s -> "Variable not in scope : "++ s
     InfiniteType t -> "Cannot create infinite type : "++pretty t
     NotInClass a b -> pretty b ++ " is not in " ++ a

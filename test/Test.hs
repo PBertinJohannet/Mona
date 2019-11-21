@@ -42,8 +42,13 @@ runTestFile name = do
       runTestTT $ TestLabel name $ TestList $ asTest t
       return ()
 
-main :: IO ()
-main = do
-  files <- glob "test/*.md"
+runDir :: String -> IO ()
+runDir pattern = do
+  files <- glob pattern
   traverse runTestFile files
   return ()
+
+main :: IO ()
+main = do
+  runDir "test/*.md"
+  runDir "test/errors/*.md"

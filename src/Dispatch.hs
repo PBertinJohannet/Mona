@@ -67,8 +67,8 @@ data DispatchError
 
 instance Pretty DispatchError where
   pretty = \case
-    ShouldNotHappen s -> "Should not happen : " ++ s ++ "\n"
-    MainNotFound -> "Main not found \n"
+    ShouldNotHappen s -> "Should not happen : " ++ s
+    MainNotFound -> "Main not found"
 
 type Dispatch a = ExceptT DispatchError (RWS Envs String DispatchState) a
 

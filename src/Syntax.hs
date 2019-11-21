@@ -31,10 +31,12 @@ type Forgot = Term ExprF -- expression without any information
 
 data Field = FieldS String | FieldApp Field Field deriving (Show, Eq, Ord)
 
+type NonEmpty a = (a, [a]);
+
 type Decl = (String, Statement)
 type ExprDecl = (Location, String, Expr)
 type ClassDecl = (Location, String, String, [(Location, String, Scheme)]);
-type DataDecl = (Location, String, [String], [(String, Type)])
+type DataDecl = (Location, String, [String], NonEmpty (String, Type))
 type InstDecl = (Location, String, Type, [(String, Expr)]);
 type InstCheck = ([Location], String, Scheme, Expr)
 

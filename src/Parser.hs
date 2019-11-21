@@ -376,7 +376,7 @@ typedecl = do
   name <- identifier
   tvars <- many identifier
   reservedOp "="
-  body <- many consDecl
+  body <- manyOne consDecl
   return (name, S.TypeDecl tvars body)
 
 decl :: Parser NakedBinding
