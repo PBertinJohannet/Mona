@@ -2,7 +2,6 @@
 
 
 
-281:                  else throwErrorV $ SignatureMismatch sub
 298:checkStrict t1 t2 _ = throwErrorV $ UnificationFail t1 t2
 310:unifies t1 t2 = throwErrorV $ UnificationFail t1 t2
 318:unifyMany t1 t2 = throwErrorV $ UnificationMismatch t1 t2
