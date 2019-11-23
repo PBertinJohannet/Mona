@@ -52,3 +52,4 @@ main :: IO ()
 main = do
   runDir "test/*.md"
   runDir "test/errors/*.md"
+  runDir "test/others/*.md"

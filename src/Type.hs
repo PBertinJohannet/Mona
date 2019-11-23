@@ -32,6 +32,12 @@ type Inst  = Qual Pred
 data Scheme = Forall [TVar] (Qual Type)
   deriving (Show, Eq, Ord)
 
+instance Pretty (TVar, Type) where
+  pretty (a, b) = "(" ++ pretty a ++ " : " ++ pretty b ++ ")"
+
+instance Pretty (Type, TVar) where
+  pretty (a, b) = "(" ++ pretty a ++ " : " ++ pretty b ++ ")"
+
 mapPred :: (Type -> Type) -> Pred -> Pred
 mapPred f (IsIn s t) = IsIn s (f t)
 

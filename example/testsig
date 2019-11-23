@@ -1,0 +1,2 @@
+sig const2 = forall l k . l -> k -> l;
+let const2 a b = a;

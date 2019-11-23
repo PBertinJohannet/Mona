@@ -1,15 +1,7 @@
 
 
 
-102:      else throwError $ TypeError (UnificationFail (tvar a) (tvar a')) (l:locs)
 
-src/Infer.hs
-59:throwErrorV :: MonadError TypeError m => TypeErrorV -> m a
-60:throwErrorV variant = throwError (TypeError variant [])
-65:    withLoc (TypeError variant a) = throwError $ TypeError variant (loc:a)
-127:  Left err -> throwError err
-141:  Left err -> throwError err
-219:    Nothing -> throwErrorV $ UnboundVariable $ show x
 281:                  else throwErrorV $ SignatureMismatch sub
 298:checkStrict t1 t2 _ = throwErrorV $ UnificationFail t1 t2
 310:unifies t1 t2 = throwErrorV $ UnificationFail t1 t2

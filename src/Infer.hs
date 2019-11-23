@@ -22,6 +22,7 @@ import qualified Data.Set as Set
 import Data.List (nub, find, length, intercalate)
 import Pretty
 import RecursionSchemes
+import Data.Tuple
 
 newtype Union = Union (Type, Type, Location) deriving Show;
 
@@ -77,7 +78,7 @@ data TypeErrorV
   | UndeclaredClass String
   | MultipleDecl String
   | UnknownCommand String
-  | SignatureMismatch Subst
+  | SignatureMismatch Scheme Scheme
   | UnificationMismatch [Type] [Type] deriving (Show, Eq);
 
 instance Pretty TypeErrorV where
@@ -92,7 +93,7 @@ instance Pretty TypeErrorV where
     UndeclaredClass s -> "Undeclared class : " ++ s
     WrongKind s k -> s ++ " has kind : " ++ pretty k
     MultipleDecl s -> s ++ " Multiple declarations : " ++ s
-    SignatureMismatch s -> "Signature does not match : " ++ pretty s
+    SignatureMismatch t t' -> "Cannot match infered signature " ++ pretty t ++ " with declared signature " ++ pretty t'
     UnificationFail t t' -> "Cannot unify : " ++ pretty t ++ " with "++pretty t'
     KindUnificationFail t t' -> "Cannot unify : " ++ t ++ " with "++ t'
     UnificationMismatch t t' -> "Mismatch : Cannot unify : " ++ prettyL t ++ " with "++prettyL t'
@@ -147,16 +148,21 @@ inferExprT cenv env ex tp = case runInfer env (runWriterT $ inferEq ex tp) of
     --tell $ "doing : " ++ pretty ex ++ "\n"
     (preds, subst) <- runSolve cenv cs
     let (_, _, Qual _ found) = ann texp
-    --tell $ "found : " ++ pretty (apply subst found) ++ "\n"
-    --tell $ "expected : " ++ pretty (apply subst expected) ++ "\n"
-    s0 <- checkStrict (apply subst found) (apply subst expected) False
-    checkSubst s0
+    tell $ "found : " ++ pretty (apply subst found) ++ "\n"
+    tell $ "expected : " ++ pretty (apply subst expected) ++ "\n"
+    allReplaces <- checkStrict (apply subst found) (apply subst expected) False
+    --stest <- checkStrict (apply subst expected) (apply subst found) False
+    --tell $ "\nor : " ++ show stest
+    let s0 = Map.fromList allReplaces
+    --let stest2 = s0 `compose` stest
+    --tell $ "\n to give : " ++ pretty stest2
     let s1 = s0 `compose` subst
     --tell $ "sub : " ++ pretty s1 ++ "\n"
     --tell $ "before : " ++ pretty (apply s1 texp) ++ "\n" ++ pretty (apply s1 found) ++ "\n"
-    let (b, s) = closeOver (apply s1 found) (apply s1 preds) $ apply s1 texp
     --tell $ "after COC : " ++ pretty b ++ "\n" ++ pretty s ++ "\n"
-    return (closeOver (apply s1 found) (apply s1 preds) $ apply s1 texp)
+    let (sch, tex) = closeOver (apply s1 found) (apply s1 preds) $ apply s1 texp
+    foldM_ (composeStrict sch tp) nullSubst allReplaces
+    return (sch, tex)
 
 runInfer :: Env -> Infer a -> Either TypeError a
 runInfer env m = runIdentity $ runExceptT $ evalStateT (runReaderT m env) initInfer
@@ -278,27 +284,32 @@ inferAlg l = \case
         tell $ union l (tv `mkArr` tv, t1)
         noSub tv
 
-checkSubst :: Subst -> ExceptLog Subst
-checkSubst sub = Map.elems >>> nub >>> check $ sub
-  where check l = if length l == Map.size sub
-                  then return sub
-                  else throwErrorV $ SignatureMismatch sub
+-- see the doc for the error message, basicaly it verifies that the same variable is not binded to multiple types
+-- then it adds it to the given substition
+-- the two first args are only to report errors
+composeStrict :: Scheme -> Scheme -> Subst -> (TVar, Type) -> ExceptLog Subst
+composeStrict sc sc' sub (a, b) = check $ Map.lookup a sub
+  where
+    check :: Maybe Type -> ExceptLog Subst
+    check (Just b') | b' == b = return sub
+    check Nothing = return $ Map.insert a b sub
+    check _  = throwErrorV $ SignatureMismatch sc sc'
 
-checkStrict :: Type -> Type -> Bool -> ExceptLog Subst
-checkStrict t1 t2 _ | t1 == t2 = return nullSubst
-checkStrict (TVar v) t2@(TVar v2) False = return $ Map.singleton v t2
-checkStrict (TVar v) t2 True = return $ Map.singleton v t2
+checkStrict :: Type -> Type -> Bool -> ExceptLog [(TVar, Type)]
+checkStrict t1 t2 _ | t1 == t2 = return []
+checkStrict (TVar v) t2@(TVar v2) False = return [(v, t2)]
+checkStrict (TVar v) t2 True = return [(v, t2)]
 checkStrict
   t1@(TApp (TApp (TCon "(->)" _) a) b)
   t2@(TApp (TApp (TCon "(->)" _) a0) b0)
   contra = do
     s1 <- checkStrict a a0 (not contra)
-    s2 <- checkStrict (apply s1 b) (apply s1 b0) contra
-    return $ s2 `compose` s1
+    s2 <- checkStrict b b0 contra
+    return $ s2 ++ s1
 checkStrict (TApp t1 v1) (TApp t2 v2) c = do
   s1 <- checkStrict t1 t2 c
-  s2 <- checkStrict (apply s1 v1) (apply s1 v2) c
-  return $ s2 `compose` s1
+  s2 <- checkStrict v1 v2 c
+  return $ s2 ++ s1
 checkStrict t1 t2 _ = throwErrorV $ UnificationFail t1 t2
 
 type Unifier = (Subst, [Union])
