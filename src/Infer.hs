@@ -79,7 +79,7 @@ data TypeErrorV
   | MultipleDecl String
   | UnknownCommand String
   | SignatureMismatch Scheme Scheme
-  | UnificationMismatch [Type] [Type] deriving (Show, Eq);
+  | ConstraintsNotMatching [Pred] deriving (Show, Eq);
 
 instance Pretty TypeErrorV where
   pretty = \case
@@ -96,7 +96,7 @@ instance Pretty TypeErrorV where
     SignatureMismatch t t' -> "Cannot match infered signature " ++ pretty t ++ " with declared signature " ++ pretty t'
     UnificationFail t t' -> "Cannot unify : " ++ pretty t ++ " with "++pretty t'
     KindUnificationFail t t' -> "Cannot unify : " ++ t ++ " with "++ t'
-    UnificationMismatch t t' -> "Mismatch : Cannot unify : " ++ prettyL t ++ " with "++prettyL t'
+    ConstraintsNotMatching t -> "Infered constraints not found in definition : " ++ prettyL t
 
 type ExceptLog a = ExceptT TypeError (Writer String) a;
 
@@ -147,8 +147,10 @@ inferExprT cenv env ex tp = case runInfer env (runWriterT $ inferEq ex tp) of
   Right ((texp, expected), cs) -> do
     --tell $ "doing : " ++ pretty ex ++ "\n"
     (preds, subst) <- runSolve cenv cs
-    let (_, _, Qual _ found) = ann texp
-    tell $ "found : " ++ pretty (apply subst found) ++ "\n"
+    let (_, _, Qual foundPreds found) = ann texp
+    let Forall _ (Qual expectedPreds _) = tp;
+    checkPreds foundPreds expectedPreds
+    tell $ "found : " ++ prettyL (apply subst preds) ++ "\n"
     tell $ "expected : " ++ pretty (apply subst expected) ++ "\n"
     allReplaces <- checkStrict (apply subst found) (apply subst expected) False
     --stest <- checkStrict (apply subst expected) (apply subst found) False
@@ -162,7 +164,7 @@ inferExprT cenv env ex tp = case runInfer env (runWriterT $ inferEq ex tp) of
     --tell $ "after COC : " ++ pretty b ++ "\n" ++ pretty s ++ "\n"
     let (sch, tex) = closeOver (apply s1 found) (apply s1 preds) $ apply s1 texp
     foldM_ (composeStrict sch tp) nullSubst allReplaces
-    return (sch, tex)
+    return (tp, tex)
 
 runInfer :: Env -> Infer a -> Either TypeError a
 runInfer env m = runIdentity $ runExceptT $ evalStateT (runReaderT m env) initInfer
@@ -255,34 +257,34 @@ inferAlgM = \case
         let tpk = getTp <$> k
         (tp, sub) <- inferAlg l tpk
         return (In $ (l, sub, tp) :< k)
+  where
+    inferAlg :: Location -> ExprF Type -> InferCons (Qual Type, Subst)
+    inferAlg l = \case
+          Lit _ -> do
+            tell noConstraints
+            noSub typeInt
 
-inferAlg :: Location -> ExprF Type -> InferCons (Qual Type, Subst)
-inferAlg l = \case
-      Lit _ -> do
-        tell noConstraints
-        noSub typeInt
+          Case sourceT (t:ts) -> do
+            let exprEq = mconcat $ curry (union l) t <$> ts
+            destT <- fresh
+            tell $ union l (t, sourceT `mkArr` destT) <> exprEq
+            noSub destT
 
-      Case sourceT (t:ts) -> do
-        let exprEq = mconcat $ curry (union l) t <$> ts
-        destT <- fresh
-        tell $ union l (t, sourceT `mkArr` destT) <> exprEq
-        noSub destT
+          Var x -> do
+            env <- ask
+            (sub, Qual p t) <- lookupEnv x -- `catchError` \e -> lookupEnv $ pretty env
+            tell $ predicate p l
+            return (Qual p t, sub)
 
-      Var x -> do
-        env <- ask
-        (sub, Qual p t) <- lookupEnv x -- `catchError` \e -> lookupEnv $ pretty env
-        tell $ predicate p l
-        return (Qual p t, sub)
+          App t1 t2 -> do
+            tv <- fresh
+            tell $ union l (t1, t2 `mkArr` tv)
+            noSub tv
 
-      App t1 t2 -> do
-        tv <- fresh
-        tell $ union l (t1, t2 `mkArr` tv)
-        noSub tv
-
-      Fix t1 -> do
-        tv <- fresh
-        tell $ union l (tv `mkArr` tv, t1)
-        noSub tv
+          Fix t1 -> do
+            tv <- fresh
+            tell $ union l (tv `mkArr` tv, t1)
+            noSub tv
 
 -- see the doc for the error message, basicaly it verifies that the same variable is not binded to multiple types
 -- then it adds it to the given substition
@@ -312,6 +314,15 @@ checkStrict (TApp t1 v1) (TApp t2 v2) c = do
   return $ s2 ++ s1
 checkStrict t1 t2 _ = throwErrorV $ UnificationFail t1 t2
 
+checkPreds :: [Pred] -> [Pred] -> ExceptLog ()
+checkPreds found expected =
+  let (f, e) = (Set.fromList found, Set.fromList expected)
+      remaining = (f `Set.difference` e) in
+  if Set.empty == remaining
+    then return ()
+    else throwErrorV $ ConstraintsNotMatching $ Set.toList remaining
+
+
 type Unifier = (Subst, [Union])
 
 emptyUnifier :: Unifier
@@ -321,16 +332,14 @@ unifies :: Type -> Type -> Solve Subst
 unifies t1 t2 | t1 == t2 = return nullSubst
 unifies (TVar v) t = bind v t
 unifies t (TVar v) = bind v t
-unifies (TApp t1 t2) (TApp t3 t4) = unifyMany [t1, t2] [t3, t4]
+unifies (TApp t1 t2) (TApp t3 t4) = unifyMany (t1, t3) (t2, t4)
 unifies t1 t2 = throwErrorV $ UnificationFail t1 t2
 
-unifyMany :: [Type] -> [Type] -> Solve Subst
-unifyMany [] [] = return nullSubst
-unifyMany (t1 : ts1) (t2 : ts2) = do
-  s1 <- unifies t1 t2
-  s2 <- unifyMany (apply s1 ts1) (apply s1 ts2)
+unifyMany :: (Type, Type) -> (Type, Type) -> Solve Subst
+unifyMany (t1, t1') (t2, t2') = do
+  s1 <- unifies t1 t1'
+  s2 <- unifies t2 t2'
   return $ s2 `compose` s1
-unifyMany t1 t2 = throwErrorV $ UnificationMismatch t1 t2
 
 solver :: Constraints -> Solve ([Pred], Subst)
 solver (unions, ps) = do
