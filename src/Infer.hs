@@ -152,7 +152,7 @@ inferExprT cenv env ex tp = case runInfer env (runWriterT $ inferEq ex tp) of
     checkPreds foundPreds expectedPreds
     tell $ "found : " ++ pretty (apply subst found) ++ "\n"
     tell $ "expected : " ++ pretty (apply subst expected) ++ "\n"
-    allReplaces <- checkStrict (apply subst found) (apply subst expected) True
+    allReplaces <- checkStrict (apply subst found) (apply subst expected)
     --stest <- checkStrict (apply subst expected) (apply subst found) False
     --tell $ "\nor : " ++ show stest
     let s0 = Map.fromList allReplaces
@@ -297,22 +297,14 @@ composeStrict sc sc' sub (a, b) = check $ Map.lookup a sub
     check Nothing = return $ Map.insert a b sub
     check _  = throwErrorV $ SignatureMismatch sc sc'
 
-checkStrict :: Type -> Type -> Bool -> ExceptLog [(TVar, Type)]
-checkStrict t1 t2 _ | t1 == t2 = return []
-checkStrict (TVar v) t2@(TVar v2) False = return [(v, t2)]
-checkStrict (TVar v) t2 True = return [(v, t2)]
-checkStrict
-  t1@(TApp (TApp (TCon "(->)" _) a) b)
-  t2@(TApp (TApp (TCon "(->)" _) a0) b0)
-  contra = do
-    s1 <- checkStrict a a0 contra
-    s2 <- checkStrict b b0 contra
-    return $ s2 ++ s1
-checkStrict (TApp t1 v1) (TApp t2 v2) c = do
-  s1 <- checkStrict t1 t2 c
-  s2 <- checkStrict v1 v2 c
+checkStrict :: Type -> Type -> ExceptLog [(TVar, Type)]
+checkStrict t1 t2 | t1 == t2 = return []
+checkStrict (TVar v) t2 = return [(v, t2)]
+checkStrict (TApp t1 v1) (TApp t2 v2) = do
+  s1 <- checkStrict t1 t2
+  s2 <- checkStrict v1 v2
   return $ s2 ++ s1
-checkStrict t1 t2 _ = throwErrorV $ UnificationFail t1 t2
+checkStrict t1 t2 = throwErrorV $ UnificationFail t1 t2
 
 checkPreds :: [Pred] -> [Pred] -> ExceptLog ()
 checkPreds found expected =
