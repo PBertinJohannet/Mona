@@ -1,5 +1,5 @@
-
-data Assign a b = | Assigned = (f a) -> Assign f a;
-data Maybe a = | Just = a -> Maybe a;
-data More f = | More = f Maybe -> More f;
-data Wrong = | Wrong = Assign More Int -> Wrong;
+class ToInt a = {
+  sig toInt = a -> Int;
+}
+sig mkIntPlusOne = forall a . a -> Int;
+let mkIntPlusOne a = toInt a + 1;

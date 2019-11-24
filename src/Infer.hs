@@ -147,9 +147,10 @@ inferExprT cenv env ex tp = case runInfer env (runWriterT $ inferEq ex tp) of
   Right ((texp, expected), cs) -> do
     tell $ "doing : " ++ pretty ex ++ "\n"
     (preds, subst) <- runSolve cenv cs
-    let (_, _, Qual foundPreds found) = ann texp
+    let (_, _, Qual _ found) = ann texp
     let Forall _ (Qual expectedPreds _) = tp;
-    checkPreds foundPreds expectedPreds
+    tell $ "checking preds : " ++ prettyL preds ++ " vs " ++ prettyL expectedPreds ++ "\n"
+    checkPreds preds expectedPreds
     tell $ "found : " ++ pretty (apply subst found) ++ "\n"
     tell $ "expected : " ++ pretty (apply subst expected) ++ "\n"
     allReplaces <- checkStrict (apply subst found) (apply subst expected)
