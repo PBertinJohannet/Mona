@@ -88,7 +88,7 @@ makeBaseEnv name (tvar:tvars) = do
   (KVar a) <- fresh
   next <- makeBaseEnv a tvars
   --tell $ "adding : " ++ pretty (name, Kfun (KVar tvar) (KVar a))
-  return ((KVar name, Kfun (KVar tvar) (KVar a)):next)
+  return ((KVar ("''" ++ name), Kfun (KVar tvar) (KVar a)):next)
 
 type Constraints = [(Kind, Kind)]
 

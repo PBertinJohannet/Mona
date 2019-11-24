@@ -2,8 +2,6 @@
 
 
 
-365:satisfyInsts (IsIn c t) [] = throwErrorV $ NotInClass c t
-371:  s <- unifies t' t `catchError` const (throwErrorV $ NotInClass c t)
 377:         | occursCheck a t = throwErrorV $ InfiniteType t
 
 

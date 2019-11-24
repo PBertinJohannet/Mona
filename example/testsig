@@ -19,3 +19,8 @@ sig unwrap = IntWrap -> IntWrap -> Int;
 let unwrap = \(Int a) (Int b) -> b;
 
 let main = printInt (unwrap (Int 2) (Int 2));
+
+data Assign a b = | Assigned = (f a) -> Assign f a;
+data Maybe a =
+  | Just = a -> Maybe a;
+  | Nothing = Maybe a;
