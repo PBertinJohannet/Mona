@@ -388,6 +388,7 @@ satisfyInst (IsIn c t) q@(Qual ps (IsIn _ t')) = do
   return $ apply s ps
 
 -- tries to unify a and t only if a does not appear in t
+-- eg a = List a is refused
 bind :: TVar -> Type -> Solve Subst
 bind a t | t == TVar a = return nullSubst
          | occursCheck a t = throwErrorV $ InfiniteType t

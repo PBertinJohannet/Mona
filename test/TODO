@@ -2,19 +2,17 @@
 
 
 
-377:         | occursCheck a t = throwErrorV $ InfiniteType t
 
 
 ConstraintsNotMatching => ...
-InfiniteKind
+
+
+completer le checkStrict correctement.
+
+ajouter la localisation sur les autres types d'erreurs
+
 # Then
 
 make it possible to run the code.
 
 create a few examples.
-
-
-
-doing : ((~Int) (/a -> (/b -> (0))))
-
-completer le checkStrict correctement.
