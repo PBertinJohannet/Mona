@@ -145,14 +145,14 @@ inferExprT :: ClassEnv -> Env -> Expr -> Scheme -> ExceptLog (Scheme, TExpr)
 inferExprT cenv env ex tp = case runInfer env (runWriterT $ inferEq ex tp) of
   Left err -> throwError err
   Right ((texp, expected), cs) -> do
-    --tell $ "doing : " ++ pretty ex ++ "\n"
+    tell $ "doing : " ++ pretty ex ++ "\n"
     (preds, subst) <- runSolve cenv cs
     let (_, _, Qual foundPreds found) = ann texp
     let Forall _ (Qual expectedPreds _) = tp;
     checkPreds foundPreds expectedPreds
-    tell $ "found : " ++ prettyL (apply subst preds) ++ "\n"
+    tell $ "found : " ++ pretty (apply subst found) ++ "\n"
     tell $ "expected : " ++ pretty (apply subst expected) ++ "\n"
-    allReplaces <- checkStrict (apply subst found) (apply subst expected) False
+    allReplaces <- checkStrict (apply subst found) (apply subst expected) True
     --stest <- checkStrict (apply subst expected) (apply subst found) False
     --tell $ "\nor : " ++ show stest
     let s0 = Map.fromList allReplaces
@@ -305,7 +305,7 @@ checkStrict
   t1@(TApp (TApp (TCon "(->)" _) a) b)
   t2@(TApp (TApp (TCon "(->)" _) a0) b0)
   contra = do
-    s1 <- checkStrict a a0 (not contra)
+    s1 <- checkStrict a a0 contra
     s2 <- checkStrict b b0 contra
     return $ s2 ++ s1
 checkStrict (TApp t1 v1) (TApp t2 v2) c = do

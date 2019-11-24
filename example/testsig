@@ -1,6 +1,21 @@
 sig const2 = forall l k . l -> k -> l;
 let const2 a b = a;
 
-sig wrong = forall a . Hello a => a -> Int;
-let wrong a = 2;
-let main = printInt (wrong 2);
+data IntWrap = | Int = Int -> IntWrap;
+class Compare a = {
+  sig compare = forall a . a -> a -> Bool;
+};
+
+sig constZ = IntWrap -> Int;
+let constZ b = 0;
+
+sig desInt = (Int -> Int) -> IntWrap -> Int
+let desInt f a = (f 5);
+
+sig aToCZ = forall a . a -> (IntWrap -> Int);
+let aToCZ a = constZ;
+
+sig unwrap = IntWrap -> IntWrap -> Int;
+let unwrap = \(Int a) (Int b) -> b;
+
+let main = printInt (unwrap (Int 2) (Int 2));
