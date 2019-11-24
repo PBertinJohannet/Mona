@@ -330,7 +330,7 @@ unifies t1 t2 = throwErrorV $ UnificationFail t1 t2
 unifyMany :: (Type, Type) -> (Type, Type) -> Solve Subst
 unifyMany (t1, t1') (t2, t2') = do
   s1 <- unifies t1 t1'
-  s2 <- unifies t2 t2'
+  s2 <- unifies (apply s1 t2) (apply s1 t2')
   return $ s2 `compose` s1
 
 solver :: Constraints -> Solve ([Pred], Subst)
@@ -387,9 +387,9 @@ satisfyInst (IsIn c t) q@(Qual ps (IsIn _ t')) = do
   s <- unifies t' t `catchError` const (throwErrorV $ NotInClass c t)
   return $ apply s ps
 
--- tries to unify a and t
+-- tries to unify a and t only if a does not appear in t
 bind :: TVar -> Type -> Solve Subst
-bind a t | t == TVar a = return nullSubst -- bind a t =
+bind a t | t == TVar a = return nullSubst
          | occursCheck a t = throwErrorV $ InfiniteType t
          | otherwise = return $ Map.singleton a t
 

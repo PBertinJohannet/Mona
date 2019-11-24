@@ -2,6 +2,8 @@
 This error happens if there is a kind mimatch in a constructor.
 When you declare a constructor the kind of the data is infered.
 
+Check `others/PolyKinds.md` to see more advanced examples.
+
 Here for example, the infered type is `* -> * -> *`
 The error can happen in two cases :
 

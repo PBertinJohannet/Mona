@@ -6,7 +6,7 @@
 
 
 ConstraintsNotMatching => ...
-
+InfiniteKind
 # Then
 
 make it possible to run the code.
