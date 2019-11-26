@@ -10,6 +10,7 @@ import Control.Monad.Reader
 import Infer
 import Data.List (find)
 import qualified Env (lookup)
+import Error
 
 type AddSig a = ExceptT TypeError (Writer String) a
 

@@ -20,7 +20,7 @@ Here, `MyTuple` is of kind `* -> * -> *` and it expects a type of kind `*` as fi
 data Wrong a =
   | Wrong = MyTuple MyTuple a -> Wrong a;
 ```
->>>DataDeclError : (KindUnificationFail) Could not unify kinds * and  * -> * -> *
+>>>DataDeclError : (KindUnificationFail) Could not unify kinds * and  * -> * -> * at fileName 6:1
 
 ## Mismatch between multiple constructors
 
@@ -32,4 +32,4 @@ data AlsoWrong a b =
   | Also = AlsoWrong MyTuple Int;
   | Wrong = AlsoWrong Int MyTuple;
 ```
->>>DataDeclError : (KindUnificationFail) Could not unify kinds * -> * -> * and  *
+>>>DataDeclError : (KindUnificationFail) Could not unify kinds * -> * -> * and  * at fileName 6:1

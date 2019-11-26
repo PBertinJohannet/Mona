@@ -23,6 +23,7 @@ import Data.List (nub, find, length, intercalate)
 import Pretty
 import RecursionSchemes
 import Data.Tuple
+import Error
 
 newtype Union = Union (Type, Type, Location) deriving Show;
 
@@ -51,19 +52,7 @@ instance Substituable (Pred, Location) where
   apply s (a, b) = (apply s a, b)
   ftv (a, _) = ftv a
 
-data TypeError = TypeError TypeErrorV [Location];
-
-instance Pretty TypeError where
-  pretty (TypeError v []) = pretty v ++ " at <no location info>"
-  pretty (TypeError v loc) = pretty v ++ " at " ++ intercalate " at " (pretty <$> loc)
-
-throwErrorV :: MonadError TypeError m => TypeErrorV -> m a
-throwErrorV variant = throwError (TypeError variant [])
-
-withErrorLoc :: MonadError TypeError m => m a -> Location -> m a
-withErrorLoc a loc = a `catchError` withLoc
-  where
-    withLoc (TypeError variant a) = throwError $ TypeError variant (loc:a)
+type TypeError = CompilerError TypeErrorV;
 
 data TypeErrorV
   = UnboundVariableInType String

@@ -19,6 +19,7 @@ import qualified Prelude
 import qualified Data.Map as Map
 import Pretty
 import Subst
+import Error
 
 type AddClass a = ExceptT TypeError (Writer String) a
 -- (string, a) (string, b)
@@ -42,7 +43,7 @@ mergeMaps (((loc, s), d):ds) cls = do
   inner <- mergeMaps ds cls
   case Map.lookup s inner of
     Just (c, insts) -> return $ Map.alter (fmap $ second (d:)) s inner
-    Nothing -> throwError $ TypeError (UndeclaredClass s) [loc]
+    Nothing -> throwError $ CompilerError (UndeclaredClass s) [loc]
 
 addInstances :: [InstDecl] -> Envs -> AddClass Envs
 addInstances [] env = return env
@@ -85,4 +86,4 @@ groupStrict dEnv locs a b = foldM inGroup [] (zip (sortOn sel2of3 a) (sortOn (fs
       then do
         b <- replaceConsTypes [] dEnv b `withErrorLoc` l
         return $ (locs, unwords [a, s], b, b'):lst
-      else throwError $ TypeError (NotAClassFunction a') (l:locs)
+      else throwError $ CompilerError (NotAClassFunction a') (l:locs)

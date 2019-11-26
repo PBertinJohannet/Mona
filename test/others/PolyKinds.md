@@ -21,7 +21,7 @@ data MaybeIntA = | MIA = Assign Maybe Int -> MaybeIntA;
 ```
 data MaybeIntA = | MIA = Assign Int Int -> MaybeIntA;
 ```
->>>DataDeclError : (KindUnificationFail) Could not unify kinds 'e -> * and  *
+>>>DataDeclError : (KindUnificationFail) Could not unify kinds 'e -> * and  * at fileName 10:1
 
 ## More complex example
 The `More` type has kind `(* -> *) -> *`.
@@ -36,4 +36,4 @@ Here `AndMore` has kind `((* -> *) -> *) -> *`
 data AndMore f = | M = f More -> AndMore f;
 data AndMoreMaybe = | MM = Assign AndMore Maybe -> AndMoreMaybe;
 ```
->>>DataDeclError : (KindUnificationFail) Could not unify kinds (* -> *) -> * and  *
+>>>DataDeclError : (KindUnificationFail) Could not unify kinds (* -> *) -> * and  * at fileName 11:1

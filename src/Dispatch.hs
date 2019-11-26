@@ -17,6 +17,7 @@ import Data.Maybe
 import qualified Data.Map as Map
 import Env
 import Subst
+import Error
 
 type DispatchReq = (String, TExpr, Subst)
 
@@ -61,13 +62,12 @@ next = do
   dispatch nxt
   _ok
 -}
+
 data DispatchError
-  = ShouldNotHappen String
-  | MainNotFound
+  = MainNotFound
 
 instance Pretty DispatchError where
   pretty = \case
-    ShouldNotHappen s -> "Should not happen : " ++ s
     MainNotFound -> "Main not found"
 
 type Dispatch a = ExceptT DispatchError (RWS Envs String DispatchState) a

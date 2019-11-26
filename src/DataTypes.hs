@@ -21,13 +21,16 @@ import Native
 import Infer (InferState(..), initInfer)
 import Run (Value(..), Run, makeRunPat, makeRunCons)
 import Subst (withFtv)
+import Error
 
-data DataDeclError
+type DataDeclError = CompilerError DataDeclErrorV
+
+data DataDeclErrorV
  = KindUnificationFail Kind Kind
  | InfiniteKind Kind
  | WrongReturnType String Type Type deriving (Show, Eq)
 
-instance Pretty DataDeclError where
+instance Pretty DataDeclErrorV where
   pretty = \case
     InfiniteKind k -> "(InfiniteKind) Could not construct the kind " ++ pretty k
     KindUnificationFail a b -> "(KindUnificationFail) Could not unify kinds " ++ pretty a ++ " and  " ++ pretty b
@@ -39,7 +42,7 @@ runDataDecls ds env = foldM runDataDecl env ds
 
 runDataDecl :: Envs-> DataDecl -> ExceptT DataDeclError (Writer String) Envs
 runDataDecl envs@(Envs d v cenv tast) (loc, name, tvars, types) = do
-  (kind, cons) <- runInferKind d $ inferKinds name tvars (snd <$> types)
+  (kind, cons) <- runInferKind d $ inferKinds name tvars (snd <$> types) `withErrorLoc` loc
   tell $ "for "  ++ name ++ " cons are : " ++ prettyL cons
   let typeList = asList types
   let consSchemes = makeCons (fst <$> typeList) name cons
@@ -129,7 +132,7 @@ checkEndsWith name t = checkIs $ leftMostType $ lastSafe $ sepArgs t
     checkIs :: Type -> InferKind ()
     checkIs (TCon a _) | a == name = return ()
     checkIs (TVar (TV a _)) | a == name = return ()
-    checkIs e = throwError $ WrongReturnType name t e
+    checkIs e = throwErrorV $ WrongReturnType name t e
 
 inferConstraints :: Constraints -> String -> Type -> InferKind (Kind, Type)
 inferConstraints cs name t = do
@@ -143,7 +146,7 @@ inferConstraints cs name t = do
   let tpWithKinds = mapKind (apply sol) tp
   case Map.lookup name sol of
     Just a -> return (a, tpWithKinds)
-    Nothing -> throwError $ WrongReturnType name t t
+    Nothing -> throwErrorV $ WrongReturnType name t t
 
 union :: Kind -> Kind -> Constraints
 union a b = [(a, b)]
@@ -199,11 +202,11 @@ unifies (Kfun k1 k2) (Kfun k1' k2') =  do
   s2 <- unifies (apply s1 k2) (apply s1 k2')
   tell $ "found " ++ prettyM s2 ++ "\n"
   return $ s2 `compose` s1
-unifies k1 k2 = throwError $ KindUnificationFail k1 k2
+unifies k1 k2 = throwErrorV $ KindUnificationFail k1 k2
 
 bind :: String -> Kind -> InferKind Subst
 bind a k | k == KVar a = return Map.empty
-         | occursCheck a k = throwError $ InfiniteKind k
+         | occursCheck a k = throwErrorV $ InfiniteKind k
          | otherwise = return $ Map.singleton a k
 
 occursCheck :: String -> Kind -> Bool

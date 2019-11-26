@@ -6,4 +6,4 @@ For example here the `That` constructor does not return a `That`. It is not a co
 ```
 data That = | Thats = List Int;
 ```
->>>DataDeclError : (WrongReturnType) signature's return type should be an application of That but it is an application of List (in : List Int)
+>>>DataDeclError : (WrongReturnType) signature's return type should be an application of That but it is an application of List (in : List Int) at fileName 2:1
