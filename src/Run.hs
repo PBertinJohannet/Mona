@@ -84,19 +84,18 @@ interpretAlg :: (Location, Subst, Qual Type) -> ExprF (() -> Run Value) -> Run V
 interpretAlg b = \case
   Case src pats -> do
     src <- src ()
-    foldM (changeCase src) PatFail pats
+    foldM (changeCase src) PatFail (snd <$> pats)
   e -> interpretAlg' b (($ ()) <$> e)
 
 interpretAlg' :: (Location, Subst, Qual Type) -> ExprF (Run Value) -> Run Value
-interpretAlg' (loc, sub, Qual p tp) e = do
-  res <- case e of
+interpretAlg' (loc, sub, Qual p tp) e =
+  case e of
     Lam x e -> do
       thisEnv <- ask
-      return $ Func $ \val -> local (const thisEnv) (inEnv (x, val) e) -- adding is adding to nothing.
+      return $ Func $ \val -> local (const thisEnv) (inEnv ("x", val) e) -- adding is adding to nothing, this is going to be an error sooon.
     k -> do
       k <- sequence k
       interpretAlg'' loc sub tp k
-  return res
 
 interpretAlg'' :: Location -> Subst -> Type -> ExprF Value -> Run Value
 interpretAlg'' loc sub tp = \case
@@ -109,8 +108,7 @@ interpretAlg'' loc sub tp = \case
   App a b ->
     case a of
       Func f -> f b
-      e -> do
-        throwError $ ShouldNotHappen $ "applying a non function " ++ pretty a ++ " to an arg"
+      e -> throwError $ ShouldNotHappen $ "applying a non function " ++ pretty a ++ " to an arg"
   Fix t1 -> case t1 of
     Func f -> f t1
     e -> throwError $ ShouldNotHappen $ "applying fix to a non function " ++ pretty t1
@@ -180,6 +178,5 @@ runEquals = Func (\a -> return $ Func (\b -> case (a, b) of
 
 mkRun :: String -> (Int -> Int -> Int) -> Value
 mkRun s f = Func (\a -> return $ Func (\b -> case (a, b) of
-  (Int a, Int b) -> do
-    return $ Int $ f a b
+  (Int a, Int b) -> return $ Int $ f a b
   (a, b) -> throwError $ ShouldNotHappen $ "Non integer in native " ++ pretty a))

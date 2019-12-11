@@ -1,5 +1,36 @@
-class ToInt a = {
-  sig toInt = a -> Int;
-}
-sig mkIntPlusOne = forall a . a -> Int;
-let mkIntPlusOne a = toInt a + 1;
+data Prod a b = | P = a -> b -> Prod a b;
+
+data Bool =
+  | True = Bool;
+  | False = Bool;
+
+data Expr a =
+  | Lift = a -> Expr a;
+  | Tup = Expr a -> Expr b -> Expr (Prod a b);
+  | Lam = (Expr a -> Expr b) -> Expr (a -> b);
+  | App = Expr (a -> b) -> Expr a -> Expr b;
+  | Fix = Expr (a -> a) -> Expr a;
+
+sig id = forall a .Expr (a -> a);
+let id = Lam (\x -> x);
+
+sig first = forall a b .Expr (a -> b -> a);
+let fist = Lam (\x -> (Lam (\y -> x)));
+
+sig sec = forall a b . Expr (a -> b -> b);
+let sec = Lam (\x -> (Lam (\y -> y)));
+
+sig evalMe = forall a . Expr a -> a;
+let evalMe = \(Lift v) -> v;
+
+sig evalTyp = forall a . Expr a -> a;
+let evalTyp e = case e of
+  (App a b) -> (evalMe a) (evalMe b),
+  (Lam f) -> (\x -> evalMe (f (Lift x))),
+  (Tup e1 e2) -> P (evalMe e1) (evalMe e2),
+  (Lift v) -> v;
+
+sig add = Expr Int -> Expr Int -> Int;
+let add a b = (evalMe a) + (evalMe b);
+
+let main = printInt (add (Lift 2) (Lift 2));
