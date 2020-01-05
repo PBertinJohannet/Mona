@@ -4,13 +4,6 @@ data Bool =
   | True = Bool;
   | False = Bool;
 
-data Expr a =
-  | Lift = a -> Expr a;
-  | Tup = Expr a -> Expr b -> Expr (Prod a b);
-  | Lam = (Expr a -> Expr b) -> Expr (a -> b);
-  | App = Expr (a -> b) -> Expr a -> Expr b;
-  | Fix = Expr (a -> a) -> Expr a;
-
 sig id = forall a .Expr (a -> a);
 let id = Lam (\x -> x);
 
@@ -20,17 +13,135 @@ let fist = Lam (\x -> (Lam (\y -> x)));
 sig sec = forall a b . Expr (a -> b -> b);
 let sec = Lam (\x -> (Lam (\y -> y)));
 
-sig evalMe = forall a . Expr a -> a;
-let evalMe = \(Lift v) -> v;
+data Expr a =
+  | Lift = a -> Expr a;
+  | Tup = Expr a -> Expr b -> Expr (Prod a b);
+  | Lam = (Expr a -> Expr b) -> Expr (a -> b);
+  | App = Expr (a -> b) -> Expr a -> Expr b;
+  | Fix = Expr (a -> a) -> Expr a;
 
 sig evalTyp = forall a . Expr a -> a;
 let evalTyp e = case e of
-  (App a b) -> (evalMe a) (evalMe b),
-  (Lam f) -> (\x -> evalMe (f (Lift x))),
-  (Tup e1 e2) -> P (evalMe e1) (evalMe e2),
+  (App a b) -> (evalTyp a) (evalTyp b),
+  (Lam f) -> (\x -> evalTyp (f (Lift x))),
+  (Tup e1 e2) -> P (evalTyp e1) (evalTyp e2),
   (Lift v) -> v;
 
 sig add = Expr Int -> Expr Int -> Int;
 let add a b = (evalMe a) + (evalMe b);
 
 let main = printInt (add (Lift 2) (Lift 2));
+
+D<(Expr b) -> b, Expr (c -> d) -> c -> d, Expr (Prod e f) -> Prod e f, Expr g -> g> |><| e -> tv
+
+pour extraire :
+
+Expr b <=> Expr (c -> d)
+b : (c -> d)
+Expr b -> b <=> Expr b -> b => OK
+je remplace b par c->d dans celui qui contient b
+ensuite je vérifie que je peux unir les deux.
+si oui alors je renvoie l'original contenant b
+etc...
+
+
+mtn si je commence par
+D<Expr (c -> d) -> c -> d, Expr (Prod e f) -> Prod e f>
+créer b et remplacer aux deux endroits. izi.
+
+
+donc dans l'ordre :
+Je prends R a -> k et R b -> c
+si a et b sont differents :
+  si a est une tvar
+    si il apparait dans un des constructeurs.
+      on remplace b par a dans le second et si ils unifient
+        on continue avec R a -> k
+  sinon on crée une nouvelle tvar et on remplace a par la tvar dans R a -> k et b par la tvar dans R b -> c
+    si ils unifient on continue avec le remplacement.
+=============== OKKKKKK ============ SHOULD BE ENOUGH
+
+
+
+D<(Expr b) -> b |><| e -> tv, Expr (a -> b) -> b |><| e -> tv, Expr (Prod a b) -> Prod a b |><| e -> tv, Expr a -> a |><| e -> tv>
+D<e -> tv, Expr (a -> b) -> b |><| e -> tv, Expr (Prod a b) -> Prod a b |><| e -> tv, Expr a -> a |><| e -> tv>
+D<e : Expr b, b : tv, Expr (c -> d) -> (c -> d) |><| e -> tv, Expr (Prod f g) -> Prod f g |><| e -> tv, Expr h -> h |><| e -> tv>
+
+RI :: Int
+RB :: Bool
+RF :: Int -> Int
+
+case e of
+  (RI i) -> i + 1
+  (RB b) -> case b of
+    True -> 0
+    False -> 1
+  (RF a) -> a 2
+
+B<Bool -> Int, Bool -> Int> |><| b -> tb
+subs : (b : Bool, tb : Int) (b : Bool, tb : Int)
+b : B<Bool, Bool>, tb : B<Int, Int>
+
+D<R Int -> Int, R Bool -> tb, R (Int -> Int) -> Int>> |><| e -> te
+subs : (e : R Int, te : Int), (e : R Bool, tb : Int), (e : R (Int -> Int), tb : Int) => OK
+e : D<R Int, R Bool, R (Int -> Int)>, te : D<Int, Int, Int>
+
+si je prends tjrs le plus générique ?
+
+case e of
+  (RI i) -> True
+  (RB b) -> 2
+
+D<R Int -> Bool, R Bool -> Int> |><| e -> te
+subs : (e : R Int, te : Bool), (e : R Bool, te : Int)
+e : D<R Int, R Bool>, te : D<Bool, Int>
+
+sur le premier on peut généraliser
+
+case e of
+  (RI i) -> i
+  (RB b) -> b
+
+D<R Int -> Int, R Bool -> Bool> |><| e -> te
+subs : (e : R Int, te : Int), (e : R Bool, te : Bool)
+e : D<R Int, R Bool>, et : D<Int, Bool>
+
+
+RBI :: Bool -> Int -> RF Bool Int
+RBB :: Bool -> Bool -> RF Bool Bool
+RFI  :: a -> (b -> Int) -> RF a b
+
+case e of
+  (RBI b i) -> c
+  (RBB b b') -> c
+  (RF a f) -> if f a == 5 then c else c
+
+D<R Bool Int -> c, R Bool Bool -> c, R b b -> c> /!\
+si a est résultat d'une généralisation alors on peut pas la refiner comme ca
+D<R Bool Bool, R b b> on peut remplacer b par Bool car il existe dans le type.
+D<R Bool Int, R b b> on peut pas remplacer 2 fois b
+
+donc on peut faire: a => Bool ssi a apparait dans un des constructeurs des dimensions de D.
+
+D<R Bool a -> c, R Bool Bool -> c, R b b -> c>   OK
+
+comment le généraliser bien ?
+on avance comme on peut déjà.
+
+et pour
+D<R a, R Bool> on fait quoi ?
+
+
+
+
+
+
+
+D<Int -> Bool, a -> Int, e> |><| E<a -> Bool, Bool>
+by 2)
+D<Int -> Bool |><| E<a -> Bool, Bool>, a -> Int |><| E<a -> Bool, Bool>, e |><| E<a -> Bool, Bool>>
+by 2)
+D<E<Int -> Bool |><| a -> Bool, Int -> Bool |><| Bool>, E< a -> Int |><| a -> Bool,  a -> Int |><| Bool>, E< e |><| a -> Bool,  e |><| Bool>>
+by 1)
+D<E<a : Int    , _>, E<_, _>, E<e :a -> Bool, e : Bool>>
+D<E<Int -> Bool, _>, E<_, _>, E<e           , e       >>

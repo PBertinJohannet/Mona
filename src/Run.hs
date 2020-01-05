@@ -84,13 +84,13 @@ interpretAlg :: (Location, Subst, Qual Type) -> ExprF (() -> Run Value) -> Run V
 interpretAlg b = \case
   Case src pats -> do
     src <- src ()
-    foldM (changeCase src) PatFail (snd <$> pats)
+    foldM (changeCase src) PatFail (getExp <$> pats)
   e -> interpretAlg' b (($ ()) <$> e)
 
 interpretAlg' :: (Location, Subst, Qual Type) -> ExprF (Run Value) -> Run Value
 interpretAlg' (loc, sub, Qual p tp) e =
   case e of
-    Lam x e -> do
+    Lam (PatternT x e) -> do
       thisEnv <- ask
       return $ Func $ \val -> local (const thisEnv) (inEnv ("x", val) e) -- adding is adding to nothing, this is going to be an error sooon.
     k -> do

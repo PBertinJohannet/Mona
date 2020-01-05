@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE LambdaCase #-}
 module Subst where
 
 import Type
@@ -11,6 +12,7 @@ import Syntax
 import RecursionSchemes
 
 type Subst = Map.Map TVar Type
+type VExpr = Cofree ExprF (Location, Subst, Qual Variational); -- expression with information about performed substition (after type inference)
 type TExpr = Cofree ExprF (Location, Subst, Qual Type); -- expression with information about performed substition (after type inference)
 
 instance Pretty (Location, Subst, Qual Type) where
@@ -35,6 +37,17 @@ instance Substituable Type where
   ftv TCon{} = Set.empty
   ftv (TVar a) = Set.singleton a
   ftv (t1 `TApp` t2) = ftv t1 `Set.union` ftv t2
+
+instance Substituable Variational where
+  apply s = \case
+    Plain t -> Plain $ apply s t
+    Dim n ts -> Dim n (apply s <$> ts)
+    VApp t1 t2 -> apply s t1 `VApp` apply s t2
+
+  ftv = \case
+    Plain t -> ftv t
+    Dim s ts -> foldr Set.union Set.empty (ftv <$> ts)
+    VApp t1 t2 -> ftv t1 `Set.union` ftv t2
 
 instance Substituable Scheme where
   apply s (Forall as t) = Forall as $ apply s' t -- apply s' maybe

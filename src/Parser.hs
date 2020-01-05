@@ -89,7 +89,7 @@ pat = patternId <|> patternParen
 patternId :: Parser Pattern
 patternId = do
   ident <- identifier
-  return $ Pattern ident []
+  return $ Raw ident
 
 patternParen :: Parser Pattern
 patternParen = do
@@ -158,7 +158,7 @@ lambda = mkCF $ do
 simplifyLam :: Expr -> [Pattern] -> Parser Expr
 simplifyLam body args = do
   loc <- toLoc <$> getPosition
-  return $ foldr ((withPos loc .) . Lam) body args
+  return $ foldr ((withPos loc .) . lamPat) body args
 
 letin :: Parser Expr
 letin = mkCF $ do
@@ -169,7 +169,7 @@ letin = mkCF $ do
   b <- expr
   reserved "in"
   c <- expr
-  return $ App (withPos loc $ Lam a c) b
+  return $ App (withPos loc $ lamPat a c) b
 
 ifthen :: Parser Expr
 ifthen = mkCF $ do
@@ -180,7 +180,9 @@ ifthen = mkCF $ do
   tr <- expr
   reserved "else"
   fl <- expr
-  return $ Case cond [(Pattern "True" [], tr), (Pattern "False" [], fl)]
+  return $ Case cond
+    [PatternT (Pattern "True" []) tr,
+     PatternT (Pattern "False" []) fl]
 
 aexp :: Parser Expr
 aexp =
@@ -203,12 +205,12 @@ caseof = mkCF $ do
   cases <- sepBy caseline $ char ','
   return $ Case e1 cases
 
-caseline :: Parser (Pattern, Expr)
+caseline :: Parser (PatternT Expr)
 caseline = do
   p <- pat
   reservedOp "->"
   body <- expr
-  return (p, body)
+  return $ PatternT p body
 
 fromOp :: [Expr] -> Expr
 fromOp (e:es) = e
@@ -399,7 +401,7 @@ letrecdecl = do
   name <- identifier
   reservedOp "="
   body <- expr
-  return (name, Expr $ withPos loc $ Fix $ Lam (Pattern name []) body)
+  return (name, Expr $ withPos loc $ Fix $ lamPat (Pattern name []) body)
 
 typedecl :: Parser NakedBinding
 typedecl = do

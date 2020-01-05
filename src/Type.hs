@@ -25,6 +25,12 @@ data Type
   | TApp Type Type
   deriving (Show, Eq, Ord)
 
+data Variational
+  = Plain Type
+  | Dim String (NonEmpty Variational)
+  | VApp Variational Variational
+  deriving (Show, Eq, Ord)
+
 type Class = ([String], [Inst])
 type Inst  = Qual Pred
 
@@ -53,7 +59,7 @@ makeTypeConstant n = \case
   TCon s k -> TCon s k
   TApp a b -> TApp (makeTypeConstant n a) (makeTypeConstant n b)
 
-data NonEmpty a = a :+: [a] deriving (Eq, Show, Functor, Foldable, Traversable)
+data NonEmpty a = a :+: [a] deriving (Eq, Show, Ord, Functor, Foldable, Traversable)
 
 asList :: NonEmpty a -> [a]
 asList (a :+: b) = a : b
@@ -115,6 +121,9 @@ typeStar = TCon "Star" Star
 
 mkArr :: Type -> Type -> Type
 mkArr a = TApp (TApp tArr a)
+
+mkVArr :: Variational -> Variational -> Variational
+mkVArr a = VApp (VApp (Plain tArr) a)
 
 mkList :: Type -> Type
 mkList = TApp typeList

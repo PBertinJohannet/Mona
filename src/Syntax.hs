@@ -20,14 +20,20 @@ newtype Location = Loc (String, Int, Int) deriving Show;
 data ExprF a
   = Var Name
   | App a a
-  | Lam Pattern a
+  | Lam (PatternT a)
   | Lit Int
-  | Case a [(Pattern, a)]
+  | Case a [PatternT a]
   | Fix a
   deriving (Eq, Ord, Functor, Foldable, Traversable)
 
--- rose tree with string node.
-data Pattern = Pattern String [Pattern] deriving (Show, Eq, Ord)
+data Pattern = Pattern String [Pattern] | Raw Name deriving (Show, Eq, Ord)
+data PatternT a = PatternT Pattern a deriving (Show, Eq, Ord, Functor, Foldable, Traversable);
+
+getExp :: PatternT a -> a
+getExp (PatternT p a) = a
+
+lamPat :: Pattern -> a -> ExprF a
+lamPat p = Lam . PatternT p
 
 instance Pretty Pattern where
   pretty (Pattern a ps) = "(" ++ a ++ prettyL ps ++ ")"
@@ -139,7 +145,7 @@ instance Show (ExprF String) where
   show = inParen <<< \case
     Var n -> "Var " ++ n
     App a b -> "App " ++ a ++ " " ++ b
-    Lam a b -> "Lam " ++ show a ++ " " ++ b
+    Lam a -> "Lam " ++ show a
     Case a b -> "Case " ++ a ++ " of "++ show b
     Lit n -> "Lit " ++ show n
     Fix n -> "Fix " ++ n
@@ -151,7 +157,7 @@ prettyShape :: ExprF a -> String
 prettyShape = \case
   Var n -> "Var " ++ n
   App a b -> "App "
-  Lam a b -> "Lam "
+  Lam a -> "Lam "
   Case a b -> "Case "
   Lit n -> "Lit " ++ show n
   Fix n -> "Fix "
@@ -162,7 +168,7 @@ instance PrettyHisto ExprF where
     App a b -> case matchApp a b of
       (Just ("|", a, b), _) -> a ++ "|" ++ b
       (_, (a, b)) -> unwords [a, b]
-    Lam n e -> "\\" ++ pretty n ++ " -> " ++ value e
+    Lam (PatternT n e) -> "\\" ++ pretty n ++ " -> " ++ value e
     Lit l -> show l
     Fix e -> "fix " ++ value e
     Case e ex -> "case " ++ value e ++ " of tbd "

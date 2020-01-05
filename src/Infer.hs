@@ -25,7 +25,7 @@ import RecursionSchemes
 import Data.Tuple
 import Error
 
-newtype Union = Union (Type, Type, Location) deriving Show;
+newtype Union = Union (Variational, Variational, Location) deriving Show;
 
 instance Pretty Union where
   pretty (Union (a, b, _)) = pretty a ++ " should unify with : " ++ pretty b ++ "\n"
@@ -38,7 +38,7 @@ instance Pretty (Pred, Location) where
 instance Pretty Constraints where
   pretty (a, b) = prettyL a ++ " => " ++ prettyL b ++ "\n"
 
-union :: Location -> (Type, Type) -> Constraints
+union :: Location -> (Variational, Variational) -> Constraints
 union loc (a, b) = ([Union (a, b, loc)], [])
 
 predicate :: [Pred] -> Location -> Constraints
@@ -119,16 +119,18 @@ inferTop (Envs d env cenv tast) ((loc, name, ex):xs) = do
 inferExpr :: ClassEnv -> Env -> Expr -> ExceptLog (Scheme, TExpr)
 inferExpr cenv env ex = case runInfer env (runWriterT $ infer ex) of
   Left err -> throwError err
-  Right (ty', cs) -> do
-    let (_, _, Qual _ ty) = ann ty'
+  Right (tyBefore, cs) -> do
+    let (_, _, Qual _ ty) = ann tyBefore
     --tell $ "found : "++ pretty ty ++ "\n"
-    tell $ "with type : " ++ pretty ty' ++ " solve => \n"
+    tell $ "with type : " ++ pretty ty ++ " solve => \n"
     tell $ "constraints : " ++ pretty cs ++ " go \n"
     (preds, subst) <- runSolve cenv cs
-    tell $ "before : " ++ pretty (apply subst ty') ++ "\n" ++ pretty (apply subst ty) ++ "\n"
-    let (b, s) = closeOver (apply subst ty) (apply subst preds) $ apply subst ty'
-    tell $ "after CO : " ++ pretty b ++ "\n" ++ pretty s ++ "\n"
-    return (closeOver (apply subst ty) (apply subst preds) $ apply subst ty')
+    ty' <- mkPlain ty
+    tyBefore' <- _mkPlain tyBefore
+    --tell $ "before : " ++ pretty (apply subst ty') ++ "\n" ++ pretty (apply subst ty) ++ "\n"
+    --let (b, s) = closeOver (apply subst ty) (apply subst preds) $ apply subst ty'
+    --tell $ "after CO : " ++ pretty b ++ "\n" ++ pretty s ++ "\n"
+    return (closeOver (apply subst ty') (apply subst preds) $ apply subst tyBefore')
 
 inferExprT :: ClassEnv -> Env -> Expr -> Scheme -> ExceptLog (Scheme, TExpr)
 inferExprT cenv env ex tp = case runInfer env (runWriterT $ inferEq ex tp) of
@@ -142,7 +144,7 @@ inferExprT cenv env ex tp = case runInfer env (runWriterT $ inferEq ex tp) of
     checkPreds preds expectedPreds
     tell $ "found : " ++ pretty (apply subst found) ++ "\n"
     tell $ "expected : " ++ pretty (apply subst expected) ++ "\n"
-    allReplaces <- checkStrict (apply subst found) (apply subst expected)
+    allReplaces <- checkStrict (_apply subst found) (apply subst expected)
     --stest <- checkStrict (apply subst expected) (apply subst found) False
     --tell $ "\nor : " ++ show stest
     let s0 = Map.fromList allReplaces
@@ -152,7 +154,7 @@ inferExprT cenv env ex tp = case runInfer env (runWriterT $ inferEq ex tp) of
     --tell $ "sub : " ++ pretty s1 ++ "\n"
     --tell $ "before : " ++ pretty (apply s1 texp) ++ "\n" ++ pretty (apply s1 found) ++ "\n"
     --tell $ "after COC : " ++ pretty b ++ "\n" ++ pretty s ++ "\n"
-    let (sch, tex) = closeOver (apply s1 found) (apply s1 preds) $ apply s1 texp
+    let (sch, tex) = closeOver (_apply s1 found) (apply s1 preds) $ _apply s1 texp
     foldM_ (composeStrict sch tp) nullSubst allReplaces
     return (tp, tex)
 
@@ -196,7 +198,7 @@ inEnv (x, sc) m = do
 
 instantiate :: Scheme -> InferCons (Subst, Qual Type) -- replace by fresh variables
 instantiate (Forall as (Qual preds t)) = do
-  as' <- mapM (const fresh) as
+  as' <- mapM (const freshType) as
   let s = Map.fromList $ zip as as'
   return (s, Qual (apply s preds) (apply s t))
 
@@ -204,11 +206,20 @@ generalise :: Env -> [Pred] -> (Type, TExpr) -> (Scheme, TExpr)
 generalise env p (t, s) = (Forall as $ Qual p t, s)
   where as = Set.toList $ ftv env `Set.difference` ftv t
 
-fresh :: InferCons Type
-fresh = do
+freshName :: InferCons String
+freshName = do
   s <- get
   put s{count = count s + 1}
-  return $ tvar (letters !! count s)
+  return (letters !! count s)
+
+fresh :: InferCons Variational
+fresh = Plain <$> freshType
+
+freshType :: InferCons Type
+freshType = tvar <$> freshName
+
+freshQual :: InferCons (Qual Variational)
+freshQual = Qual [] <$> fresh
 
 noConstraints :: Constraints
 noConstraints = ([], [])
@@ -220,61 +231,81 @@ lookupEnv x = do
     Just s -> instantiate s
     Nothing -> throwErrorV $ UnboundVariable $ show x
 
-inferEq :: Expr -> Scheme -> InferCons (TExpr, Type)
+inferEq :: Expr -> Scheme -> InferCons (VExpr, Type)
 inferEq e t0 = do
   (_, Qual q t1) <- instantiate t0
   t2 <- infer e
   return (t2, t1)
 
-infer :: Expr -> InferCons TExpr
+infer :: Expr -> InferCons VExpr
 infer = cataCF inferAlgM
 
 getTp :: TExpr -> Type
-getTp (In ((_, _, Qual q t) :< _)) = t
+getTp (In ((_, _, Qual _ t) :< _)) = t
 
-noSub :: Type -> InferCons (Qual Type, Subst)
+getVTp :: VExpr -> Variational
+getVTp (In ((_, _, Qual _ t) :< _)) = t
+
+noSub :: Variational -> InferCons (Qual Variational, Subst)
 noSub = return . (, nullSubst) . Qual []
 
-inferAlgM :: (Location, ExprF (InferCons TExpr)) -> InferCons TExpr
+inferAlgM :: (Location, ExprF (InferCons VExpr)) -> InferCons VExpr
 inferAlgM = \case
-    (l, Lam x e) -> do
-        tv <- fresh
-        e' <- inEnv (x, Forall [] (Qual [] tv)) e
-        let t = getTp e'
-        return $ In $ (l, nullSubst, Qual [] $ tv `mkArr` t) :< Lam x e'
+    (l, Case sourceT []) -> do
+      destT <- fresh
+      retType <- sequence $ Case sourceT []
+      return (In $ (l, nullSubst, Qual [] destT) :< retType)
+
+    (l, Case sourceT (x:xs)) -> do
+      let branches = x :+: xs
+      d <- freshName
+      destT <- freshType
+      let infered = inPatEnv destT <$> branches
+      final <- sequence $ Case sourceT (asList infered)
+      --infer2 <- fmap (fmap (getVTp . getExp)) <$> sequence $ sequence <$> infered
+      infer2 <- traverse (fmap (getVTp . getExp) . sequence) infered
+      --patsT <- sequence (inferPat <$> bs)
+      --tell $ unionDim l sourceT destT bs
+      return (In $ (l, nullSubst, Qual [] $ Dim d infer2) :< final)--Case sourceT infered)
+
+    (l, Lam pat) -> do
+        tv <- freshType
+        let pat'@(PatternT par e) = inPatEnv tv pat
+        t <- getVTp <$> e
+        let retType = Qual [] (Plain tv `mkVArr` t)
+        In . ((l, nullSubst, retType) :<) <$> sequence (Lam pat')
+
     (l, k) -> do
         k <- sequence k
-        let tpk = getTp <$> k
+        let tpk = getVTp <$> k
         (tp, sub) <- inferAlg l tpk
         return (In $ (l, sub, tp) :< k)
   where
-    inferAlg :: Location -> ExprF Type -> InferCons (Qual Type, Subst)
+    inferAlg :: Location -> ExprF Variational -> InferCons (Qual Variational, Subst)
     inferAlg l = \case
           Lit _ -> do
             tell noConstraints
-            noSub typeInt
-
-          Case sourceT (t:ts) -> do
-            let exprEq = mconcat $ curry (union l) t <$> ts
-            destT <- fresh
-            tell $ union l (t, sourceT `mkArr` destT) <> exprEq
-            noSub destT
+            noSub $ Plain typeInt
 
           Var x -> do
             env <- ask
             (sub, Qual p t) <- lookupEnv x -- `catchError` \e -> lookupEnv $ pretty env
             tell $ predicate p l
-            return (Qual p t, sub)
+            return (Qual p $ Plain t, sub)
 
           App t1 t2 -> do
             tv <- fresh
-            tell $ union l (t1, t2 `mkArr` tv)
+            tell $ union l (t1, t2 `mkVArr` tv)
             noSub tv
 
           Fix t1 -> do
             tv <- fresh
-            tell $ union l (tv `mkArr` tv, t1)
+            tell $ union l (tv `mkVArr` tv, t1)
             noSub tv
+
+inPatEnv :: Type -> PatternT (InferCons VExpr) -> PatternT (InferCons VExpr)
+inPatEnv tv (PatternT x@(Pattern p ps) e) = case ps of
+  [] -> let e' = inEnv (p, Forall [] (Qual [] tv)) e in PatternT x e'
 
 -- see the doc for the error message, basicaly it verifies that the same variable is not binded to multiple types
 -- then it adds it to the given substition
@@ -307,8 +338,18 @@ checkPreds found expected =
 
 type Unifier = (Subst, [Union])
 
+type DimensionSubst = Map.Map String Int
+
 emptyUnifier :: Unifier
 emptyUnifier = (nullSubst, [])
+
+newnifies :: Variational -> Variational -> Solve (DimensionSubst, Subst)
+newnifies (Plain t1) (Plain t2) = unifies t1 t2
+newnifies (Dim s v1s) v2 = newnifies v2 <$> v1s
+newnifies v1 (Dim s v2s) = newnifies v1 <$> v2s
+newnifies v (Plain t) = newnifies v1 <$> v2s
+newnifies (Plain t) v = newnifies v1 <$> v2s
+newnifies (VApp a b)
 
 unifies :: Type -> Type -> Solve Subst
 unifies t1 t2 | t1 == t2 = return nullSubst
@@ -389,3 +430,6 @@ occursCheck a t = a `Set.member` ftv t
 
 unifyPred :: Pred -> Pred -> Solve Subst
 unifyPred (IsIn i t) (IsIn i' t') | i == i' = unifies t t'
+
+mkPlain :: Variational -> ExceptLog Type
+mkPlain (Plain t) = return t
