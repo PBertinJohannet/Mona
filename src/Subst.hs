@@ -89,3 +89,6 @@ compose s1 s2 = Map.map (apply s1) s2 `Map.union` s1
 
 withFtv :: Type -> Scheme
 withFtv t = Forall (Set.toList $ ftv t) $ Qual [] t
+
+dom :: NonEmpty Variational -> Set.Set TVar
+dom x = foldr Set.union Set.empty (ftv <$> x)

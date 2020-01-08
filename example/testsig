@@ -50,6 +50,8 @@ D<Expr (c -> d) -> c -> d, Expr (Prod e f) -> Prod e f>
 créer b et remplacer aux deux endroits. izi.
 
 
+
+reconcilie :
 donc dans l'ordre :
 Je prends R a -> k et R b -> c
 si a et b sont differents :
@@ -60,6 +62,12 @@ si a et b sont differents :
   sinon on crée une nouvelle tvar et on remplace a par la tvar dans R a -> k et b par la tvar dans R b -> c
     si ils unifient on continue avec le remplacement.
 =============== OKKKKKK ============ SHOULD BE ENOUGH
+
+on a besoin de :
+-- done -- dom(D) qui renvoie les variables sur lesquelles on peut refiner
+-- doing -- replace(Variational, Variational) qui remplace toutes les occurences de a dans b.
+UnifyChoice (dom -> Variational -> Variational -> Maybe Variational) qui fait le calcul ci-dessus
+la fonction myUnify qui fait un foldM de UnifyChoice
 
 
 

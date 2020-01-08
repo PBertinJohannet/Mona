@@ -9,6 +9,7 @@ module Type where
 import Pretty
 import Control.Arrow
 import Data.List
+import qualified Data.Set as Set
 
 data TVar = TV{name :: String, kind :: Kind}
   deriving (Show, Eq, Ord)
