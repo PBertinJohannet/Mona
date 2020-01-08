@@ -338,18 +338,16 @@ checkPreds found expected =
 
 type Unifier = (Subst, [Union])
 
-type DimensionSubst = Map.Map String Int
-
 emptyUnifier :: Unifier
 emptyUnifier = (nullSubst, [])
 
-newnifies :: Variational -> Variational -> Solve (DimensionSubst, Subst)
+newnifies :: Variational -> Variational -> Solve Subst
 newnifies (Plain t1) (Plain t2) = unifies t1 t2
 newnifies (Dim s v1s) v2 = newnifies v2 <$> v1s
 newnifies v1 (Dim s v2s) = newnifies v1 <$> v2s
 newnifies v (Plain t) = newnifies v1 <$> v2s
 newnifies (Plain t) v = newnifies v1 <$> v2s
-newnifies (VApp a b)
+--newnifies (VApp a b)
 
 unifies :: Type -> Type -> Solve Subst
 unifies t1 t2 | t1 == t2 = return nullSubst

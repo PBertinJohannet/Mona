@@ -65,7 +65,7 @@ si a et b sont differents :
 
 on a besoin de :
 -- done -- dom(D) qui renvoie les variables sur lesquelles on peut refiner
--- doing -- replace(Variational, Variational) qui remplace toutes les occurences de a dans b.
+-- done -- replace(Variational, Variational) qui remplace toutes les occurences de a dans b.
 UnifyChoice (dom -> Variational -> Variational -> Maybe Variational) qui fait le calcul ci-dessus
 la fonction myUnify qui fait un foldM de UnifyChoice
 

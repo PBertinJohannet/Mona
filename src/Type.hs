@@ -74,6 +74,22 @@ lastSafe = \case
 lenMinusOne :: NonEmpty a -> Int
 lenMinusOne (a :+: b) = length b
 
+class Replacable a where
+  -- replace a by b in c
+  replaceBy :: a -> a -> a -> a
+
+instance Replacable Type where
+  replaceBy a b c | a == c = b
+  replaceBy a b (TApp c c') = TApp (replaceBy a b c) (replaceBy a b c')
+  replaceBy a b c = c
+
+instance Replacable Variational where
+  replaceBy a b c | a == c = b
+  replaceBy (Plain a) (Plain b) (Plain c) = Plain (replaceBy a b c)
+  replaceBy a b (VApp c c') = VApp (replaceBy a b c) (replaceBy a b c')
+  replaceBy a b (Dim s cs) = Dim s (replaceBy a b <$> cs)
+  replaceBy a b c = c
+
 -- transforms a constructor's type to a pattern's type :
 -- List :: a -> List a -> List a becomes ~List :: List a -> (a -> List a -> b) -> b
 -- more generaly :
