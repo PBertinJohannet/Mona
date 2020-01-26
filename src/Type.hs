@@ -45,6 +45,12 @@ instance Pretty (TVar, Type) where
 instance Pretty (Type, TVar) where
   pretty (a, b) = "(" ++ pretty a ++ " : " ++ pretty b ++ ")"
 
+instance Pretty Variational where
+  pretty = \case
+    Plain t -> pretty t
+    Dim s l -> s ++ "<" ++ prettyL (asList l) ++ ">"
+    VApp a b -> pretty a ++ "(" ++ pretty b ++ ")"
+
 mapPred :: (Type -> Type) -> Pred -> Pred
 mapPred f (IsIn s t) = IsIn s (f t)
 
@@ -165,10 +171,10 @@ getReturn = \case
   TApp (TApp (TCon "(->)" k) a) b -> getReturn b
   e -> e
 
-unapply :: Type -> Type
+unapply :: Type -> (Type, [Type])
 unapply = \case
-  TApp a b -> a
-  e -> e
+  TApp a b -> let (base, args) = unapply a in (base, args + [b])
+  e -> (e, [])
 
 kindToFunc :: Kind -> Type
 kindToFunc = \case

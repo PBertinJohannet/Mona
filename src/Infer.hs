@@ -348,7 +348,14 @@ newnifies v1 (Dim s v2s) = newnifies v1 <$> v2s
 newnifies v (Plain t) = newnifies v1 <$> v2s
 newnifies (Plain t) v = newnifies v1 <$> v2s
 --newnifies (VApp a b)
-
+{-
+reconcilie :: Variational -> Variational -> Solve Variational
+reconcilie a b =
+  let (aBase, aArgs) = unapply a in
+  let (bBase, bArgs) = unapply b in
+  if length bArgs != length aArgs
+    then throwErrorV $ ReconciliationError a b
+-}
 unifies :: Type -> Type -> Solve Subst
 unifies t1 t2 | t1 == t2 = return nullSubst
 unifies (TVar v) t = bind v t

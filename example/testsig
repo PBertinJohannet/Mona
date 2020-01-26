@@ -66,9 +66,18 @@ si a et b sont differents :
 on a besoin de :
 -- done -- dom(D) qui renvoie les variables sur lesquelles on peut refiner
 -- done -- replace(Variational, Variational) qui remplace toutes les occurences de a dans b.
-UnifyChoice (dom -> Variational -> Variational -> Maybe Variational) qui fait le calcul ci-dessus
+ -- doing -- UnifyChoice (dom -> Variational -> Variational -> Maybe Variational) qui fait le calcul ci-dessus
 la fonction myUnify qui fait un foldM de UnifyChoice
 
+On part du principe que soit on a
+(R a) b    et     (R a') b'
+soit on a
+A          et     B -> si A et B same on renvoie Just A sinon on renvoie Nothing
+
+on veut pouvoir transformer le truc sachant que :
+R a b => (R a) b
+R a b c => ((R a) b) c
+R (a b) c => (R (a b)) c
 
 
 D<(Expr b) -> b |><| e -> tv, Expr (a -> b) -> b |><| e -> tv, Expr (Prod a b) -> Prod a b |><| e -> tv, Expr a -> a |><| e -> tv>
@@ -153,3 +162,988 @@ D<E<Int -> Bool |><| a -> Bool, Int -> Bool |><| Bool>, E< a -> Int |><| a -> Bo
 by 1)
 D<E<a : Int    , _>, E<_, _>, E<e :a -> Bool, e : Bool>>
 D<E<Int -> Bool, _>, E<_, _>, E<e           , e       >>
+
+
+
+problème :
+
+on a fmap (\e -> case e of ...) lst
+
+D<(Expr b) -> b, Expr (c -> d) -> c -> d, Expr (Prod e f) -> Prod e f, Expr g -> g> |><| e -> tv
+on fait :
+Expr b -> b |><| Expr (c -> d) -> c -> d ==> Expr h -> h
+Expr h -> h |><| Expr (Prod e f) -> Prod e f ==> Expr h -> h
+... => OK
+
+case e of ... a le type tc :
+e a le type te
+chaque pattern genère un type : Expr .. -> ..
+D<Expr ..., ...> |><| te -> tc
+te : D<Expr ....>
+tc : D<...>
+\e -> case e of : te -> tc
+fmap : (k -> j) -> [Expr (Prod y z)] -> [j]
+
+te |><| Expr (Prod y z)
+subst D<no, no, yes, no>
+tc devient : D<Prod e f>
+
+(te -> tc) -> [te] ->[tj]
+
+on a donc  :
+[D<Prod e f>]
+qui devient : [Prod e f]
+
+
+
+autre exemple :
+Maybe (Expr )
+
+
+case e of
+  (Just (EProd a b)) -> Prod a b
+  (Nothing) -> Prod 0 1
+
+inferé en :
+D<Maybe (Expr (Prod a b)) -> Prod a b, Maybe c -> Prod Int Int>
+reconcilie :
+Maybe (Expr (Prod a b)) -> Prod a b,
+Maybe c                 -> Prod Int Int,
+c est une tvar qui apparait dans un des constructeurs :
+
+on remplace donc (Expr (Prod a b)) par c
+ensuite on unifie :
+Maybe c -> Prod Int Int
+avec
+Maybe c -> Prod a b
+a -> Int, b -> Int etc... ça marche.
+
+On a donc :
+D<Maybe (Expr (Prod a b)), Maybe c> -> D<Prod a b, Prod Int Int>
+avant de reconcilier sur D, il faut toujours rassembler tous les D :
+pour ca on a :
+D<a, b, D<i, j, k>> devient D<a, b, k> forcément
+D<a, b, c> -> Maybe D<i, j, k> devient D<a -> Maybe i, b -> Maybe j, c -> Maybe k>
+etc...
+
+
+autre exemple :
+case e of
+  ExprP a b -> case a of
+    Just k -> (k, b)
+    Nothing -> (b, b)
+  Lift l -> (Just l, Just l)
+
+m :: Prod (Maybe a, b)
+(a, b)
+(b, b)
+unifier Maybe (Prod (Maybe a, b)) et a => impossible. mais pourtant il y arrive...
+
+renvoie :
+d'abord :
+case a of ... est de type ar ou
+R<Maybe k -> (k, b), Maybe l -> (b, b)> |><| a -> ar
+a : R<Maybe k, Maybe l>
+ar : R<(k, b), (b, b)>
+ensuite :
+D<Expr (a, b) -> ar, Expr m -> (Maybe m, Maybe m)>
+on remplace m par (a, b) dans le premier :
+D<Expr m -> ar, Expr m -> (Maybe m, Maybe m)> etc...
+D<Expr (a, b) -> ar, Expr m -> (Maybe m, Maybe m)> |><| e -> er
+e : D<Expr (a, b), Expr m>
+er : D<ar, (Maybe m, Maybe m)>
+
+mtn on calcule :
+ret type de Variational (e -> case e of ....):
+aka : e -> er
+D<Expr (R<Maybe k, Maybe l>, b), Expr m> -> D<R<(k, b), (b, b)>, (Maybe m, Maybe m)>
+
+on fait R en premier.
+D<Expr (R<Maybe k, Maybe l>, b), Expr m>  (aka e) devient :
+R<D<Expr (Maybe k, b), Expr m>, D<Expr (Maybe l, b), Expr m>>
+
+D<R<(k, b), (b, b)>, (Maybe m, Maybe m)> (aka er) devient :
+R<D<(k, b), (Maybe m, Maybe m)>, D<(b, b), (Maybe m, Maybe m)>>
+
+on a donc comme ret type :
+R<D<Expr (Maybe k, b), Expr m>, D<Expr (Maybe l, b), Expr m>> -> R<D<(k, b), (Maybe m, Maybe m)>, D<(b, b), (Maybe m, Maybe m)>>
+donc :
+R<D<Expr (Maybe k, b), Expr m> -> D<(k, b), (Maybe m, Maybe m)>, D<Expr (Maybe l, b), Expr m> ->  D<(b, b), (Maybe m, Maybe m)>>
+
+on reconcilie D dans chaque dimension :
+1)
+D<Expr (Maybe k, b), Expr m> -> D<(k, b), (Maybe m, Maybe m)>
+devient :
+D<Expr (Maybe k, b) -> (k, b), Expr m -> (Maybe m, Maybe m)>
+qui se reconcilie en :
+Expr m -> (Maybe m, Maybe m)
+2)
+D<Expr (Maybe l, b), Expr m> -> D<(b, b), (Maybe m, Maybe m)>
+devient :
+D<Expr (Maybe l, b) -> (b, b), Expr m -> (Maybe m, Maybe m)>
+qui se reconcilie en :
+Expr m -> (Maybe m, Maybe m)
+
+on a donc pour R :
+R<Expr m -> (Maybe m, Maybe m), Expr m -> (Maybe m, Maybe m)>
+et donc comme type :
+Expr m -> (Maybe m, Maybe m)
+
+
+il faudrait generer des contraintes pour pas oublier les liens entre (Expr (Maybe k, b)) et (k, b)
+le probleme c'est que quand j'ai
+a -> R a je peux garder la contrainte.
+mais quand j'ai
+R a -> a je peux pas la garder...
+Un cas qui marche :
+Maybe (Expr (Prod a b)) -> Prod a b, Maybe c -> Prod Int Int
+aaaaah !
+le problème vient du fait que j'ai un double case et que je matche pas dessus je pense.
+comment on fait si on a un zero case d'ailleurs ?
+
+ex :
+case a of
+  Prod a b -> a * b
+  x -> 5
+
+donne
+D<Expr (Int, Int) -> Int, a -> Int>
+je dis que c'est pour tout a ?
+ou je dis que a est de type Expr (Int, Int)
+
+psk si j'ai
+case a of
+  Prod a b -> a * b
+  Lam y -> y 5
+
+ca donne :
+D<Expr (Int, Int) -> Int, Expr (Int -> Int) -> Int>
+ou alors je le refuse ?
+d'un certain côté ca fait sens de refuser psk les types en entrée ont rien a voir.
+la il faudrait plutôt un Expr Int, Expr Int dans ce cas.
+si j'infere a -> Int ça crash des que j'envoie un non Int
+
+
+le truc c'est que le même constructeur peut marcher 2 fois
+genre Expr (Int, Int) et Expr (Char, Char)
+donc je devrais pas pouvoir dire c'est de type Expr a
+
+
+la diff entre
+R (P a) |><| R (C a)
+et
+R k |><| R j
+c'est que a est free dans celui du haut
+R (P a) == R (forall a . P a) on ne sait pas ce que vaut a au final.
+quoi que si le truc c'est uniquement si j'ai ?
+quand j'ai R k avec k plein ?
+
+genre
+data R a =
+  RB :: Bool -> R Bool
+  RI :: Char -> R Char
+  RA :: a -> R a
+  RMA :: Maybe a -> R (Maybe a)
+
+les trois peuvent unifier avec R a
+
+mais comment j'accepte :
+<Expr (a, b) -> (a, b), Expr (a -> b) -> (a -> b)>
+et je refuse
+<Expr (Int, Int) -> Int, Expr (Int -> Int) -> Int>
+
+la c'est psk la réécriture de (Int, Int) en a fait perdre de l'info mais que l'info est pas perdue dans le retour en gros
+alors que
+<Expr (Int, Int) -> (Int, Int), Expr (Int -> Int) -> (Int -> Int)>
+n'admet pas non plus de refinement en fait ?
+ah si ? ah non.
+psk Expr a -> a ne marchera pas avec les autres.
+normal psk en fait quand on ecrit :
+Tup = Expr a -> Expr b -> Expr (Prod a b);
+ca veut dire
+forall a, b . Expr a -> Expr b -> Expr (Prod a b);
+et pas
+exists a, b . Expr a -> Expr b -> Expr (Prod a b);
+donc mtn : ?
+si j'ai R Int -> R a ça marche psk Int est pas remplacé depuis le constructeur !!!!
+c'est ca le truc en fait psk
+RA :: forall a . R a
+ou a = Int
+peut pas unifier en R a
+donc on refuse d'unifier en R a un truc qui vient d'un forall
+en gros on refait pas le truc a l'envers.
+mtn comment on peut le calculer ça ?
+psk on a pas l'info dans le type que c'était refiné ? ou alors avec un forall en plus ?
+genre
+Expr (Int, Int) -> Int, Expr (Int -> Int) -> Int
+peut pas refiner en Expr a -> Int
+alors que si les constructeurs étaient définis :
+finir le raisonnement ici :
+
+si on a :
+EP :: (Int, Int) -> E (Int, Int)
+EL :: (Int -> Int) -> E (Int -> Int)
+on peut généraliser
+case e of
+  EP (a, b) -> a * b
+  EP l -> l 5
+en E a -> Int
+psk tous les cas de E sont utilisés.
+par contre si on a :
+EP :: (a, a) -> E (a, a)
+EL :: (a -> a) -> E (a -> a)
+on peut pas psk on perd l'info du a
+
+could not reconcile constructors (Int, Int) and (Int -> Int)
+
+mais (Int, b) et (Int, a) il peut ?
+
+donc maintenant si on dit qu'on peut unifier
+RA :: a
+et
+RB :: b
+seulement si l'un des deux vient d'un truc c'est psk :
+EP (a, a) -> E (a, a)
+EPI (Int, Int) -> E (Int, Int)
+on peut dire que si ça unifie c'est que
+
+
+
+mtn verifier qu'on a tjrs besoin de l'autre règle.
+a priori l'autre regle crée une tvar.
+la on a dit que si b est un sous-type de a
+et qu'on a les constructeurs
+P :: (a, a) -> R (a, a)
+et
+L :: (a -> a) -> R (a, a)
+on peut pas unifier
+R (b, b) avec R (b -> b)
+en forall a . R a
+car c'est pas forall a.
+that is all !!!
+
+
+l'autre truc c'est qu'on disait que quand on unifiait
+R Int et R Bool
+en R a
+après on pouvait pas unifier ce R a avec R m
+bon en fait c'est un truc a part il semblerait.
+car si elle apparait pas dans les constructeurs y a moyen que ça nous concerne pas.
+
+bref donc on peut générer des trucs du genre
+EP (a, a) -> E (a, a)
+Ep (x, y) -> x + y :: E (Int, Int) -> Int
+
+EPI (Int, Int) -> E (Int, Int)
+EPI (x, y) -> x + y ::E (Int, Int) -> Int
+
+
+pk y avait pas ce problème avec l'autre ?
+psk on pouvait juste pas avoir ca ?
+genre si on avait
+E a = EP (a, a) | EL (a -> a)
+EP (a, a) -> a + a
+EP l -> l 5
+inférait correctement en
+EP Int -> Int
+sauf que la on interdit ça car le type doit représenter ce qui est dedans.
+en l'occurence ca serait comme avoir Ep p a = EP p a
+et unifier EP (Prod) Int et EP (Func) Int, on est direct dans un problème car il n'existe pas de a tel que a = Prod et a = Func
+yep c'est bien tu redécouvres l'unification au final.
+
+je peux pas appliquer une fonction de type E (a, a) -> k a un truc de type E (a -> a) -> k
+je peux pas non plus avec fonction de type E (Int, Int) -> k a un truc de type E (a, a) -> k a
+par contre je peux si E (Int, Int)
+réécrire avec des P et F a la place de (,) et (->)
+
+si j'ai
+EP (P a) -> E (P a)
+EF (F a) -> E (F a)
+EI Int -> E Int
+EB Bool -> E Bool
+je peux pas unir
+EP (P Int) -> Int et EP (F Int) -> Int en EP a -> Int car (P Int) et (F Int) ont rien a voir
+EP (Bool) -> Int et EP (Int) -> Int je peux par contre
+psk forall a . EI Int -> E Int
+alors que forall a EP (P a) -> E (P a)
+
+
+
+dernier exemple j'espere :
+case e of
+  (Just (EProd a b)) -> a + b
+  (Just (ELift a)) -> a
+  (Nothing) -> 0
+
+liste des exemples qu'on peut avoir :
+
+
+reconcilie :
+donc dans l'ordre :
+Je prends R a -> k et R b -> c
+si a et b sont differents :
+  si a est une tvar et qu'il apparait dans un des constructeurs
+    on remplace b par a dans le second et si ils unifient
+      on continue avec R a -> k
+  sinon on crée une nouvelle tvar et on remplace a par la tvar dans R a -> k et b par la tvar dans R b -> c
+    si ils unifient on continue avec le remplacement.
+
+D<Maybe (Expr (Prod a b)) -> Prod a b, Maybe c -> Prod Int Int>
+reconcilie en : Maybe c -> Prod Int Int
+
+D<R Bool Int -> c, R Bool Bool -> c, R b b -> c>
+reconcilie pas car b et a(de Bool/Int) n'unionisent pas
+
+D<R Int -> Int, R Bool -> Bool> |><| e -> te
+reconcilie en R a -> a
+
+D<R Int -> Bool, R Bool -> Int> |><| e -> te
+ne reconcilie pas car impossible d'unifier les types de retour
+
+D<R Int -> Int, R Bool -> tb, R (Int -> Int) -> Int>> |><| e -> te
+unifie en R a -> Int si tb |><| Int
+
+D<Expr (Maybe k, b) -> (k, b), Expr m -> (Maybe m, Maybe m)>
+D<Expr m -> (k, b), Expr m -> (Maybe m, Maybe m)>
+
+
+
+D<Expr m ->
+
+bla
+bla
+bla
+
+Sooooo !!!
+on avance bien côté
+quoi que tkt on va y arriver.
+
+en gros quand on décompose on fait quoi ? 
+
+
+unifier forall b . (b ~ (Int, Int)) => E b -> b    
+
+        avec
+
+unifier forall b . (b ~ (Int -> Int)) => E b -> b
+
+sous forall a . E a -> a
+
+implique que b ~ (Int, Int) unifie avec b ~ (Int -> Int)
+
+ 
+
+unifier forall a b . (b ~ (a, a)) => E b -> b
+
+        avec
+
+unifier forall a b . (b ~ (a -> a)) => E b -> b
+
+sous forall c . E c -> c
+
+implique que b ~ (a, a) unifie avec b ~ (a -> a)
+
+ 
+
+dans les cas :
+
+ 
+
+changer les tvars pour dire si elles sont refinable a l'instanciation du constructeur
+
+d'ailleurs je fais comment ?
+
+quand j'ai
+
+(a -> k)
+
+------- je fais
+
+tin <- fresh
+
+tret <- inEnv a tin k
+
+return (tin -> tret)
+
+ 
+
+quand j'ai
+
+(E) -> k
+
+------- je fais
+
+tin <- fresh
+
+tret <- k
+
+tin |><| typeOf E
+
+return (tin -> tret)
+
+ 
+
+quand j'ai
+
+(E a) -> k
+
+------- je fais
+
+ta <- fresh
+
+tret <- inEnv a ta k
+
+tin <- typeOfRet E
+
+E |><| ta -> tin
+
+return (tin -> tret)
+
+ 
+
+ 
+
+quand j'ai
+
+(E a b) -> k
+
+------- je fais
+
+ta <- fresh
+
+tb <- fresh
+
+tret <- inEnv a ta $ inEnv b tb k
+
+tin <- typeOfRet E
+
+E |><| ta -> tb -> tin
+
+return (tin -> tret)
+
+ 
+
+ 
+
+quand j'ai
+
+(E (F a)) -> k
+
+------- je fais
+
+ta <- fresh
+
+tretF <- typeOfRet F
+
+tretE <- typeOfRet E
+
+tret <- inEnv a ta k
+
+F |><| ta -> tretF
+
+E |><| tretF -> tretE
+
+return (tretE -> tret)
+
+ 
+
+quand j'ai
+
+(E (F (G a))) -> k
+
+------- je fais
+
+ta <- fresh
+
+tretG <- typeOfRet G
+
+tretF <- typeOfRet F
+
+tretE <- typeOfRet E
+
+tret <- inEnv a ta k
+
+G |><| ta -> tretG
+
+F |><| tretG -> tretF
+
+E |><| tretF -> tretE
+
+return (tretE -> tret)
+
+ 
+
+ 
+
+quand j'ai
+
+(E (F a b)) -> k
+
+------- je fais
+
+ta <- fresh
+
+tb <- fresh
+
+tretF <- typeOfRet F
+
+tretE <- typeOfRet E
+
+tret <- inEnv a ta $ inEnv b tb k
+
+F |><| ta -> tb -> tretF
+
+E |><| tretF -> tretE
+
+return (tretE -> tret)
+
+ 
+
+en gros quand j'ai un sous pattern je demande :
+
+les contraintes :
+
+eg F a b => F |><| ta -> tb -> tretF
+
+le type de retour :
+
+eg F a b => tretF
+
+les nouvelles variables
+
+eg F a b => {a, b}
+
+ 
+
+inferPat :: (Pattern, Expr) -> Infer (Type, (Pattern TExpr))
+
+inferPat pat =
+
+    (tin, vars) <- DecomposePattern pat
+
+    tret <- foldl (curry inEnv) k vars
+
+    ... blabla
+
+    return (tin -> tret, cons)
+
+ 
+
+DecomposePattern :: Pattern -> (Type, [(String, Type)])
+
+DecomposePattern name vars | isPattern Name = do
+
+    (subTypes, cons, varsTypes) <- traverse DecomposePattern vars
+
+    tret <- typeOfRet Name
+
+    tell (foldr TArr tret subTypes `union` typeOf Name)
+
+    return (tret, varsTypes)
+
+DecomposePattern name [] = do
+
+    tret <- fresh
+
+    return (tret, return (name, tret))
+
+DecomposePattern name _ = throw "could not find machin truc"
+
+ 
+
+ 
+
+ 
+
+E where
+
+    P :: (a, a) -> E (a -> a)
+
+    L :: (a -> a) -> E (a, a)
+
+ 
+
+A where
+
+    P :: (a, a) -> A (a, a)
+
+    L :: (a -> a) -> A (a -> a)
+
+ 
+
+I where
+
+    P :: (Int, Int) -> I (Int, Int)
+
+    L :: (Int -> Int) -> I (Int -> Int)
+
+ 
+
+typeof IP = (Int, Int) -> I (Int, Int)
+
+typeof AP = (NR a, NR a) -> I (NR a, NR a)
+
+ 
+
+quand j'unifie
+
+NoRefine a |><| Refine Int     => a : NR Int
+
+NoRefine Int |><| NoRefine Int => OK
+
+NoRefine Int |><| _            => fail
+
+ 
+
+et du coup :
+
+P (NR a) <=> P (_) ===> P (NR a)
+
+ 
+
+nn
+
+mettre NR seulement après avoir refine
+
+ 
+
+genre j'infère
+
+P (R a) -> (R a)
+
+ 
+
+ 
+
+ 
+
+je tombe sur
+
+et NoRefine (NR a) = NR a
+
+ 
+
+ 
+
+flop x = case x of
+
+    P (a, b) -> a + b
+
+    L l -> l 5
+
+ 
+
+pour E : fail
+
+pour A : fail
+
+pour I : P a -> Int
+
+ 
+
+flop2 = case x of
+
+    P (a, b) -> (a, b)
+
+    L l -> l
+
+ 
+
+pour E : fail
+
+pour A : A a -> a
+
+pour I : I a -> a
+
+ 
+
+flop3 = case x of
+
+    P (a, b) -> (+ a)
+
+    L l -> (l 1, l 2)
+
+ 
+
+pour E : E a -> a
+
+pour A : fail
+
+pour I : fail
+
+ 
+
+ 
+
+essayer :
+
+ 
+
+A where
+
+    P :: (a, a) -> A (a, a)
+
+    L :: (a -> a) -> A (a -> a)
+
+ 
+
+I where
+
+    P :: (Int, Int) -> I (Int, Int)
+
+    L :: (Int -> Int) -> I (Int -> Int)
+
+ 
+
+ 
+
+flop = case x of
+
+    IP (a, b) -> a + b
+
+    IL l -> l + 5
+
+ 
+
+flop2 = case x of
+
+    AP (a, b) -> a + b
+
+    AL l -> l + 5
+
+ 
+
+ 
+
+flop2 :
+
+branch 1
+
+    AP (Prod a b) -> a + b
+
+        DecomposePattern (AP (Prod a b))
+
+            DecomposePattern (Prod a b)
+
+            ret [a : ta, b : tb]
+
+            Prod tc tc <= typeOfRet Prod
+
+            tc -> tc -> Prod tc tc |><| ta -> tb -> Prod tc tc
+
+            <= (Prod tc tc, [a : ta, b : tb])
+
+        A (Prod te tf) <= typeOfRet AP
+
+        (Prod te tf) -> A (Prod te tf) |><| (Prod tc tc) -> A (Prod te tf)
+
+        <= (A (Prod te tf), [a : ta, b : tb])
+
+    ...
+
+        inEnv a ta $ inEnv b tb $ (a + b)
+
+        ta -> tb -> Int |><| Int -> Int -> Int
+
+        ret : Int
+
+    <= (A (Prod te tf) -> Int)
+
+ 
+
+branch 2
+
+    AL l -> l 5
+
+        DecomposePattern (AL l)
+
+        [l : tl]
+
+        A (tg -> tg) <= typeOfRet AL
+
+        (tg -> tg) -> A (tg -> tg) |><| tl -> A (tg -> tg)
+
+        <= (A (tg -> tg), [l : tl])
+
+    ...
+
+        inEnv l tl $ (l 5)
+
+        tl |><| Int -> th
+
+        ret : th
+
+    <= (A (tg -> tg) -> th)
+
+ 
+
+donc au final on a :
+
+contraintes :
+
+tc -> tc -> Prod tc tc |><| ta -> tb -> Prod tc tc
+
+(Prod te tf) -> A (Prod te tf) |><| (Prod tc tc) -> A (Prod te tf)
+
+ta -> tb -> Int |><| Int -> Int -> Int
+
+(tg -> tg) -> A (tg -> tg) |><| tl -> A (tg -> tg)
+
+tl |><| Int -> th
+
+ 
+
+type :
+
+D<A (Prod te tf) -> Int, A (tg -> tg) -> th>
+
+donc mtn :
+
+    tc -> tc -> Prod tc tc |><| ta -> tb -> Prod tc tc
+
+    tc = ta
+
+    ta = tb
+
+ 
+
+    (Prod te tf) -> A (Prod te tf) |><| (Prod tc tc) -> A (Prod te tf)
+
+    te = tc
+
+    tf = tc
+
+ 
+
+    ta -> tb -> Int |><| Int -> Int -> Int
+
+    ta = Int
+
+   
+
+    (tg -> tg) -> A (tg -> tg) |><| tl -> A (tg -> tg)
+
+    (tg -> tg) = tl
+
+ 
+
+    tl |><| Int -> th
+
+    tg = Int
+
+    th = tg
+
+ 
+
+ 
+
+    on a donc (tc = ta = tb = te = tf = Int) et (tg = th = Int)
+
+ 
+
+D devient :
+
+D<A (Prod Int Int) -> Int, A (Int -> Int) -> Int>
+
+ 
+si on veut reconcilier maintenant on fait juste : 
+A (Prod Int Int)  -> Int |><| A (Int -> Int) -> Int
+
+on crée tj et on remplace (Prod Int Int) par tj dans Int (g) puis (Int -> Int) par Int dans Int (d)
+on a donc : 
+A tj 
+ou plutôt forall tj . A tj
+ce qui est faux psk on veut pas compiler ça...
+du coup au moment de sortir le pattern (l 930-932) je mets un flag sur la tvar
+si je fais ça j'ai : tc' a la place de tc et tg' a la place de tg.
+on revient donc a la resolution :  
+
+
+type :
+
+D<A (Prod te tf) -> Int, A (tg -> tg) -> th>
+
+donc mtn :
+
+    tc' -> tc' -> Prod tc' tc' |><| ta -> tb -> Prod tc' tc'
+
+    ta = tc'
+
+    tb = tc'
+
+ 
+
+    (Prod te tf) -> A (Prod te tf) |><| (Prod tc' tc') -> A (Prod te tf)
+
+    te = tc'
+
+    tf = tc'
+
+ 
+
+    tc' -> tc' -> Int |><| Int -> Int -> Int
+
+    Error : cannot generalize tc' to Int right ?
+    ah mais la on sait pas quel est la spécialisation appliquée non ? quoi que si en fait ?
+    ou pas psk ptet que j'applique case machin truc à AP (1, 2) auquel cas ça devrait marcher.
+    donc il faut que ce soit après ? ou alors générer une contrainte : 
+    tc' <=> Int d'une autre facon
+
+    (tg' -> tg') -> A (tg' -> tg') |><| tl -> A (tg' -> tg')
+
+    (tg' -> tg') = tl
+
+
+
+
+    tl |><| Int -> th
+
+    tg' <=> Int
+
+    th = tg'
+
+ 
+
+ 
+
+    on a donc (tc = ta = tb = te = tf = Int) et (tg = th = Int)
+    tg' <=> Int
+    tc' <=> Int
+
+>>> Erreur : could not generalize forall tg'. Prod (tg' -> tg') -> ... to Prod (Int -> Int) -> ...  bla bla
+
+alors que si on a case AL (+5) of
+  ...
+
+on continue un peu notre chemin : 
+on rajoute la contrainte : 
+
+D<A (Prod te tf) -> Int, A (tg' -> tg') -> th> |><| A (Int -> Int) -> ti' 
+ 
+ on fait tous les remplacements : 
+D<A (Prod Int Int) -> Int, A (Int -> Int) -> th> |><| A (Int -> Int) -> ti'
+D<bot                    , A (Int -> Int) -> th |><| A (Int -> Int) -> ti'>
+D<bot, A (Int -> Int) -> Int>
+ti' = Int
+
+
+ok maintenant plus compliqué : 
+case (case e of 5 -> AL (+5); 7 -> AP (2, 3)) of ...
+ici on a
+D<A (Prod te tf) -> Int, A (tg' -> tg') -> th> |><| E<A (Int -> Int), A (Int, Int)>
+pour unifier on distribue (type de retour final de l'expression : tj)
+D<A (Prod Int Int) -> Int, A (Int -> Int) -> th> |><| E<A (Int -> Int), A (Int, Int)> -> tj
+
+D<A (Prod Int Int) -> Int |><| E<A (Int -> Int), A (Int, Int)> -> tj, A (Int -> Int) -> th |><| E<A (Int -> Int), A (Int, Int)> -> tj>
+ensuite pareil 
+D<E<A (Prod Int Int) -> Int |><| A (Int -> Int) -> Int, A (Prod Int Int) -> Int |><| A (Int, Int)> -> tj,
+  E<A (Int -> Int) -> Int |><| A (Int -> Int) -> tj   , A (Int -> Int) -> th |><| A (Int, Int)> -> tj>
+on simplifie
+D<E<bot                                              , A (Prod Int Int) -> Int,
+  E< A (Int -> Int) -> Int                           , bot>
+maintenant on demande a reconcilier : 
+
+en bref : 
+j'aime pas tant la solution la, enfin je suis pas sur : 
+au pire pour l'instant osef on fait un truc qui compile correctement
+

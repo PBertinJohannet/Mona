@@ -170,6 +170,9 @@ fromList xs = TypeEnv (Map.fromList xs)
 toList :: Env -> [(Name, Scheme)]
 toList (TypeEnv env) = Map.toList env
 
+instance Semigroup (EnvF a) where
+  (<>) = merge
+
 instance Monoid (EnvF a) where
   mempty = empty
   mappend = merge
