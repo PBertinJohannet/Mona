@@ -1,0 +1,72 @@
+C:\Users\bertin-johannet\Documents\mona\src\Native.hs:
+  hash: 479349f510d1efa7f574d6fe67747f8eec1c26392da2a53787235cb42f9013aa
+  size: 3121
+  modtime: 1575979425
+C:\Users\bertin-johannet\Documents\mona\src\Run.hs:
+  hash: 33914fc05e55d2eb459a087452bfd521f90609c954fe09e4f3817d19e56b6651
+  size: 6068
+  modtime: 1575979425
+C:\Users\bertin-johannet\Documents\mona\src\Typeclass.hs:
+  hash: 1c5661fe5eb05c0e826fd73151e6f0a2a6eb28db28cffabdfe70130a4e6f472e
+  size: 3507
+  modtime: 1575979425
+C:\Users\bertin-johannet\Documents\mona\src\Infer.hs:
+  hash: b8d5120ccc2c3583216d69fc24055dedd725ded801f1b545e6efff9f81b52782
+  size: 12769
+  modtime: 1581518472
+C:\Users\bertin-johannet\Documents\mona\src\Main.hs:
+  hash: ca0fa00021b42b56a685b7a4ea97a6ff011b59f5883ec6092ac39fde1691630c
+  size: 3102
+  modtime: 1581518264
+C:\Users\bertin-johannet\Documents\mona\src\DataTypes.hs:
+  hash: a84238039a46a1cb3b2a11239e41a2d8c93005321c0b1b00e4c9246e1b405f07
+  size: 5478
+  modtime: 1575979425
+C:\Users\bertin-johannet\Documents\mona\src\Type.hs:
+  hash: 7aa6ddf70ad1cff2a21a7ef2c5e0376cb4160c679285b468131ec7360062d030
+  size: 6367
+  modtime: 1575979425
+C:\Users\bertin-johannet\Documents\mona\src\Dispatch.hs:
+  hash: f9effbc66e7ec4b9aee415a8a91590c4fde12427c38d30caf4dd8881c3d6595a
+  size: 4161
+  modtime: 1581518461
+C:\Users\bertin-johannet\Documents\mona\src\Sig.hs:
+  hash: 0a4e5e698dbbd6255b72827fa25213ffffe22043cc101619bca47d2fe14fc5b6
+  size: 1259
+  modtime: 1575979425
+C:\Users\bertin-johannet\Documents\mona\mona.cabal:
+  hash: eef4bd7a281cde437d047f0b4f3da2b4d197eda0fcee77c2c9a2e0fa89db0c27
+  size: 1062
+  modtime: 1581511121
+C:\Users\bertin-johannet\Documents\mona\src\Parser.hs:
+  hash: 7fada2763452ba0b591d10fc4b697d78a9565b3a90b03a574ca46ce3d52a75a4
+  size: 8252
+  modtime: 1575979425
+C:\Users\bertin-johannet\Documents\mona\src\Syntax.hs:
+  hash: f4492a1e4a0adab74dd982255583069b2ae8502071c9a051c2e0126d677ffdfb
+  size: 5283
+  modtime: 1581500665
+C:\Users\bertin-johannet\Documents\mona\src\Lexer.hs:
+  hash: 1de8937d909ba9a77f48a7e26f77ba90ba773d479666ed36cb41b0c36c5b0d1d
+  size: 1746
+  modtime: 1575979425
+C:\Users\bertin-johannet\Documents\mona\ChangeLog.md:
+  hash: 9045773ff7b006834e1064fd9ede75d30caec0478b38a5a76798cbfe6cf5f726
+  size: 114
+  modtime: 1575979425
+C:\Users\bertin-johannet\Documents\mona\src\Pretty.hs:
+  hash: b081080cddc35fa292f5698822c150fda98bfe8e37f5837151d929047b102077
+  size: 732
+  modtime: 1575979425
+C:\Users\bertin-johannet\Documents\mona\src\RecursionSchemes.hs:
+  hash: 568160332d49a47d398a90080c35cc2750be874507f843a35be9f1cccd57bf98
+  size: 5805
+  modtime: 1581497327
+C:\Users\bertin-johannet\Documents\mona\src\Subst.hs:
+  hash: 4cffb6118f97c0f5a79abbde1bd4d5f436963024c1a80da7fd8072a2d8ccd33a
+  size: 2486
+  modtime: 1575979425
+C:\Users\bertin-johannet\Documents\mona\src\Env.hs:
+  hash: 71bc9481b92dee9d19011cd0d5de7557f6ad60247b80b8af0f9a5d447cb70555
+  size: 5154
+  modtime: 1581518452
