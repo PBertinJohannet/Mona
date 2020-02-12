@@ -1,4 +1,23 @@
 
-ajouter la localisation sur les autres types d'erreurs
+d'habitude :
+
+case x of
+  t -> b
+  t -> b
+
+
+la :
+
+MonType a -> MonType b
+MonType Int -> MonType a
+MonType a -> MonType Int
+Int -> MonType a
+MonType a -> Int
+
+case x of
+  t a -> b a
+  t c -> b c
+
+
 
 create a few examples.

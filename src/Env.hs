@@ -67,7 +67,7 @@ newtype EnvF a = TypeEnv { types :: Map.Map Name a } deriving (Eq, Show)
 type Env = EnvF Scheme;
 type KEnv = EnvF Kind;
 
-data TAst = TAst { texprs :: Map.Map Name TExpr, compiled :: Map.Map Name (Run Value)}
+data TAst = TAst { texprs :: Map.Map Name VExpr, compiled :: Map.Map Name (Run Value)}
 
 data Envs = Envs{ dataEnv :: KEnv, varEnv :: Env, classEnv :: ClassEnv, ast :: TAst}
 
@@ -137,7 +137,7 @@ withCompiled env vals = env{compiled = Map.union (compiled env) (Map.fromList va
 empty :: EnvF a
 empty = TypeEnv Map.empty
 
-extendAst :: TAst -> (Name, TExpr) -> TAst
+extendAst :: TAst -> (Name, VExpr) -> TAst
 extendAst env (x, s) = env { texprs = Map.insert x s (texprs env) }
 
 extend :: EnvF a -> (Name, a) -> EnvF a
@@ -169,6 +169,9 @@ fromList xs = TypeEnv (Map.fromList xs)
 
 toList :: Env -> [(Name, Scheme)]
 toList (TypeEnv env) = Map.toList env
+
+instance Semigroup (EnvF a) where
+  (<>) = merge
 
 instance Monoid (EnvF a) where
   mempty = empty

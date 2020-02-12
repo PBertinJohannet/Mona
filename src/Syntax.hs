@@ -20,11 +20,23 @@ newtype Location = Loc (String, Int, Int) deriving Show;
 data ExprF a
   = Var Name
   | App a a
-  | Lam Name a
+  | Lam (PatternT a)
   | Lit Int
-  | Case a [a]
+  | Case a [PatternT a]
   | Fix a
   deriving (Eq, Ord, Functor, Foldable, Traversable)
+
+data Pattern = Pattern String [Pattern] | Raw Name deriving (Show, Eq, Ord)
+data PatternT a = PatternT Pattern a deriving (Show, Eq, Ord, Functor, Foldable, Traversable);
+
+getExp :: PatternT a -> a
+getExp (PatternT p a) = a
+
+lamPat :: Pattern -> a -> ExprF a
+lamPat p = Lam . PatternT p
+
+instance Pretty Pattern where
+  pretty (Pattern a ps) = "(" ++ a ++ prettyL ps ++ ")"
 
 type Expr = Cofree ExprF Location; -- expression with position information (after the parsing)
 type Forgot = Term ExprF -- expression without any information
@@ -88,9 +100,6 @@ appC' a b@(In (l :< _)) = In $ l :< App (a l) b
 varC :: String -> Location -> Expr
 varC s l = In $ l :< Var s
 
-lamC :: String -> Expr -> Expr
-lamC s a@(In (l :< _)) = In $ l :< Lam s a
-
 mapLeft :: (Expr -> Expr) -> Expr -> Expr
 mapLeft f = asTup $ second $ \case
   (App a b) -> App (mapLeft f a) b
@@ -136,8 +145,8 @@ instance Show (ExprF String) where
   show = inParen <<< \case
     Var n -> "Var " ++ n
     App a b -> "App " ++ a ++ " " ++ b
-    Lam a b -> "Lam " ++ a ++ " " ++ b
-    Case a b -> "Case " ++ a ++ " " ++ show b
+    Lam a -> "Lam " ++ show a
+    Case a b -> "Case " ++ a ++ " of "++ show b
     Lit n -> "Lit " ++ show n
     Fix n -> "Fix " ++ n
 
@@ -148,7 +157,7 @@ prettyShape :: ExprF a -> String
 prettyShape = \case
   Var n -> "Var " ++ n
   App a b -> "App "
-  Lam a b -> "Lam " ++ a
+  Lam a -> "Lam "
   Case a b -> "Case "
   Lit n -> "Lit " ++ show n
   Fix n -> "Fix "
@@ -159,10 +168,10 @@ instance PrettyHisto ExprF where
     App a b -> case matchApp a b of
       (Just ("|", a, b), _) -> a ++ "|" ++ b
       (_, (a, b)) -> unwords [a, b]
-    Lam n e -> "/" ++ n ++ " -> " ++ value e
+    Lam (PatternT n e) -> "\\" ++ pretty n ++ " -> " ++ value e
     Lit l -> show l
     Fix e -> "fix " ++ value e
-    Case e ex -> "case " ++ value e ++ " of " ++ unlines (value <$> ex)
+    Case e ex -> "case " ++ value e ++ " of tbd "
 
 instance Pretty a => Pretty (String, a) where
   pretty (k, c) = k ++ " = " ++ pretty c ++ "\n"
