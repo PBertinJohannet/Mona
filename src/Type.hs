@@ -16,9 +16,9 @@ data TVar = TV{name :: String, kind :: Kind}
 
 data Kind = KVar String | Star | Kfun Kind Kind deriving (Show, Eq, Ord)
 
-data Qual t = Qual{preds :: [Pred], head :: t} deriving (Show, Eq, Ord)
+data Qual t a = Qual{preds :: [Pred t], head :: a} deriving (Show, Eq, Ord)
 
-data Pred = IsIn String Type deriving (Show, Eq, Ord)
+data Pred t = IsIn String t deriving (Show, Eq, Ord)
 
 data Type
   = TVar TVar
@@ -33,10 +33,10 @@ data Variational
   deriving (Show, Eq, Ord)
 
 type Class = ([String], [Inst])
-type Inst  = Qual Pred
+type Inst = Qual Type (Pred Type)
 
 -- forall a b c . a -> b
-data Scheme = Forall [TVar] (Qual Type)
+data Scheme = Forall [TVar] (Qual Type Type)
   deriving (Show, Eq, Ord)
 
 instance Pretty (TVar, Type) where
@@ -51,7 +51,7 @@ instance Pretty Variational where
     Dim s l -> s ++ "<" ++ prettyL (asList l) ++ ">"
     VApp a b -> pretty a ++ "(" ++ pretty b ++ ")"
 
-mapPred :: (Type -> Type) -> Pred -> Pred
+mapPred :: (a -> a) -> Pred a -> Pred a
 mapPred f (IsIn s t) = IsIn s (f t)
 
 mapKind :: (Kind -> Kind) -> Type -> Type
@@ -117,7 +117,7 @@ consToPat (name, Forall t (Qual p h)) = ("~" ++ name, Forall (retVar:t) newHead)
     mkCons :: Type -> Type -> Type
     mkCons t b = t `mkArr` (b `mkArr` b)
 
-withPred :: String -> Pred -> Scheme -> Scheme
+withPred :: String -> Pred Type -> Scheme -> Scheme
 withPred tv p (Forall tvars (Qual q ty)) = Forall (var tv:tvars) (Qual (p:q) ty)
 
 var :: String -> TVar
@@ -173,7 +173,7 @@ getReturn = \case
 
 unapply :: Type -> (Type, [Type])
 unapply = \case
-  TApp a b -> let (base, args) = unapply a in (base, args + [b])
+  TApp a b -> let (base, args) = unapply a in (base, args ++ [b])
   e -> (e, [])
 
 kindToFunc :: Kind -> Type
@@ -205,10 +205,10 @@ instance Pretty Class where
   pretty (parents, instances) =
     unwords parents ++ " => " ++ intercalate ", " (pretty <$> instances) ++ "\n"
 
-instance Pretty Pred where
+instance Pretty a => Pretty (Pred a) where
   pretty (IsIn i t) = "(" ++ i ++ " " ++ pretty t ++ ")"
 
-instance Pretty t => Pretty (Qual t) where
+instance (Pretty t, Pretty a) => Pretty (Qual t a) where
   pretty = \case
     Qual [] t -> pretty t
     Qual p t -> pretty' p ++ " => " ++ pretty t

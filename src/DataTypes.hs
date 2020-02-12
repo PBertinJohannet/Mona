@@ -116,7 +116,7 @@ freshV = do
 makeBaseEnv :: String -> [String] -> InferKind Constraints
 makeBaseEnv name [] = return [(KVar name, Star)]
 makeBaseEnv name (tvar:tvars) = do
-  (KVar a) <- fresh
+  a <- freshV
   next <- makeBaseEnv a tvars
   --tell $ "adding : " ++ pretty (name, Kfun (KVar tvar) (KVar a))
   return ((KVar ("''" ++ name), Kfun (KVar tvar) (KVar a)):next)

@@ -12,10 +12,13 @@ import Syntax
 import RecursionSchemes
 
 type Subst = Map.Map TVar Type
-type VExpr = Cofree ExprF (Location, Subst, Qual Variational); -- expression with information about performed substition (after type inference)
-type TExpr = Cofree ExprF (Location, Subst, Qual Type); -- expression with information about performed substition (after type inference)
+type VExpr = Cofree ExprF (Location, Subst, Qual Variational Variational); -- expression with information about performed substition (after type inference)
+type TExpr = Cofree ExprF (Location, Subst, Qual Type Type); -- expression with information about performed substition (after type inference)
 
-instance Pretty (Location, Subst, Qual Type) where
+instance Pretty (Location, Subst, Qual Type Type) where
+  pretty (l, s, t) = pretty t ++ " at " ++ pretty l
+
+instance Pretty (Location, Subst, Qual Variational Variational) where
   pretty (l, s, t) = pretty t ++ " at " ++ pretty l
 
 nullSubst :: Subst
@@ -62,19 +65,19 @@ instance Substituable Class where
   apply s (n, insts) = (n, fmap (apply s) insts)
   ftv (n, insts) = foldr (Set.union . ftv) Set.empty insts
 
-instance Substituable t => Substituable (Qual t) where
+instance (Substituable t, Substituable a) => Substituable (Qual a t) where
   apply s (Qual preds t) = Qual (apply s preds) (apply s t)
   ftv (Qual p t) = Set.union (ftv p) (ftv t)
 
-instance Substituable Pred where
+instance (Substituable a) => Substituable (Pred a) where
   apply s (IsIn n t) = IsIn n (apply s t)
   ftv (IsIn _ t) =  ftv t
 
-instance Substituable TExpr where
+instance Substituable VExpr where
   apply s (In ((loc, sub, tp) :< ex)) = In $ (loc, s `compose` sub, apply s tp) :< fmap (apply s) ex
   ftv _ = Set.empty
 
-mapRes :: (Type -> Type) -> TExpr -> TExpr
+mapRes :: (Variational -> Variational) -> VExpr -> VExpr
 mapRes func = mapAnn
   (\(loc, sub, Qual q tp) -> (loc, sub, Qual (mapPred func <$> q) $ func tp))
 

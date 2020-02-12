@@ -1147,3 +1147,111 @@ en bref :
 j'aime pas tant la solution la, enfin je suis pas sur : 
 au pire pour l'instant osef on fait un truc qui compile correctement
 
+est ce que j'ai besoin de remplacer par des variationels ? 
+je pense que oui mais jsp en réalité...
+quoi que si en fait 
+let a = case ... of ... in 
+a + 5
+la j'ai besoin d'unifier D<...> avec une tvar
+et donc de dire remplace tvar par D<...>
+
+on prend la decision
+
+en gros pour l'instant on a 
+(Scheme, TExpr) 
+on voudrait ptet le remplacer par 
+(Scheme, VExpr) 
+mais est-ce que ça vaut le coup ou est-ce qu'on pourrait pas se débarasser du VExpr ?
+genre a la fin quand on a le type final et qu'on a tout ufinié on sait quels types sont pas possibles non ?
+
+a priori on sait de base mais c'est juste que non en fait ce qu'on fait c'est qu'on rajoute une façon de faire de l'unification
+
+
+bon alors sinon on dit que :
+il faut juste mettre une contrainte qui dit que : 
+toutes les variantes possibles ont été testées entièrement.
+ce qui veut dire que si en type d'entrée j'ai 
+R a -> a
+la sous branche de type : R Int -> Int ne le valide pas complètement.
+mais je dois vérifier au moment de réconcilier...
+après je peux le faire sans trop de difficulté 
+je réconcilie 
+R a -> a , R Int -> Bool
+si j'essaye d'unifier les types d'entrée je trouve a : Int et j'applique des 2 côtés puis j'unifie et ça marche pas car Bool != Int
+pour 
+R a -> Char, R Char -> Char
+j'unifie les types d'entrée => a : Int => Char -> Char |><| Char -> Char => OK !
+pour 
+R (Int, Int) -> (Int, Int), R (Int -> Int) -> (Int, Int)
+j'unifie les types d'entrée, ça marche pas donc je lift en R b et je remplace des deux côtés => R b -> b |><| R b -> b => ok
+pour
+R (Int, Int) -> Int, R (Int -> Int) -> Int
+j'unifie, ça marche pas, je lift et j'unifie : R b -> Int, R b -> Int => OK
+ensuite pour chacun des cas en OK il faut que je vérifie que toutes les branches du type existent ? quoi que pas tout de suite en fait.
+seulement au moment ou je fais mkPlain.
+en fait il y a d'abord l'unification bourrine.
+puis je check que chaque branche couvre son constructeur : 
+eg si R (Int, Int) est associée a forall a -> R (a, a) mais qu'en entrée on a R (Int, Int) c'est bon.
+donc le truc c'est de voir que le type final qui est inféré (eg R (Int, Int)) si on l'applique a l'envers au constructeur :
+(a, a) -> R (a, a)
+mais à ce moment la on sait que le constructeur son type à été refiné non ?
+non on sait pas
+par contre on sait au moment final ou on réconcilie, quand on dit : cette fonction doit marcher pour tout a
+
+en fait c'est ça la diff
+quand on dit je spécialise R (Int, Int) en R a, si ça se trouve derierre je vais lui passer un R (Int, Int) donc je veux juste avoir un type à renvoyer.
+par contre quand je close over je dois réconcilier et je dis que ça marche pour tout a donc la faut vérifier.
+et la pour vérifier je peux prendre le constructeur de chacun qui à généré une contrainte de "couvrance" et vérifier que ça match.
+la on revient sur le truc plus haut, ma contrainte elle dit : 
+aaaaah mais wait : 
+si j'élimine le R (a -> a) c'est bon j'ai juste besoin de pas unifier plus tôt ?
+ou pas sinon c'est juste que à ce moment la je réconcilie en interdisant le refinement sur ces variables la.
+ah mais du coup si j'ai un case qui renvoie E<R a, R b> et un autre qui fait : D<R a -> Int, R b -> Int>
+je l'accepte dans un premier temps et après j'applique mes E
+et je me retrouve avec : 
+D<E<A (Prod Int Int) -> Int |><| A (Int -> Int) -> Int, A (Prod Int Int) -> Int |><| A (Int, Int)> -> tj,
+  E<A (Int -> Int) -> Int |><| A (Int -> Int) -> tj   , A (Int -> Int) -> th |><| A (Int, Int)> -> tj>
+
+ce qui donne : 
+D<E< bot , A (Prod Int Int) -> Int,
+  E<A (Int -> Int) -> Int |><| A (Int -> Int) -> tj   , bot>
+
+la on a donc un autre problème qui est comment on réconcilie ce genre de patterns ?
+psk la limite on peut accepter attends w8
+si on a : 
+case (case a of
+  5 -> RP (5, 6)
+  7 -> RL (+2)) of
+  RP -> ...
+  RL -> ...
+  on sait qu'on couvre toutes les branches possibles
+
+mais comment ça s'exprime dans : 
+D<E<A (Prod Int Int) -> Int |><| A (Int -> Int) -> Int, A (Prod Int Int) -> Int |><| A (Int, Int)> -> tj,
+  E<A (Int -> Int) -> Int |><| A (Int -> Int) -> tj   , A (Int -> Int) -> th |><| A (Int, Int)> -> tj>
+pour chaque possibilité de D il y a une possibilité de E qui rentre dedans ?
+
+en soit D<x, y> veut dire "il est possible d'avoir un x ou un y à ce moment la
+et bot veut juste dire que c'est pas possible.
+donc si on a bot on l'enlève ?
+mais faut l'enlever partout dans la dimension dans laquelle on travaille.
+hmmm c'est chaud quand même :/
+comment on peut s'en sortir simplement ?
+le problème c'est qu'il faut un environnement de typage différent pour chaque partie de la dimension en gros...
+donc comment on fait ?
+genre on trouve la dimension D, on ramène tout en fonction de D et ensuite on essaye de réconcilier pour chaque sous dimension
+eg la on renverrai pour chaque dimension :
+D<A (Prod Int Int) -> Int, A (Int -> Int) -> Int>
+l'autre problème c'est de dire comment on fait pour remplacer le D partout ?
+psk pour le compiler ça va pas être chiant en fait non psk quand ça sera monomorphisé y aura plus de variantes.
+
+d'ailleurs quand j'ai
+D<a, b> |><| Int
+je dis quoi ?
+j'essaye d'unifier a avec Int et b avec Int mais si je trouve des trucs différents ?
+est-ce que je dois avoir une substitution différente pour chaque point de la dimension ? ptet... 
+ok on fait ça alors.
+non mais c'est pas si simple.
+
+
+

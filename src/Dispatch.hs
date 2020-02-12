@@ -19,17 +19,17 @@ import Env
 import Subst
 import Error
 
-type DispatchReq = (String, TExpr, Subst)
+type DispatchReq = (String, VExpr, Subst)
 
-data DispatchState = DState {dispatched :: Map.Map String TExpr, todispatch :: [DispatchReq]}
+data DispatchState = DState {dispatched :: Map.Map String VExpr, todispatch :: [DispatchReq]}
 
 baseState :: DispatchState
 baseState = DState Map.empty []
 
-addTarget :: String -> TExpr -> Subst -> DispatchState -> DispatchState
+addTarget :: String -> VExpr -> Subst -> DispatchState -> DispatchState
 addTarget name ex sub (DState d t) = DState d $ t ++ [(name, ex, sub)]
 
-next :: String -> TExpr -> Subst -> Map.Map String TExpr -> Dispatch ()
+next :: String -> VExpr -> Subst -> Map.Map String VExpr -> Dispatch ()
 next name ex sub disp = case Map.lookup name disp of
   Just already -> do
     tell $ name ++ " already dispatched"
@@ -52,7 +52,7 @@ dispatchAll = do
       dispatchAll
     _ -> return ()
 
-register :: String -> TExpr -> DispatchState -> DispatchState
+register :: String -> VExpr -> DispatchState -> DispatchState
 register name tx (DState disp todisp) = DState (Map.insert name tx disp) todisp
 
 {-
@@ -94,7 +94,7 @@ instance Dispatchable TAst where
     DState done _ <- get
     return $ TAst done cmp
 
-instance Dispatchable TExpr where
+instance Dispatchable VExpr where
   dispatch ex= do
     res <- cataCF dispatchAlg ex
     (DState disp todisp) <- get
@@ -102,7 +102,7 @@ instance Dispatchable TExpr where
     tell $ "with reqs : " ++ show (length todisp) ++ "\n"
     return res
 
-findInExprs :: String -> [Pred] -> Dispatch (Maybe (TExpr, String))
+findInExprs :: String -> [Pred Variational] -> Dispatch (Maybe (VExpr, String))
 findInExprs n preds = do
   (Envs _ _ _ (TAst env _)) <- ask
   case Map.lookup n env of
@@ -115,7 +115,7 @@ findInExprs n preds = do
         return $ (,name) <$> Map.lookup name env
       _ -> return Nothing
 
-dispatchAlg :: ((Location, Subst, Qual Type), ExprF (Dispatch TExpr)) -> Dispatch TExpr
+dispatchAlg :: ((Location, Subst, Qual Variational Variational), ExprF (Dispatch VExpr)) -> Dispatch VExpr
 dispatchAlg = \case
   ((loc, sub, Qual p tp), Var vr) -> do
     --tell $ "sub is " ++ pretty sub ++ "\n"
