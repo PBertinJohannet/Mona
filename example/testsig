@@ -1255,3 +1255,9 @@ non mais c'est pas si simple.
 
 
 
+si j'ai 
+Show a => Int
+et a -> D<Int, Bool>
+je veux transformer en : 
+D<Show Int -> Int, Show Bool -> Int>
+ensuite quand j'unifie :  

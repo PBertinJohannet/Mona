@@ -135,15 +135,15 @@ inferExprT :: ClassEnv -> Env -> Expr -> Scheme -> ExceptLog (Scheme, VExpr)
 inferExprT cenv env ex tp = case runInfer env (runWriterT $ inferEq ex tp) of
   Left err -> throwError err
   Right ((texp, expected), cs) -> do
-    tell $ "doing : " ++ pretty ex ++ "\n"
+    --tell $ "doing : " ++ pretty ex ++ "\n"
     (preds, subst) <- runSolve cenv cs
     let (_, _, Qual _ found) = ann texp
     found' <- mkPlain found
     let Forall _ (Qual expectedPreds _) = tp
-    tell $ "checking preds : " ++ prettyL preds ++ " vs " ++ prettyL expectedPreds ++ "\n"
+    --tell $ "checking preds : " ++ prettyL preds ++ " vs " ++ prettyL expectedPreds ++ "\n"
     checkPreds preds expectedPreds
-    tell $ "found : " ++ pretty (apply subst found) ++ "\n"
-    tell $ "expected : " ++ pretty (apply subst expected) ++ "\n"
+    --tell $ "found : " ++ pretty (apply subst found) ++ "\n"
+    --tell $ "expected : " ++ pretty (apply subst expected) ++ "\n"
     allReplaces <- checkStrict (apply subst found') (apply subst expected)
     --stest <- checkStrict (apply subst expected) (apply subst found) False
     --tell $ "\nor : " ++ show stest
@@ -163,34 +163,41 @@ runInfer env m = runIdentity $ runExceptT $ evalStateT (runReaderT m env) initIn
 
 -- | Canonicalize and return the polymorphic toplevel type.
 closeOver :: Type -> [Pred Variational] -> VExpr -> (Scheme, VExpr)
-closeOver t p s = (normalize . generalise Env.empty p) (t, s)
+closeOver t p s = (normalize . first (generalise p)) (t, s)
+
+generalise :: [Pred Type] -> Type -> Scheme
+generalise p t = Forall [] $ Qual p t
 
 normalize :: (Scheme, VExpr) -> (Scheme, VExpr)
 normalize (Forall _ (Qual q body), s) =
-  (Forall (map snd ord) (Qual (q >>= normpred) (normtype body)), mapRes normVar s)
+  (Forall (snd <$> varSubst) (Qual (q >>= normPred) (normType body)), mapRes normVar s)
   where
-    ord = zip (nub $ fv body) (map var lettersSim)
+    varSubst :: [(TVar, TVar)]
+    varSubst = zip (nub $ fv body) (map var lettersSim)
 
-    fv (TVar a)   = [a]
-    fv (TApp a b) = fv a ++ fv b
-    fv (TCon _ _)    = []
+    fv :: Type -> [TVar]
+    fv = Set.toList . ftv
 
-    fd a = snd <$> find (\(TV n _, x) -> n == a) ord
+    lookupVars :: String -> Maybe TVar
+    lookupVars a = snd <$> find (\(TV n _, _) -> n == a) varSubst
 
-    normpred (IsIn n (TVar (TV k _))) = case fd k of
+    normPred :: Pred Type -> [Pred Type]
+    normPred (IsIn n (TVar (TV k _))) = case lookupVars k of
         Just x -> [IsIn n $ TVar x]
         Nothing -> []
-    normpred (IsIn n (TCon _ _)) = []
-    normpred a = error $ "what ? " ++ show a
+    normPred (IsIn n (TCon _ _)) = []
+    normPred a = error $ "what ? " ++ show a
 
-    normVar (Plain a) = Plain $ normtype a
+    normVar :: Variational -> Variational
+    normVar (Plain a) = Plain $ normType a
     normVar (Dim s a) = Dim s $ normVar <$> a
     normVar (VApp a b) = VApp (normVar a) (normVar b)
 
-    normtype (TApp a b) = TApp (normtype a) (normtype b)
-    normtype (TCon a k)   = TCon a k
-    normtype (TVar (TV a k)) =
-      case fd a of
+    normType :: Type -> Type
+    normType (TApp a b) = TApp (normType a) (normType b)
+    normType (TCon a k)   = TCon a k
+    normType (TVar (TV a k)) =
+      case lookupVars a of
         Just x -> TVar x
         Nothing -> TVar (TV a k)
 
@@ -199,15 +206,12 @@ inEnv (x, sc) m = do
   let scope e = remove e x `extend` (x, sc)
   local scope m
 
-instantiate :: Scheme -> InferCons (Subst, Qual Variational Type) -- replace by fresh variables
+instantiate :: Scheme -> InferCons (Subst, Qual Variational Variational) -- replace by fresh variables
 instantiate (Forall as (Qual preds t)) = do
-  as' <- mapM (const freshType) as
+  as' <- mapM (const freshVType) as
   let s = Map.fromList $ zip as as'
   return (s, Qual (apply s preds) (apply s t))
 
-generalise :: Env -> [Pred Variational] -> (Type, VExpr) -> (Scheme, VExpr)
-generalise env p (t, s) = (Forall as $ Qual p t, s)
-  where as = Set.toList $ ftv env `Set.difference` ftv t
 
 freshName :: InferCons String
 freshName = do
@@ -221,20 +225,23 @@ fresh = Plain <$> freshType
 freshType :: InferCons Type
 freshType = tvar <$> freshName
 
-freshQual :: InferCons (Qual Variational Type)
+freshVType :: InferCons Variational
+freshVType = (Plain . tvar) <$> freshName
+
+freshQual :: InferCons (Qual Variational Variational)
 freshQual = Qual [] <$> fresh
 
 noConstraints :: Constraints
 noConstraints = ([], [])
 
-lookupEnv :: Name -> InferCons (Subst, Qual Variational Type)
+lookupEnv :: Name -> InferCons (Subst, Qual Variational Variational)
 lookupEnv x = do
   (TypeEnv env) <- ask
   case Map.lookup x env of
     Just s -> instantiate s
     Nothing -> throwErrorV $ UnboundVariable $ show x
 
-inferEq :: Expr -> Scheme -> InferCons (VExpr, Type)
+inferEq :: Expr -> Scheme -> InferCons (VExpr, Variational)
 inferEq e t0 = do
   (_, Qual q t1) <- instantiate t0
   t2 <- infer e
@@ -249,7 +256,7 @@ getTp (In ((_, _, Qual _ t) :< _)) = t
 getVTp :: VExpr -> Variational
 getVTp (In ((_, _, Qual _ t) :< _)) = t
 
-noSub :: Variational -> InferCons (Qual Variational Type, Subst)
+noSub :: Variational -> InferCons (Qual Variational Variational, Subst)
 noSub = return . (, nullSubst) . Qual []
 
 inferAlgM :: (Location, ExprF (InferCons VExpr)) -> InferCons VExpr
@@ -294,7 +301,7 @@ inferAlgM = \case
             env <- ask
             (sub, Qual p t) <- lookupEnv x -- `catchError` \e -> lookupEnv $ pretty env
             tell $ predicate p l
-            return (Qual p $ Plain t, sub)
+            return (Qual p t, sub)
 
           App t1 t2 -> do
             tv <- fresh
@@ -353,18 +360,19 @@ reconcilie a b =
     then throwErrorV $ ReconciliationError a b
 -}
 
+-- TODO : put unifies in a class => Type => Variational
 unifies :: Variational -> Variational -> Solve Subst
 unifies t1 t2 | t1 == t2 = return nullSubst
-unifies (Dim s ts) (Dim s2 t2) | s2 == s = Dim s $ getZipList (unifies <$> ZipList ts <*> ZipList t2)
-unifies (Dim s ts) t2 = Dim s (unifies t2 <$> ts)
+unifies (Plain a) (Plain b) = unifies' a b
   where
-  unifies' :: Type -> Type -> Solve Subst
-  unifies' (TVar v) t = bind v t
-  unifies' t (TVar v) = bind v t
-  unifies' (TApp t1 t2) (TApp t3 t4) = unifyMany (t1, t3) (t2, t4)
-  unifies' t1 t2 = throwErrorV $ UnificationFail t1 t2
+    unifies' :: Type -> Type -> Solve Subst
+    unifies' (TVar v) t = bind v t
+    unifies' t (TVar v) = bind v t
+    unifies' (TApp t1 t2) (TApp t3 t4) = unifyMany (Plain t1, Plain t3) (Plain t2, Plain t4)
+    unifies' t1 t2 = throwErrorV $ UnificationFail t1 t2
+unifies t1 t2 = return nullSubst
 
-unifyMany :: (Type, Type) -> (Type, Type) -> Solve Subst
+unifyMany :: (Variational, Variational) -> (Variational, Variational) -> Solve Subst
 unifyMany (t1, t1') (t2, t2') = do
   s1 <- unifies t1 t1'
   s2 <- unifies (apply s1 t2) (apply s1 t2')

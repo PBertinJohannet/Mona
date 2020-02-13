@@ -29,12 +29,12 @@ version :: Version
 version = Version [0,1,0,0] []
 bindir, libdir, dynlibdir, datadir, libexecdir, sysconfdir :: FilePath
 
-bindir     = "C:\\Users\\bertin-johannet\\Documents\\mona\\.stack-work\\install\\53c866b4\\bin"
-libdir     = "C:\\Users\\bertin-johannet\\Documents\\mona\\.stack-work\\install\\53c866b4\\lib\\x86_64-windows-ghc-8.6.5\\mona-0.1.0.0-KHYpOuLcehfHoYX0L4yyX6-mona"
-dynlibdir  = "C:\\Users\\bertin-johannet\\Documents\\mona\\.stack-work\\install\\53c866b4\\lib\\x86_64-windows-ghc-8.6.5"
-datadir    = "C:\\Users\\bertin-johannet\\Documents\\mona\\.stack-work\\install\\53c866b4\\share\\x86_64-windows-ghc-8.6.5\\mona-0.1.0.0"
-libexecdir = "C:\\Users\\bertin-johannet\\Documents\\mona\\.stack-work\\install\\53c866b4\\libexec\\x86_64-windows-ghc-8.6.5\\mona-0.1.0.0"
-sysconfdir = "C:\\Users\\bertin-johannet\\Documents\\mona\\.stack-work\\install\\53c866b4\\etc"
+bindir     = "C:\\Users\\bertin-johannet\\Documents\\mona\\.stack-work\\install\\5febb85f\\bin"
+libdir     = "C:\\Users\\bertin-johannet\\Documents\\mona\\.stack-work\\install\\5febb85f\\lib\\x86_64-windows-ghc-8.6.5\\mona-0.1.0.0-4ZfU8GP3eCJLvrR2elWvV8-mona"
+dynlibdir  = "C:\\Users\\bertin-johannet\\Documents\\mona\\.stack-work\\install\\5febb85f\\lib\\x86_64-windows-ghc-8.6.5"
+datadir    = "C:\\Users\\bertin-johannet\\Documents\\mona\\.stack-work\\install\\5febb85f\\share\\x86_64-windows-ghc-8.6.5\\mona-0.1.0.0"
+libexecdir = "C:\\Users\\bertin-johannet\\Documents\\mona\\.stack-work\\install\\5febb85f\\libexec\\x86_64-windows-ghc-8.6.5\\mona-0.1.0.0"
+sysconfdir = "C:\\Users\\bertin-johannet\\Documents\\mona\\.stack-work\\install\\5febb85f\\etc"
 
 getBinDir, getLibDir, getDynLibDir, getDataDir, getLibexecDir, getSysconfDir :: IO FilePath
 getBinDir = catchIO (getEnv "mona_bindir") (\_ -> return bindir)
