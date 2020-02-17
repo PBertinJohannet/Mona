@@ -6,7 +6,7 @@ import Control.Arrow
 import Text.Parsec
 import System.Directory
 import qualified Data.Text.Lazy as L
-import System.Path.Glob
+import System.FilePath.Posix
 
 asTest :: P.Test -> [Test]
 asTest = fmap shouldGive . asTest'
@@ -26,13 +26,6 @@ withBase name code (name', code', expected) = (name ++ "." ++ name', code ++ "\n
 shouldGive :: TestVs -> Test
 shouldGive (name, code, expected) = name ~: expected ~=? compile code
 
-
-{-
-singleSection = "(Others . unique = participation in something interesting.)"
-  `shouldGive` [Multiple "Others " [Sub ("unique ", [Normal "participation in something interesting."])]]
--}
-
-
 runTestFile :: String -> IO ()
 runTestFile name = do
   f <- L.pack <$> readFile name
@@ -43,13 +36,16 @@ runTestFile name = do
       return ()
 
 runDir :: String -> IO ()
-runDir pattern = do
-  files <- glob pattern
-  traverse runTestFile files
+runDir dir = do
+  putStrLn $ "going in " ++ dir
+  files <- filter (".md" `isExtensionOf`) <$> getDirectoryContents dir
+  let fullPaths = (dir ++) <$> files
+  putStrLn $ "traversing : " ++ show files
+  traverse runTestFile fullPaths
   return ()
 
 main :: IO ()
 main = do
-  runDir "test/*.md"
-  runDir "test/errors/*.md"
-  runDir "test/others/*.md"
+  runDir "test/"
+  runDir "test/errors/"
+  runDir "test/others/"

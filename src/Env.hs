@@ -1,4 +1,6 @@
 {-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleInstances #-}
 
 module Env (
   TAst(..),
@@ -67,7 +69,7 @@ newtype EnvF a = TypeEnv { types :: Map.Map Name a } deriving (Eq, Show)
 type Env = EnvF Scheme;
 type KEnv = EnvF Kind;
 
-data TAst = TAst { texprs :: Map.Map Name VExpr, compiled :: Map.Map Name (Run Value)}
+data TAst = TAst { texprs :: Map.Map Name TExpr, compiled :: Map.Map Name (Run Value)}
 
 data Envs = Envs{ dataEnv :: KEnv, varEnv :: Env, classEnv :: ClassEnv, ast :: TAst}
 
@@ -137,7 +139,7 @@ withCompiled env vals = env{compiled = Map.union (compiled env) (Map.fromList va
 empty :: EnvF a
 empty = TypeEnv Map.empty
 
-extendAst :: TAst -> (Name, VExpr) -> TAst
+extendAst :: TAst -> (Name, TExpr) -> TAst
 extendAst env (x, s) = env { texprs = Map.insert x s (texprs env) }
 
 extend :: EnvF a -> (Name, a) -> EnvF a
@@ -177,10 +179,14 @@ instance Monoid (EnvF a) where
   mempty = empty
   mappend = merge
 
-instance Substituable a => Substituable (EnvF a) where
+instance (Substituable a b) => Substituable (EnvF a) b where
   apply s (TypeEnv env) = TypeEnv (Map.map (apply s) env)
+
+instance (Parametrized a) => Parametrized (EnvF a) where
   ftv (TypeEnv env) = ftv (Map.elems env)
 
-instance Substituable ClassEnv where
+instance Substituable ClassEnv Type where
   apply s (ClassEnv c) = ClassEnv (Map.map (apply s) c)
+
+instance Parametrized ClassEnv where
   ftv (ClassEnv c) = ftv (Map.elems c)

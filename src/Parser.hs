@@ -50,8 +50,8 @@ withPosE = withPos
 
 mapLoc :: (Location -> a -> b) -> Parser a -> Parser b
 mapLoc f p = do
-  res <- p
   pos <- toLoc <$> getPosition
+  res <- p
   return (f pos res)
 
 mkCF :: WithPos a => Parser a -> Parser Expr

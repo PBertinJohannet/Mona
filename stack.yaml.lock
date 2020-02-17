@@ -95,4 +95,18 @@ packages:
       sha256: 51d7e0eebead790b642be69fcd2b175513f90c04db07c3c9c838b534b09ae74c
   original:
     hackage: regex-posix-0.96.0.0@sha256:744822e2c5b2930afdcf4d5d3c8b216639e084dfdd15a1bbd11455177a0f5c95,2438
+- completed:
+    hackage: HUnit-1.6.0.0@sha256:8014b27c884becd8041214a1ab263fa92244ca62700a911aff604a1047869298,1570
+    pantry-tree:
+      size: 878
+      sha256: 270a6f8d6ef23eba3a9a1697aa244576abb168d10cb8e4736cf4add2b09eb650
+  original:
+    hackage: HUnit-1.6.0.0@sha256:8014b27c884becd8041214a1ab263fa92244ca62700a911aff604a1047869298,1570
+- completed:
+    hackage: call-stack-0.2.0@sha256:5ce796b78d5f964468ec6fe0717b4e7d0430817f37370c47b3e6b38e345b6643,1202
+    pantry-tree:
+      size: 500
+      sha256: 30cc02f50a7f660db6b5c4218b4021cd78cae90b135d893d55f32a1c8b1e1c08
+  original:
+    hackage: call-stack-0.2.0@sha256:5ce796b78d5f964468ec6fe0717b4e7d0430817f37370c47b3e6b38e345b6643,1202
 snapshots: []

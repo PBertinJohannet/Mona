@@ -39,7 +39,7 @@ instance Pretty Pattern where
   pretty (Pattern a ps) = "(" ++ a ++ prettyL ps ++ ")"
 
 type Expr = Cofree ExprF Location; -- expression with position information (after the parsing)
-type Forgot = Term ExprF -- expression without any information
+type Forgot = Term ExprF -- expression without any information (to be removed soon)
 
 data Field = FieldS String | FieldApp Field Field deriving (Show, Eq, Ord)
 
@@ -87,7 +87,7 @@ sepDecls (d:ds) =
   case d of
     (n, (loc, Inst s t e)) -> prog{instances = (loc, s, t, e) : instances prog}
     (s, (loc, TypeDecl tvars e)) -> prog{datas = (loc, s, tvars, e): datas prog}
-    (s, (loc, Expr e)) -> prog{exprs = (loc, s, e): exprs prog}
+    (s, (loc, Expr e)) -> prog{exprs = [(loc, s, e)]}--(loc, s, e): exprs prog}
     (s, (loc, Class nm vr sigs)) -> prog{clasdecls = (loc, nm, vr, sigs): clasdecls prog}
     (s, (loc, Sig e)) -> prog{signatures = (loc, s, e): signatures prog}
 

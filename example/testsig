@@ -1260,4 +1260,14 @@ Show a => Int
 et a -> D<Int, Bool>
 je veux transformer en : 
 D<Show Int -> Int, Show Bool -> Int>
-ensuite quand j'unifie :  
+en gros l'idée c'est que mes preds sont toujours sur des types.
+mais du coup le pred de retour c'est quoi ?
+si j'ai ça après je fais quoi ? psk la j'ai plusieurs contraintes 
+c'est ptet mieux de dire w8
+ou alors on dit qu'on check tout ça a la fin, on infère un truc commun.
+psk au final je vais d'abord trouver quelles parties de D je vire puis je vais le reconcilier avec une transformation quelconque
+donc je vais remplacer tout ce qui est du Variational par du Type
+OK nickel pour ça !
+mais w8 quand j'unifie mon D ... faut quand même que je 
+hmm du coup je runSolve a la fin après avoir remplacé tous les Variational par des Type
+j'applique la transformation a mes Subst aussi.

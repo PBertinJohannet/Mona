@@ -17,7 +17,7 @@ data Kind = KVar String | Star | Kfun Kind Kind deriving (Show, Eq, Ord)
 
 data Qual t a = Qual{preds :: [Pred t], head :: a} deriving (Show, Eq, Ord)
 
-data Pred t = IsIn String t deriving (Show, Eq, Ord)
+data Pred t = IsIn String t deriving (Show, Eq, Ord, Functor)
 
 data Type
   = TVar TVar

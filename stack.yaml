@@ -48,6 +48,11 @@ extra-deps:
   - binary-0.8.8.0@sha256:e9387a7ef2b34c6a23b09664c306e37cc01ae2cb4e4511a1c96ffb14008c24b0,6262
   - regex-base-0.94.0.0@sha256:d514eab2aa9ba4b9d14900ac40cbdea1993372466a6cc6ffeeab59a1975563c0,2166
   - regex-posix-0.96.0.0@sha256:744822e2c5b2930afdcf4d5d3c8b216639e084dfdd15a1bbd11455177a0f5c95,2438
+  - HUnit-1.6.0.0@sha256:8014b27c884becd8041214a1ab263fa92244ca62700a911aff604a1047869298,1570
+  - call-stack-0.2.0@sha256:5ce796b78d5f964468ec6fe0717b4e7d0430817f37370c47b3e6b38e345b6643,1202
+
+
+
 # - acme-missiles-0.3
 # - git: https://github.com/commercialhaskell/stack.git
 #   commit: e7b331f14bcffb8367cd58fbfc8b40ec7642100a
