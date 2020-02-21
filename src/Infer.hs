@@ -212,10 +212,16 @@ normalize (Forall _ (Qual q body), s) =
         Just x -> TVar x
         Nothing -> TVar (TV a k)
 
-inEnv :: (Name, Scheme) -> InferCons a -> InferCons a
-inEnv (x, sc) m = do
-  let scope e = remove e x `extend` (x, sc)
-  local scope m
+class InEnv a where
+  inEnv :: (Name, a) -> InferCons b -> InferCons b
+
+instance InEnv Type where
+  inEnv (x, t) = inEnv (x, Forall [] (Qual [] t))
+
+instance InEnv Scheme where
+  inEnv (x, sc) m = do
+    let scope e = remove e x `extend` (x, sc)
+    local scope m
 
 getSignature :: Scheme -> InferCons (Subst Type, [Pred Type], Type)
 getSignature (Forall as (Qual preds t)) = do
@@ -243,6 +249,11 @@ freshName = do
   s <- get
   put s{count = count s + 1}
   return (letters !! count s)
+
+freshDim :: NonEmpty Variational -> InferCons Variational
+freshDim l = do 
+  s <- freshName
+  return $ Dim s l
 
 fresh :: InferCons Variational
 fresh = Plain <$> freshType
@@ -288,27 +299,19 @@ inferAlgM :: (Location, ExprF (InferCons VExpr)) -> InferCons VExpr
 inferAlgM = \case
     (l, Case sourceT []) -> do
       destT <- fresh
-      retType <- sequence $ Case sourceT []
-      return (In $ (l, nullSubst, Qual [] destT) :< retType)
+      retExpr <- sequence $ Case sourceT []
+      return (In $ (l, nullSubst, Qual [] destT) :< retExpr)
 
     (l, Case sourceT (x:xs)) -> do
-      let branches = x :+: xs
-      d <- freshName
-      destT <- freshType
-      let infered = inPatEnv destT <$> branches
-      final <- sequence $ Case sourceT (asList infered)
-      --infer2 <- fmap (fmap (getVTp . getExp)) <$> sequence $ sequence <$> infered
-      infer2 <- traverse (fmap (getVTp . getExp) . sequence) infered
-      --patsT <- sequence (inferPat <$> bs)
-      --tell $ unionDim l sourceT destT bs
-      return (In $ (l, nullSubst, Qual [] $ Dim d infer2) :< final)--Case sourceT infered)
+      (trets, pats) <- unzipNonEmpty <$> traverse (inferPat l) (x :+: xs)
+      infer2 <- freshDim trets
+      pats' <- return $ fmap (fmap return) $ asList pats
+      retExpr <- sequence $ Case sourceT pats'
+      return (In $ (l, nullSubst, Qual [] infer2) :< retExpr)
 
     (l, Lam pat) -> do
-        tv <- freshType
-        let pat'@(PatternT par e) = inPatEnv tv pat
-        t <- getVTp <$> e
-        let retType = Qual [] (Plain tv `mkVArr` t)
-        In . ((l, nullSubst, retType) :<) <$> sequence (Lam pat')
+      (tret, pat') <- inferPat l pat
+      return $ In ((l, nullSubst, Qual [] tret) :< Lam pat')
 
     (l, k) -> do
         k <- sequence k
@@ -337,10 +340,37 @@ inferAlgM = \case
             tv <- fresh
             tell $ union l (tv `mkVArr` tv, t1)
             noSub tv
-
+{-
 inPatEnv :: Type -> PatternT (InferCons VExpr) -> PatternT (InferCons VExpr)
 inPatEnv tv (PatternT x@(Pattern p ps) e) = case ps of
   [] -> let e' = inEnv (p, Forall [] (Qual [] tv)) e in PatternT x e'
+-}
+
+typeOfRet :: String -> InferCons Variational
+typeOfRet = fmap getReturn . typeOf
+
+typeOf :: String -> InferCons Variational
+typeOf x = do
+    (sub, Qual p t) <- lookupEnv x
+    return $ Plain t
+
+decomposePattern :: Location -> Pattern -> InferCons (Variational, [(String, Type)])
+decomposePattern loc (Pattern name vars) = do
+    subPats <- traverse (decomposePattern loc) vars
+    let (subTypes, varsTypes) = unzip subPats
+    tname <- typeOf name
+    tret <- typeOfRet name
+    tell (union loc (foldr mkVArr tret subTypes, tname))
+    return (tret, mconcat varsTypes)
+decomposePattern loc (Raw name) = do
+    tret <- freshType
+    return (Plain tret, return (name, tret))
+
+inferPat :: Location -> PatternT (InferCons VExpr) -> InferCons (Variational, (PatternT VExpr))
+inferPat loc (PatternT pat exp) = do
+    (tp, vars) <- decomposePattern loc pat
+    tret <- foldl (flip inEnv) exp vars
+    return (tp, PatternT pat tret)
 
 -- see the doc for the error message, basicaly it verifies that the same variable is not binded to multiple types
 -- then it adds it to the given substition

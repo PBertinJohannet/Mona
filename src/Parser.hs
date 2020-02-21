@@ -37,13 +37,16 @@ withPos p = do
   return $ Position pos e -}
 
 class WithPos a where
-  withPos :: Location -> a -> Expr
+  withPosIn :: Location -> a -> CofreeF ExprF Location (Expr)
 
 instance WithPos Expr where
-  withPos l e = e
+  withPosIn l (In e) = e
 
 instance WithPos a => WithPos (ExprF a) where
-  withPos l e = withPos l (withPos l <$> e)
+  withPosIn l e' = let e = withPosIn l <$> e' in (l :< fmap In e)
+
+withPos :: WithPos a => Location -> a -> Expr
+withPos l a = In $ withPosIn l a
 
 withPosE :: Location -> ExprF Expr -> Expr
 withPosE = withPos

@@ -1,1 +1,3 @@
-let main = printInt 4
+
+sig main = IO Int;
+let main = printInt 4;

@@ -727,7 +727,7 @@ inferPat pat =
 
     return (tin -> tret, cons)
 
- 
+
 
 DecomposePattern :: Pattern -> (Type, [(String, Type)])
 

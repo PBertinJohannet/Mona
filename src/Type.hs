@@ -1,3 +1,5 @@
+
+{-# LANGUAGE EmptyCase #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE DeriveFunctor #-}
@@ -19,36 +21,43 @@ data Qual t a = Qual{preds :: [Pred t], head :: a} deriving (Show, Eq, Ord)
 
 data Pred t = IsIn String t deriving (Show, Eq, Ord, Functor)
 
-data Type
+data TypeF a
   = TVar TVar
   | TCon String Kind
-  | TApp Type Type
-  deriving (Show, Eq, Ord)
+  | TApp (TypeF a) (TypeF a)
+  | TPlus a deriving (Show)
 
-data Variational
-  = Plain Type
-  | Dim String (NonEmpty Variational)
-  | VApp Variational Variational
-  deriving (Show, Eq, Ord)
+data Void
+absurd :: Void -> a
+absurd a = case a of
+
+instance Show Void where
+  show = absurd
+
+asVariational :: Type -> Variational
+asVariational = \case
+  TVar t -> TVar t
+  TCon s k -> TCon s k
+  TApp a b -> TApp (asVariational a) (asVariational b)
+ 
+asType :: Type -> Maybe Variational
+asType = \case
+  TVar t -> TVar t
+  TCon s k -> TCon s k
+  TApp a b -> TApp <$> (asType a) <*> (asType b)
+
+data Choice = Dim String (NonEmpty Variational);
+
+type Type = TypeF Void
+type Variational = TypeF Choice
+
 
 type Class = ([String], [Inst])
 type Inst = Qual Type (Pred Type)
 
 -- forall a b c . a -> b
 data Scheme = Forall [TVar] (Qual Type Type)
-  deriving (Show, Eq, Ord)
-
-instance Pretty (TVar, Type) where
-  pretty (a, b) = "(" ++ pretty a ++ " : " ++ pretty b ++ ")"
-
-instance Pretty (Type, TVar) where
-  pretty (a, b) = "(" ++ pretty a ++ " : " ++ pretty b ++ ")"
-
-instance Pretty Variational where
-  pretty = \case
-    Plain t -> pretty t
-    Dim s l -> s ++ "<" ++ prettyL (asList l) ++ ">"
-    VApp a b -> pretty a ++ "(" ++ pretty b ++ ")"
+  deriving (Show)
 
 mapPred :: (a -> a) -> Pred a -> Pred a
 mapPred f (IsIn s t) = IsIn s (f t)
@@ -67,6 +76,9 @@ makeTypeConstant n = \case
 
 data NonEmpty a = a :+: [a] deriving (Eq, Show, Ord, Functor, Foldable, Traversable)
 
+unzipNonEmpty :: NonEmpty (a, b) -> (NonEmpty a, NonEmpty b)
+unzipNonEmpty l = (fst <$> l, snd <$> l) 
+
 asList :: NonEmpty a -> [a]
 asList (a :+: b) = a : b
 
@@ -78,15 +90,16 @@ lastSafe = \case
 
 lenMinusOne :: NonEmpty a -> Int
 lenMinusOne (a :+: b) = length b
-
+{-
 class Replacable a where
   -- replace a by b in c
   replaceBy :: a -> a -> a -> a
 
-instance Replacable Type where
+instance Replacable a => Replacable (TypeF a) where
   replaceBy a b c | a == c = b
   replaceBy a b (TApp c c') = TApp (replaceBy a b c) (replaceBy a b c')
   replaceBy a b c = c
+  replaceBy 
 
 instance Replacable Variational where
   replaceBy a b c | a == c = b
@@ -94,7 +107,7 @@ instance Replacable Variational where
   replaceBy a b (VApp c c') = VApp (replaceBy a b c) (replaceBy a b c')
   replaceBy a b (Dim s cs) = Dim s (replaceBy a b <$> cs)
   replaceBy a b c = c
-
+-}
 -- transforms a constructor's type to a pattern's type :
 -- List :: a -> List a -> List a becomes ~List :: List a -> (a -> List a -> b) -> b
 -- more generaly :
@@ -145,7 +158,7 @@ mkArr :: Type -> Type -> Type
 mkArr a = TApp (TApp tArr a)
 
 mkVArr :: Variational -> Variational -> Variational
-mkVArr a = VApp (VApp (Plain tArr) a)
+mkVArr a b = TApp (TApp (asVariational tArr) a) b
 
 mkList :: Type -> Type
 mkList = TApp typeList
@@ -220,7 +233,7 @@ instance Pretty Scheme where
 instance Pretty TVar where
   pretty (TV v _) = v
 
-instance Pretty Type where
+instance Pretty a => Pretty (TypeF a) where
   pretty = \case
     TVar v -> pretty v
     TCon s k -> s -- ++ " : " ++ pretty k
@@ -230,6 +243,19 @@ instance Pretty Type where
     TApp (TCon "List" _) a -> "[" ++ pretty a ++ "]"
     TApp a b@(TApp (TApp (TCon "(->)" _) _) _) -> pretty a ++ " (" ++ pretty b ++ ")"
     TApp a b -> pretty a ++ " " ++ pretty b
+    TPlus a -> pretty a
+
+instance Pretty (TVar, Type) where
+  pretty (a, b) = "(" ++ pretty a ++ " : " ++ pretty b ++ ")"
+
+instance Pretty (Type, TVar) where
+  pretty (a, b) = "(" ++ pretty a ++ " : " ++ pretty b ++ ")"
+
+instance Pretty Choice where
+  pretty (Dim s l) = s ++ "<" ++ prettyL (asList l) ++ ">"
+  
+instance Pretty Void where
+  pretty = pretty
 
 class ShowKind a where
   showKind :: a -> String

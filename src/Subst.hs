@@ -65,15 +65,15 @@ instance Parametrized Type where
 
 instance Substituable Variational Type where
   apply s = \case
-    Plain t -> Plain $ apply s t
+    TCon s k -> TCon s k
     Dim n ts -> Dim n (apply s <$> ts)
-    VApp t1 t2 -> apply s t1 `VApp` apply s t2
+    TApp t1 t2 -> apply s t1 `VApp` apply s t2
 
 instance Substituable Variational Variational where
   apply s = \case 
     Dim n ts -> Dim n (apply s <$> ts)
-    VApp t1 t2 -> apply s t1 `VApp` apply s t2
-    Plain t -> Plain $ apply s' t
+    TApp t1 t2 -> apply s t1 `VApp` apply s t2
+    TPlus t -> Plain $ apply s' t
       where 
         s' :: Subst Type
         s' = Map.mapMaybe extractPlains s 
