@@ -1,16 +1,19 @@
 
+{-# LANGUAGE EmptyDataDecls #-}
 {-# LANGUAGE EmptyCase #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE DeriveFoldable #-}
 {-# LANGUAGE DeriveTraversable #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 
 module Type where
 import Pretty
 import Control.Arrow
 import Data.List
 import qualified Data.Set as Set
+import Control.Monad
 
 data TVar = TV{name :: String, kind :: Kind}
   deriving (Show, Eq, Ord)
@@ -25,7 +28,15 @@ data TypeF a
   = TVar TVar
   | TCon String Kind
   | TApp (TypeF a) (TypeF a)
-  | TPlus a deriving (Show)
+  | TPlus a deriving (Show, Eq, Ord)
+
+mapBoth :: (TypeF a -> TypeF a -> b) -> (Type -> b) -> (a -> b) -> TypeF a -> b
+mapBoth app left right =
+  let call = mapBoth app left right in \case
+    TVar t -> left $ TVar t
+    TCon s k -> left $ TCon s k
+    TApp a b -> app a b
+    TPlus a -> right a
 
 data Void
 absurd :: Void -> a
@@ -34,19 +45,27 @@ absurd a = case a of
 instance Show Void where
   show = absurd
 
+instance Eq Void where
+  (==) = absurd
+  (/=) = absurd
+
+instance Ord Void where
+  compare = absurd
+
 asVariational :: Type -> Variational
 asVariational = \case
   TVar t -> TVar t
   TCon s k -> TCon s k
   TApp a b -> TApp (asVariational a) (asVariational b)
  
-asType :: Type -> Maybe Variational
+asType :: Variational -> Maybe Type
 asType = \case
-  TVar t -> TVar t
-  TCon s k -> TCon s k
+  TVar t -> Just $ TVar t
+  TCon s k -> Just $ TCon s k
   TApp a b -> TApp <$> (asType a) <*> (asType b)
+  _ -> Nothing
 
-data Choice = Dim String (NonEmpty Variational);
+data Choice = Dim String (NonEmpty Variational) deriving (Show, Eq, Ord);
 
 type Type = TypeF Void
 type Variational = TypeF Choice
@@ -57,7 +76,7 @@ type Inst = Qual Type (Pred Type)
 
 -- forall a b c . a -> b
 data Scheme = Forall [TVar] (Qual Type Type)
-  deriving (Show)
+  deriving (Show, Eq)
 
 mapPred :: (a -> a) -> Pred a -> Pred a
 mapPred f (IsIn s t) = IsIn s (f t)
@@ -75,6 +94,9 @@ makeTypeConstant n = \case
   TApp a b -> TApp (makeTypeConstant n a) (makeTypeConstant n b)
 
 data NonEmpty a = a :+: [a] deriving (Eq, Show, Ord, Functor, Foldable, Traversable)
+
+foldNE :: (Monad m) => NonEmpty a -> (a -> a -> m a) -> m a
+foldNE (x :+: xs) f = foldM f x xs
 
 unzipNonEmpty :: NonEmpty (a, b) -> (NonEmpty a, NonEmpty b)
 unzipNonEmpty l = (fst <$> l, snd <$> l) 
@@ -178,7 +200,7 @@ leftMostType = \case
   TApp a b -> leftMostType a
   t -> t
 
-getReturn :: Type -> Type
+getReturn :: TypeF a -> TypeF a
 getReturn = \case
   TApp (TApp (TCon "(->)" k) a) b -> getReturn b
   e -> e

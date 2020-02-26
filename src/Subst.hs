@@ -58,34 +58,31 @@ instance Substituable Type Type where
   apply s (t1 `TApp` t2) = apply s t1 `TApp` apply s t2
   apply _ t = t
 
-instance Parametrized Type where
-  ftv TCon{} = Set.empty
-  ftv (TVar a) = Set.singleton a
-  ftv (t1 `TApp` t2) = ftv t1 `Set.union` ftv t2
-
 instance Substituable Variational Type where
   apply s = \case
     TCon s k -> TCon s k
-    Dim n ts -> Dim n (apply s <$> ts)
-    TApp t1 t2 -> apply s t1 `VApp` apply s t2
+    TPlus (Dim n ts) -> TPlus $ Dim n (apply s <$> ts)
+    TApp t1 t2 -> apply s t1 `TApp` apply s t2
+    t@(TVar a) -> Map.findWithDefault t a (asVariational <$> s)
 
 instance Substituable Variational Variational where
   apply s = \case 
-    Dim n ts -> Dim n (apply s <$> ts)
-    TApp t1 t2 -> apply s t1 `VApp` apply s t2
-    TPlus t -> Plain $ apply s' t
-      where 
-        s' :: Subst Type
-        s' = Map.mapMaybe extractPlains s 
-        extractPlains = \case
-          Plain t -> Just t
-          _ -> Nothing
+    TCon s k -> TCon s k
+    TPlus (Dim n ts) -> TPlus $ Dim n (apply s <$> ts)
+    TApp t1 t2 -> apply s t1 `TApp` apply s t2
+    t@(TVar a) -> Map.findWithDefault t a s
 
-instance Parametrized Variational where
-  ftv = \case
-    Plain t -> ftv t
-    Dim s ts -> foldr Set.union Set.empty (ftv <$> ts)
-    VApp t1 t2 -> ftv t1 `Set.union` ftv t2
+instance Parametrized a => Parametrized (TypeF a) where
+  ftv TCon{} = Set.empty
+  ftv (TVar a) = Set.singleton a
+  ftv (t1 `TApp` t2) = ftv t1 `Set.union` ftv t2
+  ftv (TPlus a) = ftv a
+
+instance Parametrized Void where
+  ftv = absurd
+
+instance Parametrized Choice where
+  ftv (Dim s ts) = foldr Set.union Set.empty (ftv <$> ts)
 
 instance Substituable Scheme Type where
   apply s (Forall as t) = Forall as $ apply s' t -- apply s' maybe

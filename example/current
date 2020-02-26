@@ -1,3 +1,10 @@
+data Unit = | Unit = Unit;
 
-sig main = IO Int;
-let main = printInt 4;
+data Bool =
+    | True = Bool;
+    | False = Bool;
+
+sig main = IO Unit;
+let main = case True of
+    (True) -> printInt 4,
+    (False) -> printInt 5;
