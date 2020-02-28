@@ -107,7 +107,7 @@ newtype InferState = InferState {count :: Int}
 initInfer :: InferState
 initInfer = InferState { count = 0 }
 
-runSolve :: ClassEnv -> Constraints Variational -> ExceptLog ([Pred Type], Variational -> Type)
+runSolve :: ClassEnv -> [(Pred Type, Location)] -> ExceptLog [Pred Type]
 runSolve env cs = runReaderT (solver cs) env
 
 checkInstances :: Envs -> [InstCheck] -> ExceptLog Envs
@@ -133,16 +133,20 @@ applyAnn f = mapAnn applyAnn'
 inferExpr :: ClassEnv -> Env -> Expr -> ExceptLog (Scheme, TExpr)
 inferExpr cenv env ex = case runInfer env (runWriterT $ infer ex) of
   Left err -> throwError err
-  Right (tyBefore, cs) -> do
+  Right (tyBefore, (unions, preds)) -> do
     let (_, _, Qual _ ty) = ann tyBefore
     --tell $ "found : "++ pretty ty ++ "\n"
     tell $ "with type : " ++ pretty ty ++ " solve => \n"
-    tell $ "constraints : " ++ pretty cs ++ " go \n"
-    (preds, subst) <- runSolve cenv cs
+    tell $ "constraints : " ++ pretty preds ++ " go \n"
+    subst <- runUnify unions
+    preds' <- mapM subst preds
+    preds'' <- runSolve cenv preds'
+    ty' <- (subst ty)
+    tyBefore' <- applyAnn subst tyBefore
     --tell $ "before : " ++ pretty (apply subst ty') ++ "\n" ++ pretty (apply subst ty) ++ "\n"
     --let (b, s) = closeOver (apply subst ty) (apply subst preds) $ apply subst ty'
     --tell $ "after CO : " ++ pretty b ++ "\n" ++ pretty s ++ "\n"
-    return (closeOver (subst ty) (fmap (subst . asVariational) <$> preds) $ applyAnn subst tyBefore)
+    return (closeOver ty' preds'' tyBefore')
 
 inferExprT :: ClassEnv -> Env -> Expr -> Scheme -> ExceptLog (Scheme, TExpr)
 inferExprT cenv env ex tp = case runInfer env (runWriterT $ inferEq ex tp) of
@@ -440,27 +444,29 @@ unifyMany (t1, t1') (t2, t2') = do
   s2 <- unifies (apply s1 t2) (apply s1 t2')
   return $ s2 `compose` s1
 
-solver :: Constraints Variational -> Solve ([Pred Type], Variational -> Type)
-solver (unions, ps) = do
+runUnify :: [Union] -> ExceptLog (Variational -> Type)
+runUnify unions = do
   tell " ========= start solving =========\n\n "
-  tell $ "preds : " ++ show ps ++ "\n"
   sub <- unionSolve (nullSubst, unions)
-  let makeAllPlains =vtoT
+  let makeAllPlains = vtoT
   let sub' = makeAllPlains <$> sub
-  tell $ "found sub : \n" ++ pretty sub ++ "\n"
-  tell $ "solve cls : \n" ++ prettyL (apply sub ps) ++ "\n"
-  preds <- classSolve $ ClassSolver [] (apply sub' (first (fmap makeAllPlains) <$> ps))
-  tell $ "found preds : " ++ prettyL preds ++ "\n"
-  return (preds, apply sub' . makeAllPlains)
+  return (apply sub' . makeAllPlains)
 
-vtoT :: Variational -> Type
+solver :: [(Pred Type, Location)] -> Solve [Pred Type]
+solver ps = do
+  preds <- classSolve $ ClassSolver [] ps
+  tell $ "found preds : " ++ prettyL preds ++ "\n"
+  return preds
+
+vtoT :: Variational -> Solve Type
 vtoT = \case
-  TVar t -> TVar t
-  TCon t k -> TCon t k
-  TApp a b -> TApp (vtoT a) (vtoT b)
+  TVar t -> return $ TVar t
+  TCon t k -> return $ TCon t k
+  TApp a b -> return $ TApp (vtoT a) (vtoT b)
   TPlus (Dim s ts) -> 
     let ts' = vtoT <$> ts in foldNE ts' keepIfEq
     where
+      keepIfEq :: (Pretty a, Eq a) -> Solve a
       keepIfEq t1 t2 | t1 == t1 = return t1
       keepIfEq a b = throwError $ UnificationFail (pretty a) (pretty b)
 
