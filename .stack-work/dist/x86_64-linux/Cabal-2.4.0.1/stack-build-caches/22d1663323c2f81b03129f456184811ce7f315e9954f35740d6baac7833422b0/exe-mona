@@ -23,9 +23,9 @@
   size: 5624
   modtime: 1579934002
 /home/pierre/Documents/prog/haskell/mona/src/Infer.hs:
-  hash: 06d3d9626a620cb8c2d24509e4ebba1df827f94d89c3f251c3c5e30bd980bbfe
-  size: 18668
-  modtime: 1582541947
+  hash: 5958e7b2d945a870b5974fe6039baea7e502be25bf82a4e2d39f8cf792a9b62b
+  size: 18683
+  modtime: 1583085567
 /home/pierre/Documents/prog/haskell/mona/src/Pretty.hs:
   hash: 93f99bba374fccdd294d46fde2bedd6410445b3776074209eb277cfbaca06484
   size: 705
@@ -45,7 +45,7 @@
 /home/pierre/Documents/prog/haskell/mona/src/Type.hs:
   hash: dff6830521c2ff952405340dc537bc811ee86618746851ea6dfbc12898f1018f
   size: 8949
-  modtime: 1582542017
+  modtime: 1582542080
 /home/pierre/Documents/prog/haskell/mona/src/Dispatch.hs:
   hash: a55cad519ebdae2254396e4158c9d20d01e4fe3622cdf5ada85febf36832cd99
   size: 4005

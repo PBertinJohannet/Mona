@@ -139,7 +139,7 @@ inferExpr cenv env ex = case runInfer env (runWriterT $ infer ex) of
     tell $ "with type : " ++ pretty ty ++ " solve => \n"
     tell $ "constraints : " ++ pretty preds ++ " go \n"
     subst <- runUnify unions
-    preds' <- mapM subst preds
+    preds' <- _me (first (fmap subst)) preds
     preds'' <- runSolve cenv preds'
     ty' <- (subst ty)
     tyBefore' <- applyAnn subst tyBefore
@@ -444,7 +444,7 @@ unifyMany (t1, t1') (t2, t2') = do
   s2 <- unifies (apply s1 t2) (apply s1 t2')
   return $ s2 `compose` s1
 
-runUnify :: [Union] -> ExceptLog (Variational -> Type)
+runUnify :: [Union] -> ExceptLog (Variational -> Solve Type)
 runUnify unions = do
   tell " ========= start solving =========\n\n "
   sub <- unionSolve (nullSubst, unions)
