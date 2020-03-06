@@ -179,14 +179,10 @@ instance Monoid (EnvF a) where
   mempty = empty
   mappend = merge
 
-instance (Substituable a b) => Substituable (EnvF a) b where
+instance (Substituable a) => Substituable (EnvF a) where
   apply s (TypeEnv env) = TypeEnv (Map.map (apply s) env)
-
-instance (Parametrized a) => Parametrized (EnvF a) where
   ftv (TypeEnv env) = ftv (Map.elems env)
 
-instance Substituable ClassEnv Type where
+instance Substituable ClassEnv where
   apply s (ClassEnv c) = ClassEnv (Map.map (apply s) c)
-
-instance Parametrized ClassEnv where
   ftv (ClassEnv c) = ftv (Map.elems c)

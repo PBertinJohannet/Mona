@@ -27,38 +27,33 @@ import RecursionSchemes
 import Data.Tuple
 import Error
 
-newtype Union = Union (Variational, Variational, Location) deriving Show;
+newtype Union = Union (Type, Type, Location) deriving Show;
+data Reconcile = Reconcile String [(Type, Location)] deriving Show;
+type Constraints = ([Union], [(Pred, Location)], [Reconcile])
 
 instance Pretty Union where
   pretty (Union (a, b, _)) = pretty a ++ " should unify with : " ++ pretty b ++ "\n"
 
-type Constraints a = ([Union], [(Pred a, Location)])
-type VConstraints = Constraints Variational
-type TConstraints = Constraints Type
+instance Pretty Reconcile where
+  pretty (Reconcile s tps) = s ++ "<" ++ prettyL (snd <$> tps) ++ ">"
 
-instance Pretty a => Pretty (Pred a, Location) where
+instance Pretty (Pred, Location) where
   pretty (a, b) = pretty a
 
-instance Pretty a => Pretty (Constraints a) where
-  pretty (a, b) = prettyL a ++ " => " ++ prettyL b ++ "\n"
+instance Pretty Constraints where
+  pretty (a, b, c) = prettyL a ++ " => " ++ prettyL b ++ "[" ++ prettyL c ++ "]\n"
 
-union :: Location -> (Variational, Variational) -> Constraints Variational
-union loc (a, b) = ([Union (a, b, loc)], [])
+union :: Location -> (Type, Type) -> Constraints
+union loc (a, b) = ([Union (a, b, loc)], [], [])
 
-predicate :: [Pred Variational] -> Location -> Constraints Variational
-predicate p l = ([], (,l) <$> p)
+predicate :: [Pred] -> Location -> Constraints
+predicate p l = ([], (,l) <$> p, [])
 
-instance Substituable Union Variational where
+reconcilie :: String -> [(Type, Location)] -> Constraints
+reconcilie s tps = ([], [], [Reconcile s tps])
+
+instance Substituable Union where
   apply s (Union (a, b, c)) = Union (apply s a, apply s b, c)
-
-instance Parametrized Union where
-  ftv (Union (a, b, _)) = ftv a `Set.union` ftv b
-
-instance Substituable (Pred Variational, Location) Variational where
-  apply s (a, b) = (apply s a, b)
-
-instance Parametrized (Pred Variational, Location) where
-  ftv (a, _) = ftv a
 
 type TypeError = CompilerError TypeErrorV;
 
@@ -70,13 +65,13 @@ data TypeErrorV
   | NotInClass String Type
   | UnknownClass String
   | WrongKind String Kind
-  | UnificationFail String String
+  | UnificationFail Type Type
   | KindUnificationFail String String
   | UndeclaredClass String
   | MultipleDecl String
   | UnknownCommand String
   | SignatureMismatch Scheme Scheme
-  | ConstraintsNotMatching [Pred Type] deriving (Show, Eq);
+  | ConstraintsNotMatching [Pred] deriving (Show, Eq);
 
 instance Pretty TypeErrorV where
   pretty = \case
@@ -91,14 +86,14 @@ instance Pretty TypeErrorV where
     WrongKind s k -> s ++ " has kind : " ++ pretty k
     MultipleDecl s -> s ++ " Multiple declarations : " ++ s
     SignatureMismatch t t' -> "Cannot match infered signature " ++ pretty t ++ " with declared signature " ++ pretty t'
-    UnificationFail t t' -> "Cannot unify : " ++ t ++ " with "++ t'
+    UnificationFail t t' -> "Cannot unify : " ++ pretty t ++ " with "++ pretty t'
     KindUnificationFail t t' -> "Cannot unify : " ++ t ++ " with "++ t'
     ConstraintsNotMatching t -> "Infered constraints not found in definition : " ++ prettyL t
 
 type ExceptLog a = ExceptT TypeError (Writer String) a;
 
 type Infer = ReaderT Env (StateT InferState (Except TypeError))
-type InferCons = WriterT (Constraints Variational) Infer
+type InferCons = WriterT Constraints Infer
 
 type Solve a = (ReaderT ClassEnv (ExceptT TypeError (Writer String)) a)
 
@@ -107,7 +102,10 @@ newtype InferState = InferState {count :: Int}
 initInfer :: InferState
 initInfer = InferState { count = 0 }
 
-runSolve :: ClassEnv -> [(Pred Type, Location)] -> ExceptLog [Pred Type]
+asSolve :: ExceptLog a -> Solve a
+asSolve a = ReaderT $ const a
+
+runSolve :: ClassEnv -> [(Pred, Location)] -> ExceptLog [Pred]
 runSolve env cs = runReaderT (solver cs) env
 
 checkInstances :: Envs -> [InstCheck] -> ExceptLog Envs
@@ -124,25 +122,25 @@ inferTop (Envs d env cenv tast) ((loc, name, ex):xs) = do
     Just sc -> inferExprT cenv env ex sc `withErrorLoc` loc
   inferTop (Envs d (extend env (name, tp)) cenv (extendAst tast (name, texp))) xs
 
-applyAnn :: (Variational -> Type) -> VExpr -> TExpr
+applyAnn :: (Type -> Type) -> TExpr -> TExpr
 applyAnn f = mapAnn applyAnn'
   where 
-    applyAnn' :: (Location, VSubst, Qual Variational Variational) -> (Location, TSubst, Qual Type Type)
-    applyAnn' (loc, sub, Qual preds t) = (loc, f <$> sub, Qual (fmap (fmap f) preds) $ f t)
+    applyAnn' :: (Location, Subst, Qual Type) -> (Location, Subst, Qual Type)
+    applyAnn' (loc, sub, Qual preds t) = (loc, f <$> sub, Qual (fmap (mapPred f) preds) $ f t)
 
 inferExpr :: ClassEnv -> Env -> Expr -> ExceptLog (Scheme, TExpr)
 inferExpr cenv env ex = case runInfer env (runWriterT $ infer ex) of
   Left err -> throwError err
-  Right (tyBefore, (unions, preds)) -> do
+  Right (tyBefore, (unions, preds, dims)) -> do
     let (_, _, Qual _ ty) = ann tyBefore
     --tell $ "found : "++ pretty ty ++ "\n"
     tell $ "with type : " ++ pretty ty ++ " solve => \n"
-    tell $ "constraints : " ++ pretty preds ++ " go \n"
+    --tell $ "constraints : " ++ pretty preds ++ " go \n"
     subst <- runUnify unions
-    preds' <- mapM subst preds
-    preds'' <- runSolve cenv preds'
-    ty' <- (subst ty)
-    tyBefore' <- applyAnn subst tyBefore
+    --preds' <- sequence (_vtoT . apply subst <$> preds)
+    preds'' <- runSolve cenv preds
+    let ty' = apply subst ty
+    let tyBefore' = applyAnn (apply subst) tyBefore
     --tell $ "before : " ++ pretty (apply subst ty') ++ "\n" ++ pretty (apply subst ty) ++ "\n"
     --let (b, s) = closeOver (apply subst ty) (apply subst preds) $ apply subst ty'
     --tell $ "after CO : " ++ pretty b ++ "\n" ++ pretty s ++ "\n"
@@ -151,26 +149,27 @@ inferExpr cenv env ex = case runInfer env (runWriterT $ infer ex) of
 inferExprT :: ClassEnv -> Env -> Expr -> Scheme -> ExceptLog (Scheme, TExpr)
 inferExprT cenv env ex tp = case runInfer env (runWriterT $ inferEq ex tp) of
   Left err -> throwError err
-  Right ((texp, expected), cs) -> do
+  Right ((texp, expected), (unions, preds)) -> do
     --tell $ "doing : " ++ pretty ex ++ "\n"
-    (preds, subst) <- runSolve cenv cs
+    subst <- runUnify _cs
+    preds <- runSolve cenv _cs
     let (_, _, Qual _ found) = ann texp
     let Forall _ (Qual expectedPreds _) = tp
     --tell $ "checking preds : " ++ prettyL preds ++ " vs " ++ prettyL expectedPreds ++ "\n"
     checkPreds preds expectedPreds
     --tell $ "found : " ++ pretty (apply subst found) ++ "\n"
     --tell $ "expected : " ++ pretty (apply subst expected) ++ "\n"
-    allReplaces <- checkStrict (subst found) (subst $ asVariational expected)
+    allReplaces <- checkStrict (apply subst found) (apply subst expected)
     --stest <- checkStrict (apply subst expected) (apply subst found) False
     --tell $ "\nor : " ++ show stest
     let s0 = Map.fromList allReplaces
     --let stest2 = s0 `compose` stest
     --tell $ "\n to give : " ++ pretty stest2
-    let s1 = apply s0 . subst
+    let s1 = s0 `compose` subst
     --tell $ "sub : " ++ pretty s1 ++ "\n"
     --tell $ "before : " ++ pretty (apply s1 texp) ++ "\n" ++ pretty (apply s1 found) ++ "\n"
     --tell $ "after COC : " ++ pretty b ++ "\n" ++ pretty s ++ "\n"
-    let (sch, tex) = closeOver (s1 found) (fmap (s1 . asVariational) <$> preds) $ applyAnn s1 texp
+    let (sch, tex) = closeOver (apply s1 found) (mapPred (apply s1) <$> preds) $ applyAnn (apply s1) texp
     foldM_ (composeStrict sch tp) nullSubst allReplaces
     return (tp, tex)
 
@@ -178,10 +177,10 @@ runInfer :: Env -> Infer a -> Either TypeError a
 runInfer env m = runIdentity $ runExceptT $ evalStateT (runReaderT m env) initInfer
 
 -- | Canonicalize and return the polymorphic toplevel type.
-closeOver :: Type -> [Pred Type] -> TExpr -> (Scheme, TExpr)
+closeOver :: Type -> [Pred] -> TExpr -> (Scheme, TExpr)
 closeOver t p s = (normalize . first (generalise p)) (t, s)
 
-generalise :: [Pred Type] -> Type -> Scheme
+generalise :: [Pred] -> Type -> Scheme
 generalise p t = Forall [] $ Qual p t
 
 normalize :: (Scheme, TExpr) -> (Scheme, TExpr)
@@ -197,7 +196,7 @@ normalize (Forall _ (Qual q body), s) =
     lookupVars :: String -> Maybe TVar
     lookupVars a = snd <$> find (\(TV n _, _) -> n == a) varSubst
 
-    normPred :: Pred Type -> [Pred Type]
+    normPred :: Pred -> [Pred]
     normPred (IsIn n (TVar (TV k _))) = case lookupVars k of
         Just x -> [IsIn n $ TVar x]
         Nothing -> []
@@ -223,26 +222,17 @@ instance InEnv Scheme where
     let scope e = remove e x `extend` (x, sc)
     local scope m
 
-getSignature :: Scheme -> InferCons (Subst Type, [Pred Type], Type)
+getSignature :: Scheme -> InferCons (Subst, [Pred], Type)
 getSignature (Forall as (Qual preds t)) = do
     as' <- mapM (const freshType) as
     let s = Map.fromList $ zip as as'
     return (s, preds, t)
 
-class Instanciable a where
-  instantiate :: Scheme -> InferCons (Subst a, Qual a a)
-
-instance Instanciable Variational where
-  instantiate sc = do
-    (s, preds, t) <- getSignature sc
-    let vs = asVariational <$> s
-    return (vs, Qual (apply s (fmap asVariational <$> preds)) (asVariational $ apply s t))
-
-instance Instanciable Type where
-  instantiate sc = do
-    (s, preds, t) <- getSignature sc
-    return (s, Qual (apply s preds) (apply s t))
-
+instantiate :: Scheme -> InferCons (Subst, Qual Type) -- replace by fresh variables
+instantiate (Forall as (Qual preds t)) = do
+  as' <- mapM (const fresh) as
+  let s = Map.fromList $ zip as as'
+  return (s, Qual (apply s preds) (apply s t))
 
 freshName :: InferCons String
 freshName = do
@@ -250,52 +240,44 @@ freshName = do
   put s{count = count s + 1}
   return (letters !! count s)
 
-freshDim :: NonEmpty Variational -> InferCons Variational
-freshDim l = do 
-  s <- freshName
-  return (TPlus $ Dim s l)
-
-fresh :: InferCons Variational
-fresh = asVariational <$> freshType
+fresh :: InferCons Type
+fresh = freshType
 
 freshType :: InferCons Type
 freshType = tvar <$> freshName
 
-freshVType :: InferCons Variational
-freshVType = (asVariational . tvar) <$> freshName
-
-freshQual :: InferCons (Qual Variational Variational)
+freshQual :: InferCons (Qual Type)
 freshQual = Qual [] <$> fresh
 
-noConstraints :: Constraints a
+noConstraints :: Constraints
 noConstraints = ([], [])
 
-lookupEnv :: Name -> InferCons (VSubst, Qual Variational Variational)
+lookupEnv :: Name -> InferCons (Subst, Qual Type)
 lookupEnv x = do
   (TypeEnv env) <- ask
   case Map.lookup x env of
     Just s -> instantiate s
     Nothing -> throwErrorV $ UnboundVariable $ show x
 
-inferEq :: Expr -> Scheme -> InferCons (VExpr, Type)
+inferEq :: Expr -> Scheme -> InferCons (TExpr, Type)
 inferEq e t0 = do
   (_, Qual q t1) <- instantiate t0
   t2 <- infer e
   return (t2, t1)
 
-infer :: Expr -> InferCons VExpr
+infer :: Expr -> InferCons TExpr
 infer = cataCF inferAlgM
 
 getTp :: TExpr -> Type
 getTp (In ((_, _, Qual _ t) :< _)) = t
 
-getVTp :: VExpr -> Variational
+getVTp :: TExpr -> Type
 getVTp (In ((_, _, Qual _ t) :< _)) = t
 
-noSub :: Variational -> InferCons (Qual Variational Variational, VSubst)
+noSub :: Type -> InferCons (Qual Type, Subst)
 noSub = return . (, nullSubst) . Qual []
 
-inferAlgM :: (Location, ExprF (InferCons VExpr)) -> InferCons VExpr
+inferAlgM :: (Location, ExprF (InferCons TExpr)) -> InferCons TExpr
 inferAlgM = \case
     (l, Case sourceT []) -> do
       destT <- fresh
@@ -304,7 +286,7 @@ inferAlgM = \case
 
     (l, Case sourceT (x:xs)) -> do
       (trets, pats) <- unzipNonEmpty <$> traverse (inferPat l) (x :+: xs)
-      infer2 <- freshDim trets
+      infer2 <- _freshDim trets
       pats' <- return $ fmap (fmap return) $ asList pats
       retExpr <- sequence $ Case sourceT pats'
       return (In $ (l, nullSubst, Qual [] infer2) :< retExpr)
@@ -319,11 +301,11 @@ inferAlgM = \case
         (tp, sub) <- inferAlg l tpk
         return (In $ (l, sub, tp) :< k)
   where
-    inferAlg :: Location -> ExprF Variational -> InferCons (Qual Variational Variational, VSubst)
+    inferAlg :: Location -> ExprF Type -> InferCons (Qual Type, Subst)
     inferAlg l = \case
           Lit _ -> do
             tell noConstraints
-            noSub $ asVariational typeInt
+            noSub typeInt
 
           Var x -> do
             env <- ask
@@ -333,40 +315,40 @@ inferAlgM = \case
 
           App t1 t2 -> do
             tv <- fresh
-            tell $ union l (t1, t2 `mkVArr` tv)
+            tell $ union l (t1, t2 `mkArr` tv)
             noSub tv
 
           Fix t1 -> do
             tv <- fresh
-            tell $ union l (tv `mkVArr` tv, t1)
+            tell $ union l (tv `mkArr` tv, t1)
             noSub tv
 {-
-inPatEnv :: Type -> PatternT (InferCons VExpr) -> PatternT (InferCons VExpr)
+inPatEnv :: Type -> PatternT (InferCons TExpr) -> PatternT (InferCons TExpr)
 inPatEnv tv (PatternT x@(Pattern p ps) e) = case ps of
   [] -> let e' = inEnv (p, Forall [] (Qual [] tv)) e in PatternT x e'
 -}
 
-typeOfRet :: String -> InferCons Variational
+typeOfRet :: String -> InferCons Type
 typeOfRet = fmap getReturn . typeOf
 
-typeOf :: String -> InferCons Variational
+typeOf :: String -> InferCons Type
 typeOf x = do
     (sub, Qual p t) <- lookupEnv x
     return t
 
-decomposePattern :: Location -> Pattern -> InferCons (Variational, [(String, Type)])
+decomposePattern :: Location -> Pattern -> InferCons (Type, [(String, Type)])
 decomposePattern loc (Pattern name vars) = do
     subPats <- traverse (decomposePattern loc) vars
     let (subTypes, varsTypes) = unzip subPats
     tname <- typeOf name
     tret <- typeOfRet name
-    tell (union loc (foldr mkVArr tret subTypes, tname))
+    tell (union loc (foldr mkArr tret subTypes, tname))
     return (tret, mconcat varsTypes)
 decomposePattern loc (Raw name) = do
     tret <- freshType
-    return (asVariational tret, return (name, tret))
+    return (tret, return (name, tret))
 
-inferPat :: Location -> PatternT (InferCons VExpr) -> InferCons (Variational, (PatternT VExpr))
+inferPat :: Location -> PatternT (InferCons TExpr) -> InferCons (Type, (PatternT TExpr))
 inferPat loc (PatternT pat exp) = do
     (tp, vars) <- decomposePattern loc pat
     tret <- foldl (flip inEnv) exp vars
@@ -375,10 +357,10 @@ inferPat loc (PatternT pat exp) = do
 -- see the doc for the error message, basicaly it verifies that the same variable is not binded to multiple types
 -- then it adds it to the given substition
 -- the two first args are only to report errors
-composeStrict :: Scheme -> Scheme -> TSubst -> (TVar, Type) -> ExceptLog TSubst
+composeStrict :: Scheme -> Scheme -> Subst -> (TVar, Type) -> ExceptLog Subst
 composeStrict sc sc' sub (a, b) = check $ Map.lookup a sub
   where
-    check :: Maybe Type -> ExceptLog TSubst
+    check :: Maybe Type -> ExceptLog Subst
     check (Just b') | b' == b = return sub
     check Nothing = return $ Map.insert a b sub
     check _  = throwErrorV $ SignatureMismatch sc sc'
@@ -390,9 +372,9 @@ checkStrict (TApp t1 v1) (TApp t2 v2) = do
   s1 <- checkStrict t1 t2
   s2 <- checkStrict v1 v2
   return $ s2 ++ s1
-checkStrict t1 t2 = throwErrorV $ UnificationFail (pretty t1) (pretty t2)
+checkStrict t1 t2 = throwErrorV $ UnificationFail t1 t2
 
-checkPreds :: [Pred Type] -> [Pred Type] -> ExceptLog ()
+checkPreds :: [Pred] -> [Pred] -> ExceptLog ()
 checkPreds found expected =
   let (f, e) = (Set.fromList found, Set.fromList expected)
       remaining = (f `Set.difference` e) in
@@ -401,13 +383,13 @@ checkPreds found expected =
     else throwErrorV $ ConstraintsNotMatching $ Set.toList remaining
 
 
-type Unifier = (VSubst, [Union])
+type Unifier = (Subst, [Union])
 
 emptyUnifier :: Unifier
 emptyUnifier = (nullSubst, [])
 
 {-
-reconcilie :: Variational -> Variational -> Solve Variational
+reconcilie :: Type -> Type -> Solve Type
 reconcilie a b =
   let (aBase, aArgs) = unapply a in
   let (bBase, bArgs) = unapply b in
@@ -415,62 +397,38 @@ reconcilie a b =
     then throwErrorV $ ReconciliationError a b
 -}
 
--- TODO : put unifies in a class => Type => Variational
+-- TODO : put unifies in a class => Type => Type
 
-class (Parametrized a, Eq a, Substitute (TypeF a)) => PartialUnify a where
-  unifiesPartial :: a -> TypeF a -> Solve (Subst (TypeF a))
 
-class Unifiable a where
-  unifies :: a -> a -> Solve (Subst a)
+unifies :: Type -> Type -> ExceptLog Subst
+unifies t1 t2 | t1 == t2 = return nullSubst
+unifies (TVar v) t = bind v t
+unifies t (TVar v) = bind v t
+unifies (TApp t1 t2) (TApp t3 t4) = unifyMany (t1, t2) (t3, t4)
+unifies t1 t2 = throwErrorV $ UnificationFail t1 t2
 
-instance (Pretty a, Substituable (TypeF a) (TypeF a), PartialUnify a) => Unifiable (TypeF a) where
-  unifies a b | a == b = return nullSubst
-  unifies (TPlus a) b = unifiesPartial a b
-  unifies b (TPlus a) = unifiesPartial a b
-  unifies (TVar v) t = bind v t
-  unifies t (TVar v) = bind v t
-  unifies (TApp t1 t2) (TApp t3 t4) = unifyMany (t1, t3) (t2, t4)
-  unifies t1 t2 = throwErrorV $ UnificationFail (pretty t1) (pretty t2) 
-
-instance PartialUnify Void where
-  unifiesPartial = absurd
-
-instance PartialUnify Choice where
-  unifiesPartial t1 t2 = return nullSubst
-
-unifyMany :: (Substituable a a, Unifiable a) => (a, a) -> (a, a) -> Solve (Subst a)
+unifyMany :: (Type, Type) -> (Type, Type) -> ExceptLog Subst
 unifyMany (t1, t1') (t2, t2') = do
   s1 <- unifies t1 t1'
   s2 <- unifies (apply s1 t2) (apply s1 t2')
   return $ s2 `compose` s1
 
-runUnify :: [Union] -> ExceptLog (Variational -> Type)
+runUnify :: [Union] -> ExceptLog Subst
 runUnify unions = do
   tell " ========= start solving =========\n\n "
   sub <- unionSolve (nullSubst, unions)
-  let makeAllPlains = vtoT
-  let sub' = makeAllPlains <$> sub
-  return (apply sub' . makeAllPlains)
+  return sub
 
-solver :: [(Pred Type, Location)] -> Solve [Pred Type]
+solver :: [(Pred, Location)] -> Solve [Pred]
 solver ps = do
   preds <- classSolve $ ClassSolver [] ps
   tell $ "found preds : " ++ prettyL preds ++ "\n"
   return preds
 
-vtoT :: Variational -> Solve Type
-vtoT = \case
-  TVar t -> return $ TVar t
-  TCon t k -> return $ TCon t k
-  TApp a b -> return $ TApp (vtoT a) (vtoT b)
-  TPlus (Dim s ts) -> 
-    let ts' = vtoT <$> ts in foldNE ts' keepIfEq
-    where
-      keepIfEq :: (Pretty a, Eq a) -> Solve a
-      keepIfEq t1 t2 | t1 == t1 = return t1
-      keepIfEq a b = throwError $ UnificationFail (pretty a) (pretty b)
+sequenceFirst :: Functor f => (f a, b) -> f (a, b)
+sequenceFirst (a, b) = (,b) <$> a
 
-unionSolve :: Unifier -> Solve VSubst
+unionSolve :: Unifier -> ExceptLog Subst
 unionSolve (su, cs) =
   case cs of
     [] -> return su
@@ -480,49 +438,47 @@ unionSolve (su, cs) =
       --tell $ "found : " ++ pretty su1 ++ "\n"
       unionSolve (su1 `compose` su, apply su1 cs1)
 
-data ClassSolver = ClassSolver{found :: [Pred Type], remain :: [(Pred Type, Location)]};
+data ClassSolver = ClassSolver{found :: [Pred], remain :: [(Pred, Location)]};
 
-classSolve :: ClassSolver -> Solve [Pred Type]
+classSolve :: ClassSolver -> Solve [Pred]
 classSolve = \case
   ClassSolver founds [] -> return founds
   ClassSolver founds ((p, loc):ps) -> do
     preds <- solvePred p `withErrorLoc` loc
     classSolve (ClassSolver (founds ++ preds) ps) `withErrorLoc` loc
 
-solvePred :: Pred Type -> Solve [Pred Type]
+solvePred :: Pred -> Solve [Pred]
 solvePred (IsIn n t) = do
   ClassEnv cenv <- ask
   case Map.lookup n cenv of
     Nothing -> throwErrorV $ UnknownClass n
     Just cls -> isIn n cls t
 
-isIn :: String -> Class -> Type -> Solve [Pred Type]
+isIn :: String -> Class -> Type -> Solve [Pred]
 isIn cname (m, insts) e = do
   tell $ "trying to satisfy : " ++ cname ++ " " ++ show e ++ " " ++ show insts ++ "\n"
   case e of
     TVar t -> return [IsIn cname $ TVar t]
     t -> satisfyInsts (IsIn cname t) insts
 
-satisfyInsts :: Pred Type -> [Inst] -> Solve [Pred Type]
+satisfyInsts :: Pred -> [Inst] -> Solve [Pred]
 satisfyInsts (IsIn c t) [] = throwErrorV $ NotInClass c t
 satisfyInsts s [i] = satisfyInst s i
 satisfyInsts s (i:is) = satisfyInst s i `catchError` \e -> satisfyInsts s is
 
-satisfyInst :: Pred Type -> Inst -> Solve [Pred Type]
+satisfyInst :: Pred -> Inst -> Solve [Pred]
 satisfyInst (IsIn c t) q@(Qual ps (IsIn _ t')) = do
-  s <- unifies t' t `catchError` const (throwErrorV $ NotInClass c t)
+  s <- asSolve (unifies t' t `catchError` const (throwErrorV $ NotInClass c t))
   return $ apply s ps
 
-bind :: (Parametrized a, Eq a, Substitute (TypeF a)) => TVar -> TypeF a -> Solve (Subst (TypeF a))
+bind :: TVar -> Type -> ExceptLog Subst
 bind a t | t == TVar a = return nullSubst
          | occursCheck a t = throwErrorV $ InfiniteType (TVar $ TV "not now" Star) 
          | otherwise = return $ Map.singleton a t
 
-occursCheck :: Parametrized a => TVar -> a -> Bool
+occursCheck :: TVar -> Type -> Bool
 occursCheck a t = a `Set.member` ftv t
 
-unifyPred :: Pred Variational -> Pred Variational -> Solve VSubst
+unifyPred :: Pred -> Pred -> ExceptLog Subst
 unifyPred (IsIn i t) (IsIn i' t') | i == i' = unifies t t'
 
-mkPlain :: Variational -> ExceptLog Type
-mkPlain t = let (Just t') = asType t in return t'

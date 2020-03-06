@@ -1,7 +1,5 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeSynonymInstances #-}
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
 module Subst where
 
 import Type
@@ -12,126 +10,69 @@ import Pretty
 import Syntax
 import RecursionSchemes
 
+type Subst = Map.Map TVar Type
+type TExpr = Cofree ExprF (Location, Subst, Qual Type); -- expression with information about performed substition (after type inference)
 
-
-type Subst a = Map.Map TVar a
-type TSubst = Subst Type
-type VSubst = Subst Variational
-type PExpr a = Cofree ExprF (Location, Subst a, Qual a a);
-type VExpr = PExpr Variational; -- expression with information about performed substition (after type inference)
-type TExpr = PExpr Type; -- expression with information about performed substition (after type inference)
-
-instance Pretty a => Pretty (Location, Subst a, Qual Type Type) where
+instance Pretty (Location, Subst, Qual Type) where
   pretty (l, s, t) = pretty t ++ " at " ++ pretty l
 
-instance Pretty a => Pretty (Location, Subst a, Qual Variational Variational) where
-  pretty (l, s, t) = pretty t ++ " at " ++ pretty l
+nullSubst :: Subst
+nullSubst = Map.empty
 
-class Substitute a where
-  nullSubst :: Subst a
-
-instance Substitute Type where
-  nullSubst = Map.empty
-
-instance Substitute Variational where
-  nullSubst = Map.empty
-
-instance Pretty a => Pretty (Subst a) where
+instance Pretty Subst where
   pretty = Map.toList >>> fmap pretty' >>> unwords
     where pretty' (s, a) = pretty s ++ " is " ++ pretty a ++ "\n"
 
-class Parametrized a where
+class Substituable a where
+  apply :: Subst -> a -> a
   ftv :: a -> Set.Set TVar
 
-class (Parametrized a) => Substituable a b where
-  apply :: Subst b -> a -> a
-
-instance Substituable a a => Substituable (PExpr a) a where
-  apply s = mapAnn applyAnn 
-    where applyAnn (loc, sub, qual) = (loc, s `compose` sub, apply s qual)
-
-instance Parametrized a => Parametrized (PExpr a) where
-  ftv = const Set.empty
-
-instance Substituable Type Type where
+instance Substituable Type where
   apply s t@(TVar a) = Map.findWithDefault t a s
   apply s (t1 `TApp` t2) = apply s t1 `TApp` apply s t2
   apply _ t = t
 
-instance Substituable Variational Type where
-  apply s = \case
-    TCon s k -> TCon s k
-    TPlus (Dim n ts) -> TPlus $ Dim n (apply s <$> ts)
-    TApp t1 t2 -> apply s t1 `TApp` apply s t2
-    t@(TVar a) -> Map.findWithDefault t a (asVariational <$> s)
-
-instance Substituable Variational Variational where
-  apply s = \case 
-    TCon s k -> TCon s k
-    TPlus (Dim n ts) -> TPlus $ Dim n (apply s <$> ts)
-    TApp t1 t2 -> apply s t1 `TApp` apply s t2
-    t@(TVar a) -> Map.findWithDefault t a s
-
-instance Parametrized a => Parametrized (TypeF a) where
   ftv TCon{} = Set.empty
   ftv (TVar a) = Set.singleton a
   ftv (t1 `TApp` t2) = ftv t1 `Set.union` ftv t2
-  ftv (TPlus a) = ftv a
 
-instance Parametrized Void where
-  ftv = absurd
-
-instance Parametrized Choice where
-  ftv (Dim s ts) = foldr Set.union Set.empty (ftv <$> ts)
-
-instance Substituable Scheme Type where
+instance Substituable Scheme where
   apply s (Forall as t) = Forall as $ apply s' t -- apply s' maybe
     where s' = foldr Map.delete s as
-
-instance Parametrized Scheme where
   ftv (Forall as t) = ftv t `Set.difference` Set.fromList as
 
-instance Substituable a b => Substituable [a] b where
+instance Substituable a => Substituable [a] where
   apply = fmap . apply
-instance Parametrized a => Parametrized [a] where
   ftv = foldr (Set.union . ftv) Set.empty
 
-instance Substituable Class Type where
+instance Substituable Class where
   apply s (n, insts) = (n, fmap (apply s) insts)
-
-instance Parametrized Class where
   ftv (n, insts) = foldr (Set.union . ftv) Set.empty insts
 
-instance (Substituable t b, Substituable a b) => Substituable (Qual a t) b where
+instance Substituable t => Substituable (Qual t) where
   apply s (Qual preds t) = Qual (apply s preds) (apply s t)
-instance (Parametrized a, Parametrized t) => Parametrized (Qual a t) where
   ftv (Qual p t) = Set.union (ftv p) (ftv t)
 
-instance (Substituable a b) => Substituable (Pred a) b where
+instance Substituable Pred where
   apply s (IsIn n t) = IsIn n (apply s t)
-instance Parametrized a => Parametrized (Pred a) where
   ftv (IsIn _ t) =  ftv t
 
-instance (Substituable (Pred Type, Location) Type) where
-  apply s (t, l) = (apply s t, l)
-instance (Parametrized (Pred Type, Location)) where
-  ftv (t, l) = ftv t
+instance Substituable TExpr where
+  apply s (In ((loc, sub, tp) :< ex)) = In $ (loc, s `compose` sub, apply s tp) :< fmap (apply s) ex
+  ftv _ = Set.empty
 
 mapRes :: (Type -> Type) -> TExpr -> TExpr
 mapRes func = mapAnn
   (\(loc, sub, Qual q tp) -> (loc, sub, Qual (mapPred func <$> q) $ func tp))
 
-cleanup :: Subst a -> Subst a
+cleanup :: Subst -> Subst
 cleanup subst = Map.fromList $ filter (notLocal . fst) $ Map.toList subst
   where
     notLocal (TV ('\'':_) _) = False
     notLocal _ = True
 
-compose :: (Substituable a a) => Subst a -> Subst a -> Subst a
+compose :: Subst -> Subst -> Subst
 compose s1 s2 = Map.map (apply s1) s2 `Map.union` s1
 
 withFtv :: Type -> Scheme
 withFtv t = Forall (Set.toList $ ftv t) $ Qual [] t
-
-dom :: NonEmpty Variational -> Set.Set TVar
-dom x = foldr Set.union Set.empty (ftv <$> x)

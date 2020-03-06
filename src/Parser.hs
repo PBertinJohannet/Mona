@@ -287,7 +287,7 @@ inSpaces a = do
   spaces
   return x
 
-parsePred :: Parser (Pred Type)
+parsePred :: Parser Pred
 parsePred = do
   cls <- identifier
   tp <- parseType
@@ -328,7 +328,7 @@ parseScheme = do
   preds <- try parsePreds <|> return []
   Forall fall . Qual preds <$> parseType
 
-parsePreds :: Parser [Pred Type]
+parsePreds :: Parser [Pred]
 parsePreds = do
   preds <- sepBy parsePred $ reservedOp ","
   reservedOp "=>"
