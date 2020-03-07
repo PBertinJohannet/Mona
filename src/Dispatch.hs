@@ -19,17 +19,17 @@ import Env
 import Subst
 import Error
 
-type DispatchReq = (String, TExpr, TSubst)
+type DispatchReq = (String, TExpr, Subst)
 
 data DispatchState = DState {dispatched :: Map.Map String TExpr, todispatch :: [DispatchReq]}
 
 baseState :: DispatchState
 baseState = DState Map.empty []
 
-addTarget :: String -> TExpr -> TSubst -> DispatchState -> DispatchState
+addTarget :: String -> TExpr -> Subst -> DispatchState -> DispatchState
 addTarget name ex sub (DState d t) = DState d $ t ++ [(name, ex, sub)]
 
-next :: String -> TExpr -> TSubst -> Map.Map String TExpr -> Dispatch ()
+next :: String -> TExpr -> Subst -> Map.Map String TExpr -> Dispatch ()
 next name ex sub disp = case Map.lookup name disp of
   Just already -> do
     tell $ name ++ " already dispatched"
@@ -102,7 +102,7 @@ instance Dispatchable TExpr where
     tell $ "with reqs : " ++ show (length todisp) ++ "\n"
     return res
 
-findInExprs :: String -> [Pred Type] -> Dispatch (Maybe (TExpr, String))
+findInExprs :: String -> [Pred] -> Dispatch (Maybe (TExpr, String))
 findInExprs n preds = do
   (Envs _ _ _ (TAst env _)) <- ask
   case Map.lookup n env of
@@ -115,7 +115,7 @@ findInExprs n preds = do
         return $ (,name) <$> Map.lookup name env
       _ -> return Nothing
 
-dispatchAlg :: ((Location, Subst Type, Qual Type Type), ExprF (Dispatch TExpr)) -> Dispatch TExpr
+dispatchAlg :: ((Location, Subst, Qual Type), ExprF (Dispatch TExpr)) -> Dispatch TExpr
 dispatchAlg = \case
   ((loc, sub, Qual p tp), Var vr) -> do
     --tell $ "sub is " ++ pretty sub ++ "\n"

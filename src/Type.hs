@@ -20,66 +20,24 @@ data TVar = TV{name :: String, kind :: Kind}
 
 data Kind = KVar String | Star | Kfun Kind Kind deriving (Show, Eq, Ord)
 
-data Qual t a = Qual{preds :: [Pred t], head :: a} deriving (Show, Eq, Ord)
+data Qual a = Qual{preds :: [Pred], head :: a} deriving (Show, Eq, Ord)
 
-data Pred t = IsIn String t deriving (Show, Eq, Ord, Functor)
+data Pred = IsIn String Type deriving (Show, Eq, Ord)
 
-data TypeF a
+data Type
   = TVar TVar
   | TCon String Kind
-  | TApp (TypeF a) (TypeF a)
-  | TPlus a deriving (Show, Eq, Ord)
-
-mapBoth :: (TypeF a -> TypeF a -> b) -> (Type -> b) -> (a -> b) -> TypeF a -> b
-mapBoth app left right =
-  let call = mapBoth app left right in \case
-    TVar t -> left $ TVar t
-    TCon s k -> left $ TCon s k
-    TApp a b -> app a b
-    TPlus a -> right a
-
-data Void
-absurd :: Void -> a
-absurd a = case a of
-
-instance Show Void where
-  show = absurd
-
-instance Eq Void where
-  (==) = absurd
-  (/=) = absurd
-
-instance Ord Void where
-  compare = absurd
-
-asVariational :: Type -> Variational
-asVariational = \case
-  TVar t -> TVar t
-  TCon s k -> TCon s k
-  TApp a b -> TApp (asVariational a) (asVariational b)
- 
-asType :: Variational -> Maybe Type
-asType = \case
-  TVar t -> Just $ TVar t
-  TCon s k -> Just $ TCon s k
-  TApp a b -> TApp <$> (asType a) <*> (asType b)
-  _ -> Nothing
-
-data Choice = Dim String (NonEmpty Variational) deriving (Show, Eq, Ord);
-
-type Type = TypeF Void
-type Variational = TypeF Choice
-
+  | TApp Type Type deriving (Show, Eq, Ord)
 
 type Class = ([String], [Inst])
-type Inst = Qual Type (Pred Type)
+type Inst = Qual Pred
 
 -- forall a b c . a -> b
-data Scheme = Forall [TVar] (Qual Type Type)
+data Scheme = Forall [TVar] (Qual Type)
   deriving (Show, Eq)
 
-mapPred :: (a -> a) -> Pred a -> Pred a
-mapPred f (IsIn s t) = IsIn s (f t)
+mapPred :: (Type -> Type) -> Pred -> Pred
+mapPred f (IsIn s a) = IsIn s $ f a 
 
 mapKind :: (Kind -> Kind) -> Type -> Type
 mapKind f = \case
@@ -112,30 +70,7 @@ lastSafe = \case
 
 lenMinusOne :: NonEmpty a -> Int
 lenMinusOne (a :+: b) = length b
-{-
-class Replacable a where
-  -- replace a by b in c
-  replaceBy :: a -> a -> a -> a
 
-instance Replacable a => Replacable (TypeF a) where
-  replaceBy a b c | a == c = b
-  replaceBy a b (TApp c c') = TApp (replaceBy a b c) (replaceBy a b c')
-  replaceBy a b c = c
-  replaceBy 
-
-instance Replacable Variational where
-  replaceBy a b c | a == c = b
-  replaceBy (Plain a) (Plain b) (Plain c) = Plain (replaceBy a b c)
-  replaceBy a b (VApp c c') = VApp (replaceBy a b c) (replaceBy a b c')
-  replaceBy a b (Dim s cs) = Dim s (replaceBy a b <$> cs)
-  replaceBy a b c = c
--}
--- transforms a constructor's type to a pattern's type :
--- List :: a -> List a -> List a becomes ~List :: List a -> (a -> List a -> b) -> b
--- more generaly :
--- Cons :: a -> T becomes ~Cons :: (a -> b) -> T -> b
--- Cons :: a -> b -> T becomes ~Cons :: (a -> b -> c) -> (T -> c)
--- Cons :: T becomes ~Cons :: b -> T -> b
 consToPat :: (String, Scheme) -> (String, Scheme)
 consToPat (name, Forall t (Qual p h)) = ("~" ++ name, Forall (retVar:t) newHead)
   where
@@ -151,7 +86,7 @@ consToPat (name, Forall t (Qual p h)) = ("~" ++ name, Forall (retVar:t) newHead)
     mkCons :: Type -> Type -> Type
     mkCons t b = t `mkArr` (b `mkArr` b)
 
-withPred :: String -> Pred Type -> Scheme -> Scheme
+withPred :: String -> Pred -> Scheme -> Scheme
 withPred tv p (Forall tvars (Qual q ty)) = Forall (var tv:tvars) (Qual (p:q) ty)
 
 var :: String -> TVar
@@ -179,9 +114,6 @@ typeStar = TCon "Star" Star
 mkArr :: Type -> Type -> Type
 mkArr a = TApp (TApp tArr a)
 
-mkVArr :: Variational -> Variational -> Variational
-mkVArr a b = TApp (TApp (asVariational tArr) a) b
-
 mkList :: Type -> Type
 mkList = TApp typeList
 
@@ -200,7 +132,7 @@ leftMostType = \case
   TApp a b -> leftMostType a
   t -> t
 
-getReturn :: TypeF a -> TypeF a
+getReturn :: Type -> Type
 getReturn = \case
   TApp (TApp (TCon "(->)" k) a) b -> getReturn b
   e -> e
@@ -239,10 +171,10 @@ instance Pretty Class where
   pretty (parents, instances) =
     unwords parents ++ " => " ++ intercalate ", " (pretty <$> instances) ++ "\n"
 
-instance Pretty a => Pretty (Pred a) where
+instance Pretty Pred  where
   pretty (IsIn i t) = "(" ++ i ++ " " ++ pretty t ++ ")"
 
-instance (Pretty t, Pretty a) => Pretty (Qual t a) where
+instance (Pretty t) => Pretty (Qual t) where
   pretty = \case
     Qual [] t -> pretty t
     Qual p t -> pretty' p ++ " => " ++ pretty t
@@ -255,7 +187,7 @@ instance Pretty Scheme where
 instance Pretty TVar where
   pretty (TV v _) = v
 
-instance Pretty a => Pretty (TypeF a) where
+instance Pretty Type where
   pretty = \case
     TVar v -> pretty v
     TCon s k -> s -- ++ " : " ++ pretty k
@@ -265,19 +197,12 @@ instance Pretty a => Pretty (TypeF a) where
     TApp (TCon "List" _) a -> "[" ++ pretty a ++ "]"
     TApp a b@(TApp (TApp (TCon "(->)" _) _) _) -> pretty a ++ " (" ++ pretty b ++ ")"
     TApp a b -> pretty a ++ " " ++ pretty b
-    TPlus a -> pretty a
 
 instance Pretty (TVar, Type) where
   pretty (a, b) = "(" ++ pretty a ++ " : " ++ pretty b ++ ")"
 
 instance Pretty (Type, TVar) where
   pretty (a, b) = "(" ++ pretty a ++ " : " ++ pretty b ++ ")"
-
-instance Pretty Choice where
-  pretty (Dim s l) = s ++ "<" ++ prettyL (asList l) ++ ">"
-  
-instance Pretty Void where
-  pretty = pretty
 
 class ShowKind a where
   showKind :: a -> String

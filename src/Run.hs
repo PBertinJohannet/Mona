@@ -80,14 +80,14 @@ runProgram env = case Map.lookup "main" env of
 interpret :: TExpr -> Run Value
 interpret = ($ ()) <<< cataCFLazy (uncurry interpretAlg)
 
-interpretAlg :: (Location, TSubst, Qual Type Type) -> ExprF (() -> Run Value) -> Run Value
+interpretAlg :: (Location, Subst, Qual Type) -> ExprF (() -> Run Value) -> Run Value
 interpretAlg b = \case
   Case src pats -> do
     src <- src ()
     foldM (changeCase src) PatFail (getExp <$> pats)
   e -> interpretAlg' b (($ ()) <$> e)
 
-interpretAlg' :: (Location, TSubst, Qual Type Type) -> ExprF (Run Value) -> Run Value
+interpretAlg' :: (Location, Subst, Qual Type) -> ExprF (Run Value) -> Run Value
 interpretAlg' (loc, sub, Qual p tp) e =
   case e of
     Lam (PatternT x e) -> do
@@ -97,7 +97,7 @@ interpretAlg' (loc, sub, Qual p tp) e =
       k <- sequence k
       interpretAlg'' loc sub tp k
 
-interpretAlg'' :: Location -> TSubst -> Type -> ExprF Value -> Run Value
+interpretAlg'' :: Location -> Subst -> Type -> ExprF Value -> Run Value
 interpretAlg'' loc sub tp = \case
   Lit l -> return $ Int l
   Var x -> do

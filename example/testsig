@@ -1271,4 +1271,42 @@ OK nickel pour ça !
 mais w8 quand j'unifie mon D ... faut quand même que je 
 hmm du coup je runSolve a la fin après avoir remplacé tous les Variational par des Type
 j'applique la transformation a mes Subst aussi.
-non mais pour de vrai ? 
+
+le vToT il fait quoi ?
+exemple simple : 
+nn mais je dois pas le renvoyer le vToT c'est nimp,
+je renvoie une subst et après je l'applique mdr.
+hmm, je peux avoir un autre problème pour les preds, il faudrait pouvoir les tester après avoir enlevé les cas impossibles.
+et du coup :
+Show a
+a : D<R Int -> Int, R Bool -> Bool, R Char -> Int>
+on enlève le troisième pour résoudre
+a : D<R Int -> Int, R Bool -> Bool>
+on à comme preds
+Show R Int -> Int
+Show R Bool -> Bool
+ensuite on unifie les deux : 
+R a -> a
+mais j'aimerais bien ne pas avoir a gérer des a : D<...> partout
+ça c'est un problème de quand j'unifie.
+en vrai je peux juste reporter et avoir deux substitutions
+une simple de TVar -> Type qui sert juste à résoudre aaah
+w8 dans la substitution
+plutôt que de renvoyer D<...> comme type je peux juste renvoyer une contrainte : 
+a |><| D<...> que je résoudrai plus tard.
+et comme j'ai les preds à côté je peux facilement les vérifier d'abord.
+yep donc
+- Enlever des Variational partout
+- Créer des contraintes différentes pour Infer
+  telles que 
+  * contraintes d'unification avec des variationels
+  * contraintes d'unifications habituelles
+  * predicates
+
+le variationel peut être réduit uniquement par la valeur qui est en entrée
+
+ensuite je fais : 
+unifier tout 
+
+donc j'ai plus de Variational partout qui font iech
+go c'est ça le premier changmeent
