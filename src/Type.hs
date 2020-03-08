@@ -98,6 +98,11 @@ tvar s = TVar $ var s
 getV :: Type -> TVar
 getV (TVar t) = t
 
+replaceType :: Type -> Type -> Type -> Type
+replaceType from to source | source == from = to
+replaceType from to (TApp a b) = TApp (replaceType from to a) (replaceType from to b)
+replaceType _ _ s = s
+
 typeInt  = TCon "Int" Star
 typeBool = TCon "Bool" Star
 typeUnit = TCon "Unit" Star

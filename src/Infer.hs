@@ -26,16 +26,18 @@ import Pretty
 import RecursionSchemes
 import Data.Tuple
 import Error
+import Data.List (intersperse)
 
 newtype Union = Union (Type, Type, Location) deriving Show;
-data Reconcile = Reconcile Type [Type] deriving Show;
+data Reconcile = Reconcile Type Type [(Type, Type)] deriving Show;
 type Constraints = ([Union], [(Pred, Location)], [Reconcile])
 
 instance Pretty Union where
   pretty (Union (a, b, _)) = pretty a ++ " should unify with : " ++ pretty b ++ "\n"
 
 instance Pretty Reconcile where
-  pretty (Reconcile s tps) = pretty s ++ "<" ++ prettyL tps ++ ">"
+  pretty (Reconcile a b tps) = prettyArr (a, b) ++ "<" ++ mconcat (intersperse "," (prettyArr <$> tps)) ++ ">"
+    where prettyArr (a, b) = pretty a ++ " -> " ++ pretty b
 
 instance Pretty (Pred, Location) where
   pretty (a, b) = pretty a
@@ -44,8 +46,8 @@ instance Pretty Constraints where
   pretty (a, b, c) = prettyL a ++ " => " ++ prettyL b ++ "[" ++ prettyL c ++ "]\n"
 
 instance Substituable Reconcile where
-  apply s (Reconcile t ts) = Reconcile (apply s t) (apply s ts)
-  ftv (Reconcile t ts) = Set.empty
+  apply s (Reconcile a b ts) = Reconcile (apply s a) (apply s b) ((apply s *** apply s) <$> ts)
+  ftv _ = Set.empty
 
 union :: Location -> (Type, Type) -> Constraints
 union loc (a, b) = ([Union (a, b, loc)], [], [])
@@ -53,8 +55,8 @@ union loc (a, b) = ([Union (a, b, loc)], [], [])
 predicate :: [Pred] -> Location -> Constraints
 predicate p l = ([], (,l) <$> p, [])
 
-reconcilie :: Type -> [Type] -> Constraints
-reconcilie s tps = ([], [], [Reconcile s tps])
+reconcilie :: Type -> Type -> [(Type, Type)] -> Constraints
+reconcilie a b tps = ([], [], [Reconcile a b tps])
 
 instance Substituable Union where
   apply s (Union (a, b, c)) = Union (apply s a, apply s b, c)
@@ -295,15 +297,15 @@ inferAlgM = \case
       ret <- fresh
       sourceType <- getTp <$> sourceT
       -- patType = sourceType -> ret
-      tell $ reconcilie (sourceType `mkArr` ret) trets
+      tell $ reconcilie sourceType ret trets
 
       pats' <- return (fmap return <$> pats)
       retExpr <- sequence $ Case sourceT pats'
       return (In $ (l, nullSubst, Qual [] ret) :< retExpr)
 
     (l, Lam pat) -> do
-      (tret, pat') <- inferPat l pat
-      return $ In ((l, nullSubst, Qual [] tret) :< Lam pat')
+      ((tin, tout), pat') <- inferPat l pat
+      return $ In ((l, nullSubst, Qual [] (tin `mkArr` tout)) :< Lam pat')
 
     (l, k) -> do
         k <- sequence k
@@ -358,12 +360,12 @@ decomposePattern loc (Raw name) = do
     tret <- freshType
     return (tret, return (name, tret))
 
-inferPat :: Location -> PatternT (InferCons TExpr) -> InferCons (Type, (PatternT TExpr))
+inferPat :: Location -> PatternT (InferCons TExpr) -> InferCons ((Type, Type), (PatternT TExpr))
 inferPat loc (PatternT pat exp) = do
   -- tp = in type, eg: Bool
     (tp, vars) <- decomposePattern loc pat
     tret <- foldl (flip inEnv) exp vars
-    return (tp `mkArr` getTp tret, PatternT pat tret)
+    return ((tp, getTp tret), PatternT pat tret)
 
 -- see the doc for the error message, basicaly it verifies that the same variable is not binded to multiple types
 -- then it adds it to the given substition
@@ -398,18 +400,6 @@ type Unifier = (Subst, [Union])
 
 emptyUnifier :: Unifier
 emptyUnifier = (nullSubst, [])
-
-{-
-reconcilie :: Type -> Type -> Solve Type
-reconcilie a b =
-  let (aBase, aArgs) = unapply a in
-  let (bBase, bArgs) = unapply b in
-  if length bArgs != length aArgs
-    then throwErrorV $ ReconciliationError a b
--}
-
--- TODO : put unifies in a class => Type => Type
-
 
 unifies :: Type -> Type -> ExceptLog Subst
 unifies t1 t2 | t1 == t2 = return nullSubst
@@ -504,24 +494,32 @@ unifyPred :: Pred -> Pred -> ExceptLog Subst
 unifyPred (IsIn i t) (IsIn i' t') | i == i' = unifies t t'
 
 runReconcile :: Reconcile -> ExceptLog Subst
-runReconcile (Reconcile tp ts) = do
-  tell $ "merge : " ++ prettyL ts ++ "\n"
+runReconcile (Reconcile from to ts) = do
+  --tell $ "merge : " ++ prettyL ts ++ "\n"
   final <- mergeTypes ts
   tell $ "found : " ++ pretty final ++ "\n"
-  subst <- unifies final tp
+  subst <- unifies final (from `mkArr` to)
   return subst
 
-mergeTypes :: [Type] -> ExceptLog Type
+mergeTypes :: [(Type, Type)] -> ExceptLog Type
 mergeTypes [] = return $ TVar (TV "''empty" (KVar "''empty"))
-mergeTypes (r:rs) = foldM mergeType r rs
+mergeTypes (r:rs) = uncurry mkArr <$> foldM mergeType r rs
 
-mergeType :: Type -> Type -> ExceptLog Type
+mergeType :: (Type, Type) -> (Type, Type) -> ExceptLog (Type, Type)
 mergeType a b | a == b = return a
-mergeType tp@(TApp (TApp (TCon "(->)" _) a) b) (TApp (TApp (TCon "(->)" _) a2) b2) = do
+mergeType (a, b) (a2, b2) = do ok correct this pls, ty :)
   tell $ "mergin : " ++ pretty a ++ " and " ++ pretty a2
-  sub <- mergeLeft a a2
-  sub' <- unifies (apply sub b) (apply sub b2)
+  let sec = replaceType a2 a b2
+  sub' <- unifies b sec
   return $ apply sub' tp
+mergeType left@(TApp (TApp (TCon "(->)" _) a) b) 
+          right@(TApp (TApp (TCon "(->)" _) a2) b2) = do
+  let myVar = TVar $ TV "'merge" Star
+  let left' = replaceType a myVar left
+  let right' = replaceType a2 myVar right
+  sub <- unifies left' right'
+  return $ apply sub left'
+
 
 mergeLeft :: Type -> Type -> ExceptLog Subst
 mergeLeft = unifies

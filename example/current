@@ -1,8 +1,10 @@
 
 let main = printInt 4;
 
-data IntWrap = | Int = Int -> IntWrap;
-class Compare a = {
-  sig getMax = a -> a -> Int;
-};
-let boy = printInt (getMax (Int 2) (Int 3));
+data R a = 
+    | RI = Int -> R Int;
+    | RB = Bool -> R Bool;
+
+let fail a = case a of
+    (RI i) -> i,
+    (RB b) -> 0;
