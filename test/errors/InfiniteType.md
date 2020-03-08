@@ -3,4 +3,4 @@ This error arise when the typechecker encounters a possibly infinite type. For e
 ```
 let fixed f = f f;
 ```
->>>TypeError : Cannot create infinite type : 'a -> 'b at fileName 2:1 at fileName 4:1
+>>>TypeError : Cannot create infinite type : 'a -> 'b at fileName 2:1 at fileName 2:17

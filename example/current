@@ -1,10 +1,8 @@
-data Unit = | Unit = Unit;
 
-data Bool =
-    | True = Bool;
-    | False = Bool;
+let main = printInt 4;
 
-sig main = IO Unit;
-let main = case True of
-    (True) -> printInt 4,
-    (False) -> printInt 5;
+data IntWrap = | Int = Int -> IntWrap;
+class Compare a = {
+  sig getMax = a -> a -> Int;
+};
+let boy = printInt (getMax (Int 2) (Int 3));

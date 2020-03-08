@@ -37,10 +37,8 @@ runTestFile name = do
 
 runDir :: String -> IO ()
 runDir dir = do
-  putStrLn $ "going in " ++ dir
   files <- filter (".md" `isExtensionOf`) <$> getDirectoryContents dir
   let fullPaths = (dir ++) <$> files
-  putStrLn $ "traversing : " ++ show files
   traverse runTestFile fullPaths
   return ()
 

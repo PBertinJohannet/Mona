@@ -395,16 +395,6 @@ letdecl = do
   (n, e) <- inLet
   return (n, Expr e)
 
-letrecdecl :: Parser NakedBinding
-letrecdecl = do
-  loc <- toLoc <$> getPosition
-  reserved "let"
-  reserved "rec"
-  name <- identifier
-  reservedOp "="
-  body <- expr
-  return (name, Expr $ withPos loc $ Fix $ lamPat (Pattern name []) body)
-
 typedecl :: Parser NakedBinding
 typedecl = do
   reserved "data"
@@ -415,7 +405,7 @@ typedecl = do
   return (name, TypeDecl tvars body)
 
 decl :: Parser NakedBinding
-decl = try letrecdecl <|> letdecl <|> typedecl <|> sig <|> classdecl <|> instdecl
+decl = try letdecl <|> typedecl <|> sig <|> classdecl <|> instdecl
 
 top :: Parser Binding
 top = do

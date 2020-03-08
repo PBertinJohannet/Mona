@@ -30,7 +30,7 @@ version = Version [0,1,0,0] []
 bindir, libdir, dynlibdir, datadir, libexecdir, sysconfdir :: FilePath
 
 bindir     = "/home/pierre/Documents/prog/haskell/mona/.stack-work/install/x86_64-linux/22d1663323c2f81b03129f456184811ce7f315e9954f35740d6baac7833422b0/8.6.5/bin"
-libdir     = "/home/pierre/Documents/prog/haskell/mona/.stack-work/install/x86_64-linux/22d1663323c2f81b03129f456184811ce7f315e9954f35740d6baac7833422b0/8.6.5/lib/x86_64-linux-ghc-8.6.5/mona-0.1.0.0-4ZfU8GP3eCJLvrR2elWvV8-mona"
+libdir     = "/home/pierre/Documents/prog/haskell/mona/.stack-work/install/x86_64-linux/22d1663323c2f81b03129f456184811ce7f315e9954f35740d6baac7833422b0/8.6.5/lib/x86_64-linux-ghc-8.6.5/mona-0.1.0.0-Gjkefu9b0Zc5Jit9kqZBC5-mona"
 dynlibdir  = "/home/pierre/Documents/prog/haskell/mona/.stack-work/install/x86_64-linux/22d1663323c2f81b03129f456184811ce7f315e9954f35740d6baac7833422b0/8.6.5/lib/x86_64-linux-ghc-8.6.5"
 datadir    = "/home/pierre/Documents/prog/haskell/mona/.stack-work/install/x86_64-linux/22d1663323c2f81b03129f456184811ce7f315e9954f35740d6baac7833422b0/8.6.5/share/x86_64-linux-ghc-8.6.5/mona-0.1.0.0"
 libexecdir = "/home/pierre/Documents/prog/haskell/mona/.stack-work/install/x86_64-linux/22d1663323c2f81b03129f456184811ce7f315e9954f35740d6baac7833422b0/8.6.5/libexec/x86_64-linux-ghc-8.6.5/mona-0.1.0.0"
