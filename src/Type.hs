@@ -110,6 +110,9 @@ type Replacement = (Type, Type);
 
 type Replacements = [Replacement];
 
+instance Pretty Replacement where
+  pretty (a, b) = " Replace " ++ pretty a ++ " by  " ++ pretty b
+
 replaceType :: Replacement -> Type -> Type
 replaceType (from, to) source | source == from = to
 replaceType (from, to) (TApp a b) = TApp (replaceType (from, to) a) (replaceType (from, to) b)

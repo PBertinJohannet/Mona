@@ -63,6 +63,23 @@ si a et b sont differents :
     si ils unifient on continue avec le remplacement.
 =============== OKKKKKK ============ SHOULD BE ENOUGH (OR NOT, anyway...)
 
+je veux gérer 
+Int -> Int
+Bool -> Int
+et 
+Int -> Int
+Bool -> Bool
+mais pas
+Int -> Bool
+Bool -> Int
+ni 
+Int -> Char
+Bool -> Int
+de toute façon l'objectif c'est de savoir si je peux prédire le retour, donc soit il est constant, soit il dépend de l'entrée
+donc soit on a la même chose des deux côtés en remplacant par la tvar, soit on a un truc constant globalement.
+donc on veut pas unifier on veut avoir un truc identique
+
+
 mergeLeft me renvoie un from,to,source qu'on applique aux deux côtés avant d'essayer d'unifier.
 
 on a besoin de :

@@ -1,10 +1,12 @@
 
 let main = printInt 4;
 
+data Something = | S = Something;
+
 data R a = 
     | RI = Int -> R Int;
     | RB = Bool -> R Bool;
 
 let fail a = case a of
     (RI i) -> i,
-    (RB b) -> 0;
+    (RB b) -> S;

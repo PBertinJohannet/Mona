@@ -50,10 +50,6 @@ instance Substituable Reconcile where
   apply s (Reconcile c ts) = Reconcile (apply s c) (apply s <$> ts)
   ftv _ = Set.empty
 
-instance Substituable Reconcile where
-  apply s (Reconcile a b ts) = Reconcile (apply s a) (apply s b) ((apply s *** apply s) <$> ts)
-  ftv _ = Set.empty
-
 union :: Location -> (Type, Type) -> Constraints
 union loc (a, b) = ([Union (a, b, loc)], [], [], [])
 
@@ -533,10 +529,16 @@ mergeType a b | a == b = return a
 mergeType first@(Constructor a b) second@(Constructor a2 b2) = do
   tell $ "mergin : " ++ pretty a ++ " and " ++ pretty a2
   (repFirst, repSecond) <- mergeCons (unapply a) (unapply a2)
+  tell $ "\nreplace founds : " ++ prettyL repFirst ++ " and " ++ prettyL repSecond
   let first' = replaceAll repFirst first
   let second' = replaceAll repSecond second
-  sub <- asReconciling $ unifies (asType first') (asType second')
-  return $ apply sub first'
+  tell $ "\nafter replace : " ++ pretty (asType first') ++ " and " ++ pretty (asType second')
+  unifyRets first' second'
+
+unifyRets :: Constructor -> Constructor -> Reconciling Constructor
+unifyRets (Constructor a b) (Constructor a2 b2) = do
+  sub <- asReconciling $ unifies b b2
+  return $ Constructor a (apply sub b)
 
 refined :: TVar -> Reconciling ()
 refined tv = do
@@ -548,7 +550,7 @@ refined tv = do
 mergeCons :: Uncurried -> Uncurried -> Reconciling (Replacements, Replacements)
 mergeCons (a, as) (b, bs) | a /= b = throwErrorV $ ConstructorsNotMatching a b
 mergeCons (a, as) (b, bs) = do 
-  tell $ "unfiy : " ++ prettyL as ++ "\nwith : \n" ++ prettyL bs ++ "\n"
+  tell $ "\nunfiy : " ++ prettyL as ++ "\nwith : \n" ++ prettyL bs ++ "\n"
   mergeArgs as bs
 
 mergeArgs :: [Type] -> [Type] -> Reconciling (Replacements, Replacements)
