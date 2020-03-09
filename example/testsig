@@ -61,7 +61,9 @@ si a et b sont differents :
         on continue avec R a -> k
   sinon on crée une nouvelle tvar et on remplace a par la tvar dans R a -> k et b par la tvar dans R b -> c
     si ils unifient on continue avec le remplacement.
-=============== OKKKKKK ============ SHOULD BE ENOUGH
+=============== OKKKKKK ============ SHOULD BE ENOUGH (OR NOT, anyway...)
+
+mergeLeft me renvoie un from,to,source qu'on applique aux deux côtés avant d'essayer d'unifier.
 
 on a besoin de :
 -- done -- dom(D) qui renvoie les variables sur lesquelles on peut refiner
