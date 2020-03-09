@@ -32,6 +32,8 @@ data Type
 type Class = ([String], [Inst])
 type Inst = Qual Pred
 
+type Uncurried = (Type, [Type]);
+
 -- forall a b c . a -> b
 data Scheme = Forall [TVar] (Qual Type)
   deriving (Show, Eq)
@@ -98,6 +100,27 @@ tvar s = TVar $ var s
 getV :: Type -> TVar
 getV (TVar t) = t
 
+
+data Constructor = Constructor Type Type deriving Eq
+
+asType :: Constructor -> Type
+asType (Constructor a b) = mkArr a b
+
+type Replacement = (Type, Type);
+
+type Replacements = [Replacement];
+
+replaceType :: Replacement -> Type -> Type
+replaceType (from, to) source | source == from = to
+replaceType (from, to) (TApp a b) = TApp (replaceType (from, to) a) (replaceType (from, to) b)
+replaceType _ s = s
+
+replaceAll :: Replacements -> Constructor -> Constructor
+replaceAll rep cons = foldr replaceCons cons rep
+
+replaceCons :: Replacement -> Constructor -> Constructor
+replaceCons rep (Constructor a b) = Constructor (replaceType rep a) (replaceType rep b)
+
 typeInt  = TCon "Int" Star
 typeBool = TCon "Bool" Star
 typeUnit = TCon "Unit" Star
@@ -137,7 +160,7 @@ getReturn = \case
   TApp (TApp (TCon "(->)" k) a) b -> getReturn b
   e -> e
 
-unapply :: Type -> (Type, [Type])
+unapply :: Type -> Uncurried
 unapply = \case
   TApp a b -> let (base, args) = unapply a in (base, args ++ [b])
   e -> (e, [])

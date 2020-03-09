@@ -35,6 +35,9 @@ getExp (PatternT p a) = a
 lamPat :: Pattern -> a -> ExprF a
 lamPat p = Lam . PatternT p
 
+instance Pretty a => Pretty (PatternT a) where
+  pretty (PatternT pat a) = "(" ++ pretty pat ++ ")" ++ "->" ++ pretty a
+
 instance Pretty Pattern where
   pretty (Pattern a ps) = "(" ++ a ++ prettyL ps ++ ")"
   pretty (Raw n) = n
@@ -88,7 +91,7 @@ sepDecls (d:ds) =
   case d of
     (n, (loc, Inst s t e)) -> prog{instances = (loc, s, t, e) : instances prog}
     (s, (loc, TypeDecl tvars e)) -> prog{datas = (loc, s, tvars, e): datas prog}
-    (s, (loc, Expr e)) -> prog{exprs = [(loc, s, e)]}--(loc, s, e): exprs prog}
+    (s, (loc, Expr e)) -> prog{exprs = (loc, s, e): exprs prog}
     (s, (loc, Class nm vr sigs)) -> prog{clasdecls = (loc, nm, vr, sigs): clasdecls prog}
     (s, (loc, Sig e)) -> prog{signatures = (loc, s, e): signatures prog}
 
@@ -172,7 +175,10 @@ instance PrettyHisto ExprF where
     Lam (PatternT n e) -> "\\" ++ pretty n ++ " -> " ++ value e
     Lit l -> show l
     Fix e -> "fix " ++ value e
-    Case e ex -> "case " ++ value e ++ " of tbd "
+    Case e ex -> "case " ++ value e ++ " of " ++ mconcat (fmap prettyPat ex)
+      where 
+        prettyPat :: PatternT (AttrExpr String) -> String
+        prettyPat (PatternT s a) = "(" ++ pretty s ++ ")" ++ "->" ++ value a
 
 instance Pretty a => Pretty (String, a) where
   pretty (k, c) = k ++ " = " ++ pretty c ++ "\n"

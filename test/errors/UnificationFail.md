@@ -10,4 +10,4 @@ Here the variable a of type `Int` is added to a variable of type `IO Unit` but t
 ```
 let wrong a = main + a;
 ```
->>>TypeError : Cannot unify : Int with IO Unit at fileName 5:1 at fileName 7:1
+>>>TypeError : Cannot unify : Int with IO Unit at fileName 5:1 at fileName 5:20

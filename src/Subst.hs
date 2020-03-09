@@ -61,6 +61,10 @@ instance Substituable TExpr where
   apply s (In ((loc, sub, tp) :< ex)) = In $ (loc, s `compose` sub, apply s tp) :< fmap (apply s) ex
   ftv _ = Set.empty
 
+instance Substituable Constructor where
+  apply s (Constructor a b) = Constructor (apply s a) (apply s b)
+  ftv _ = Set.empty
+
 mapRes :: (Type -> Type) -> TExpr -> TExpr
 mapRes func = mapAnn
   (\(loc, sub, Qual q tp) -> (loc, sub, Qual (mapPred func <$> q) $ func tp))

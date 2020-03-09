@@ -23,6 +23,7 @@ import qualified Run
 import Dispatch
 import Native
 import qualified Data.Map as Map
+import Data.List
 
 data PassErr
  = TypeError Infer.TypeError
@@ -42,10 +43,10 @@ run = L.pack
   >>> debug --debug . fmap (
 
 compile :: String -> String
-compile = L.pack
+compile = id L.pack
   >>> parseModule "fileName"
   >>> fmap (passes >>> runExceptT >>> runWriter)
-  >>> debugPure
+  >>> debugPure 
 
 instance Pretty (Scheme, Expr) where
   pretty (s, e) = "check : " ++ pretty s ++ " vs " ++ pretty e ++ "\n"
@@ -60,18 +61,22 @@ forget' (s, st) = do
 -}
 passes :: [(String, Statement)] -> ExceptT PassErr (Writer String) TAst
 passes a = do
+  tell $ mconcat $ intersperse "\n" (show <$> a)
   let Program exprs datas classes insts sigs = sepDecls a
   tell $ "sigs : \n" ++ prettyL sigs ++ "\n"
   tell $ "datas show : \n" ++ show datas
   tell $ "exprs : \n" ++ prettyL exprs
   tell $ "datas : \n" ++ prettyDatas datas
   env <- withExceptT DataDeclError $ DataDecl.runDataDecls datas baseEnvs
+  tell $ "inst to check before : " ++ show insts ++ "\n"
   (env, insts) <- withExceptT TypeError $ runAddClasses classes insts env
-  tell $ "inst to check : " ++ prettyL insts ++ "\n"
+  tell $ "before sigs : " ++ pretty (varEnv env) ++ "\n"
+  tell $ "sigs to add : " ++ prettyL sigs ++ "\n"
   env <- withExceptT TypeError $ addSigs sigs env
-  tell $ "after sigs : " ++ showKind env ++ "\n"
-  --tell $ pretty env
+  tell $ "after sigs : " ++ pretty (varEnv env) ++ "\n"
+  tell $ pretty env
   --tell $ pretty exprs
+  tell $ "infering : " ++ mconcat (intersperse "\n" (pretty <$> exprs))
   env <- withExceptT TypeError $ Infer.inferTop env exprs
   env <- withExceptT TypeError $ Infer.checkInstances env insts
   let (Envs _ _ _ TAst{compiled = comp}) = env

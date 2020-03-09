@@ -19,4 +19,4 @@ let main = printInt (add 1 2);
 ```
 let main = add 1 2 3;
 ```
->>>TypeError : Cannot unify : Int with Int -> 'c at fileName 5:1 at fileName 7:1
+>>>TypeError : Cannot unify : Int with Int -> 'c at fileName 5:1 at fileName 5:20

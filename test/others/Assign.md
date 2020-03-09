@@ -31,4 +31,4 @@ let main = printInt (fromStar andmoremaybe);
 let andmoremaybe = assign andMore Star;
 let main = printInt (fromStar andmoremaybe);
 ```
->>>TypeError : Cannot unify : (Star -> Star) -> Star with Star at fileName 18:1 at fileName 21:1
+>>>TypeError : Cannot unify : (Star -> Star) -> Star with Star at fileName 18:1 at fileName 18:35

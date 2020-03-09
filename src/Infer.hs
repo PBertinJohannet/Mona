@@ -26,34 +26,45 @@ import Pretty
 import RecursionSchemes
 import Data.Tuple
 import Error
+import Data.List (intersperse)
 
 newtype Union = Union (Type, Type, Location) deriving Show;
-data Reconcile = Reconcile String [(Type, Location)] deriving Show;
-type Constraints = ([Union], [(Pred, Location)], [Reconcile])
+data Reconcile = Reconcile Constructor [Constructor];
+type DontRefine = TVar
+type Constraints = ([Union], [(Pred, Location)], [Reconcile], [DontRefine])
 
 instance Pretty Union where
   pretty (Union (a, b, _)) = pretty a ++ " should unify with : " ++ pretty b ++ "\n"
 
 instance Pretty Reconcile where
-  pretty (Reconcile s tps) = s ++ "<" ++ prettyL (snd <$> tps) ++ ">"
+  pretty (Reconcile c tps) = prettyArr c ++ "<" ++ mconcat (intersperse "," (prettyArr <$> tps)) ++ ">"
+    where prettyArr (Constructor a b) = pretty a ++ " -> " ++ pretty b
 
 instance Pretty (Pred, Location) where
   pretty (a, b) = pretty a
 
 instance Pretty Constraints where
-  pretty (a, b, c) = prettyL a ++ " => " ++ prettyL b ++ "[" ++ prettyL c ++ "]\n"
+  pretty (a, b, c, d) = prettyL a ++ " => " ++ prettyL b ++ "[" ++ prettyL c ++ "]\n norefine : " ++ prettyL b ++ "\n"
+
+instance Substituable Reconcile where
+  apply s (Reconcile c ts) = Reconcile (apply s c) (apply s <$> ts)
+  ftv _ = Set.empty
 
 union :: Location -> (Type, Type) -> Constraints
-union loc (a, b) = ([Union (a, b, loc)], [], [])
+union loc (a, b) = ([Union (a, b, loc)], [], [], [])
 
 predicate :: [Pred] -> Location -> Constraints
-predicate p l = ([], (,l) <$> p, [])
+predicate p l = ([], (,l) <$> p, [], [])
 
-reconcilie :: String -> [(Type, Location)] -> Constraints
-reconcilie s tps = ([], [], [Reconcile s tps])
+reconcilie :: Type -> Type -> [Constructor] -> Constraints
+reconcilie a b tps = ([], [], [Reconcile (Constructor a b) tps], [])
+
+dontRefine :: TVar -> Constraints
+dontRefine tv = ([], [], [], [tv])
 
 instance Substituable Union where
   apply s (Union (a, b, c)) = Union (apply s a, apply s b, c)
+  ftv u = Set.empty
 
 type TypeError = CompilerError TypeErrorV;
 
@@ -71,6 +82,8 @@ data TypeErrorV
   | MultipleDecl String
   | UnknownCommand String
   | SignatureMismatch Scheme Scheme
+  | ConstructorsNotMatching Type Type
+  | CannotRefine TVar
   | ConstraintsNotMatching [Pred] deriving (Show, Eq);
 
 instance Pretty TypeErrorV where
@@ -88,9 +101,12 @@ instance Pretty TypeErrorV where
     SignatureMismatch t t' -> "Cannot match infered signature " ++ pretty t ++ " with declared signature " ++ pretty t'
     UnificationFail t t' -> "Cannot unify : " ++ pretty t ++ " with "++ pretty t'
     KindUnificationFail t t' -> "Cannot unify : " ++ t ++ " with "++ t'
+    ConstructorsNotMatching t t' -> "Patterns do not match : " ++ pretty t ++ " with "++ pretty t'
+    CannotRefine tv -> "Cannot refine : " ++ pretty tv
     ConstraintsNotMatching t -> "Infered constraints not found in definition : " ++ prettyL t
 
 type ExceptLog a = ExceptT TypeError (Writer String) a;
+type Reconciling a = ReaderT [DontRefine] (ExceptT TypeError (Writer String)) a;
 
 type Infer = ReaderT Env (StateT InferState (Except TypeError))
 type InferCons = WriterT Constraints Infer
@@ -105,13 +121,18 @@ initInfer = InferState { count = 0 }
 asSolve :: ExceptLog a -> Solve a
 asSolve a = ReaderT $ const a
 
+asReconciling :: ExceptLog a -> Reconciling a
+asReconciling a = ReaderT $ const a
+
 runSolve :: ClassEnv -> [(Pred, Location)] -> ExceptLog [Pred]
 runSolve env cs = runReaderT (solver cs) env
 
 checkInstances :: Envs -> [InstCheck] -> ExceptLog Envs
 checkInstances env [] = return env
 checkInstances (Envs d env cenv tast) ((loc, name, sc, ex):xs) = do
+  tell $ "checking : " ++ pretty sc ++ "\n"
   (_, texp) <- inferExprT cenv env ex sc
+  tell $ "adding : " ++ pretty texp ++ "\n"
   checkInstances (Envs d env cenv (extendAst tast (name, texp))) xs
 
 inferTop :: Envs -> [(Location, String, Expr)] -> ExceptLog Envs
@@ -131,14 +152,16 @@ applyAnn f = mapAnn applyAnn'
 inferExpr :: ClassEnv -> Env -> Expr -> ExceptLog (Scheme, TExpr)
 inferExpr cenv env ex = case runInfer env (runWriterT $ infer ex) of
   Left err -> throwError err
-  Right (tyBefore, (unions, preds, dims)) -> do
+  Right (tyBefore, (unions, preds, dims, norefs)) -> do
     let (_, _, Qual _ ty) = ann tyBefore
+    tell $ "things : " ++ prettyL dims
     --tell $ "found : "++ pretty ty ++ "\n"
     tell $ "with type : " ++ pretty ty ++ " solve => \n"
     --tell $ "constraints : " ++ pretty preds ++ " go \n"
-    subst <- runUnify unions
+    subst <- runUnify unions dims norefs
+    tell $ "found subst : " ++ pretty subst
     --preds' <- sequence (_vtoT . apply subst <$> preds)
-    preds'' <- runSolve cenv preds
+    preds'' <- runSolve cenv (first (apply subst) <$>  preds)
     let ty' = apply subst ty
     let tyBefore' = applyAnn (apply subst) tyBefore
     --tell $ "before : " ++ pretty (apply subst ty') ++ "\n" ++ pretty (apply subst ty) ++ "\n"
@@ -149,10 +172,11 @@ inferExpr cenv env ex = case runInfer env (runWriterT $ infer ex) of
 inferExprT :: ClassEnv -> Env -> Expr -> Scheme -> ExceptLog (Scheme, TExpr)
 inferExprT cenv env ex tp = case runInfer env (runWriterT $ inferEq ex tp) of
   Left err -> throwError err
-  Right ((texp, expected), (unions, preds)) -> do
-    --tell $ "doing : " ++ pretty ex ++ "\n"
-    subst <- runUnify _cs
-    preds <- runSolve cenv _cs
+  Right ((texp, expected), (unions, preds, things, norefs)) -> do
+    tell $ "things : " ++ prettyL things
+    tell $ "doing : " ++ prettyL unions ++ "\n"
+    subst <- runUnify unions things norefs
+    preds <- runSolve cenv $ first (apply subst) <$> preds
     let (_, _, Qual _ found) = ann texp
     let Forall _ (Qual expectedPreds _) = tp
     --tell $ "checking preds : " ++ prettyL preds ++ " vs " ++ prettyL expectedPreds ++ "\n"
@@ -243,6 +267,13 @@ freshName = do
 fresh :: InferCons Type
 fresh = freshType
 
+freshNoRefine :: InferCons Type
+freshNoRefine = do
+  name <- freshName
+  let v = TV name Star
+  tell $ dontRefine v
+  return (TVar v)
+
 freshType :: InferCons Type
 freshType = tvar <$> freshName
 
@@ -250,7 +281,7 @@ freshQual :: InferCons (Qual Type)
 freshQual = Qual [] <$> fresh
 
 noConstraints :: Constraints
-noConstraints = ([], [])
+noConstraints = ([], [], [], [])
 
 lookupEnv :: Name -> InferCons (Subst, Qual Type)
 lookupEnv x = do
@@ -279,21 +310,21 @@ noSub = return . (, nullSubst) . Qual []
 
 inferAlgM :: (Location, ExprF (InferCons TExpr)) -> InferCons TExpr
 inferAlgM = \case
-    (l, Case sourceT []) -> do
-      destT <- fresh
-      retExpr <- sequence $ Case sourceT []
-      return (In $ (l, nullSubst, Qual [] destT) :< retExpr)
+    (l, Case sourceT xs) -> do      -- patType = sourceType -> ret
 
-    (l, Case sourceT (x:xs)) -> do
-      (trets, pats) <- unzipNonEmpty <$> traverse (inferPat l) (x :+: xs)
-      infer2 <- _freshDim trets
-      pats' <- return $ fmap (fmap return) $ asList pats
+      (trets, pats) <- unzip <$> traverse (inferPat l) xs
+      ret <- fresh
+      sourceType <- getTp <$> sourceT
+      -- patType = sourceType -> ret
+      tell $ reconcilie sourceType ret trets
+
+      pats' <- return (fmap return <$> pats)
       retExpr <- sequence $ Case sourceT pats'
-      return (In $ (l, nullSubst, Qual [] infer2) :< retExpr)
+      return (In $ (l, nullSubst, Qual [] ret) :< retExpr)
 
     (l, Lam pat) -> do
-      (tret, pat') <- inferPat l pat
-      return $ In ((l, nullSubst, Qual [] tret) :< Lam pat')
+      ((Constructor tin tout), pat') <- inferPat l pat
+      return $ In ((l, nullSubst, Qual [] (tin `mkArr` tout)) :< Lam pat')
 
     (l, k) -> do
         k <- sequence k
@@ -348,11 +379,12 @@ decomposePattern loc (Raw name) = do
     tret <- freshType
     return (tret, return (name, tret))
 
-inferPat :: Location -> PatternT (InferCons TExpr) -> InferCons (Type, (PatternT TExpr))
+inferPat :: Location -> PatternT (InferCons TExpr) -> InferCons (Constructor, (PatternT TExpr))
 inferPat loc (PatternT pat exp) = do
+  -- tp = in type, eg: Bool
     (tp, vars) <- decomposePattern loc pat
     tret <- foldl (flip inEnv) exp vars
-    return (tp, PatternT pat tret)
+    return ((Constructor tp $ getTp tret), PatternT pat tret)
 
 -- see the doc for the error message, basicaly it verifies that the same variable is not binded to multiple types
 -- then it adds it to the given substition
@@ -388,23 +420,11 @@ type Unifier = (Subst, [Union])
 emptyUnifier :: Unifier
 emptyUnifier = (nullSubst, [])
 
-{-
-reconcilie :: Type -> Type -> Solve Type
-reconcilie a b =
-  let (aBase, aArgs) = unapply a in
-  let (bBase, bArgs) = unapply b in
-  if length bArgs != length aArgs
-    then throwErrorV $ ReconciliationError a b
--}
-
--- TODO : put unifies in a class => Type => Type
-
-
 unifies :: Type -> Type -> ExceptLog Subst
 unifies t1 t2 | t1 == t2 = return nullSubst
 unifies (TVar v) t = bind v t
 unifies t (TVar v) = bind v t
-unifies (TApp t1 t2) (TApp t3 t4) = unifyMany (t1, t2) (t3, t4)
+unifies (TApp t1 t2) (TApp t3 t4) = unifyMany (t1, t3) (t2, t4)
 unifies t1 t2 = throwErrorV $ UnificationFail t1 t2
 
 unifyMany :: (Type, Type) -> (Type, Type) -> ExceptLog Subst
@@ -413,11 +433,21 @@ unifyMany (t1, t1') (t2, t2') = do
   s2 <- unifies (apply s1 t2) (apply s1 t2')
   return $ s2 `compose` s1
 
-runUnify :: [Union] -> ExceptLog Subst
-runUnify unions = do
+runUnify :: [Union] -> [Reconcile] -> [DontRefine] -> ExceptLog Subst
+runUnify [] [] _ = return nullSubst
+runUnify [] (r:rs) dr = do
   tell " ========= start solving =========\n\n "
+  tell $ "reconciling : " ++ pretty r
+  sub <- runReconcile r dr 
+  tell $ "sus is then : " ++ pretty sub
+  sub' <- runUnify [] (apply sub rs) dr
+  tell $ "sub' is then : " ++ pretty sub'
+  return (sub' `compose` sub)
+runUnify unions recs dr = do
+  tell " ========= finish solving =========\n\n "
   sub <- unionSolve (nullSubst, unions)
-  return sub
+  sub' <- runUnify [] (apply sub recs) dr
+  return (sub' `compose` sub)
 
 solver :: [(Pred, Location)] -> Solve [Pred]
 solver ps = do
@@ -433,9 +463,9 @@ unionSolve (su, cs) =
   case cs of
     [] -> return su
     Union (t1, t2, loc) : cs1 -> do
-      --tell $ "unify : " ++ pretty t1 ++ " and " ++ pretty t2 ++ "\n"
+      tell $ "unify : " ++ pretty t1 ++ " and " ++ pretty t2 ++ "\n"
       su1 <- unifies t1 t2 `withErrorLoc` loc
-      --tell $ "found : " ++ pretty su1 ++ "\n"
+      tell $ "found : " ++ pretty su1 ++ "\n"
       unionSolve (su1 `compose` su, apply su1 cs1)
 
 data ClassSolver = ClassSolver{found :: [Pred], remain :: [(Pred, Location)]};
@@ -473,7 +503,7 @@ satisfyInst (IsIn c t) q@(Qual ps (IsIn _ t')) = do
 
 bind :: TVar -> Type -> ExceptLog Subst
 bind a t | t == TVar a = return nullSubst
-         | occursCheck a t = throwErrorV $ InfiniteType (TVar $ TV "not now" Star) 
+         | occursCheck a t = throwErrorV $ InfiniteType t 
          | otherwise = return $ Map.singleton a t
 
 occursCheck :: TVar -> Type -> Bool
@@ -482,3 +512,50 @@ occursCheck a t = a `Set.member` ftv t
 unifyPred :: Pred -> Pred -> ExceptLog Subst
 unifyPred (IsIn i t) (IsIn i' t') | i == i' = unifies t t'
 
+runReconcile :: Reconcile -> [DontRefine] -> ExceptLog Subst
+runReconcile (Reconcile (Constructor from to) ts) norefs = do
+  --tell $ "merge : " ++ prettyL ts ++ "\n"
+  final <- runReaderT (mergeTypes ts) norefs
+  tell $ "found : " ++ pretty final ++ "\n"
+  subst <- unifies final (from `mkArr` to)
+  return subst
+
+mergeTypes :: [Constructor] -> Reconciling Type
+mergeTypes [] = return $ TVar (TV "''empty" (KVar "''empty"))
+mergeTypes (r:rs) = asType <$> foldM mergeType r rs
+
+mergeType :: Constructor -> Constructor -> Reconciling Constructor
+mergeType a b | a == b = return a
+mergeType first@(Constructor a b) second@(Constructor a2 b2) = do
+  tell $ "mergin : " ++ pretty a ++ " and " ++ pretty a2
+  (repFirst, repSecond) <- mergeCons (unapply a) (unapply a2)
+  let first' = replaceAll repFirst first
+  let second' = replaceAll repSecond second
+  sub <- asReconciling $ unifies (asType first') (asType second')
+  return $ apply sub first'
+
+refined :: TVar -> Reconciling ()
+refined tv = do
+  dont <- ask
+  case elem tv dont of
+    True -> throwErrorV $ CannotRefine tv 
+    False -> return ()
+
+mergeCons :: Uncurried -> Uncurried -> Reconciling (Replacements, Replacements)
+mergeCons (a, as) (b, bs) | a /= b = throwErrorV $ ConstructorsNotMatching a b
+mergeCons (a, as) (b, bs) = do 
+  tell $ "unfiy : " ++ prettyL as ++ "\nwith : \n" ++ prettyL bs ++ "\n"
+  mergeArgs as bs
+
+mergeArgs :: [Type] -> [Type] -> Reconciling (Replacements, Replacements)
+mergeArgs as bs = let ts = zip as bs in unzip <$> (traverse (uncurry mergeLeft) $ zip as bs)
+
+mergeLeft :: Type -> Type -> Reconciling (Replacement, Replacement)
+mergeLeft a b | a == b = return ((a, a), (a, a))
+mergeLeft a@(TVar ta) b = do
+  refined ta
+  return ((a, a), (b, a))
+mergeLeft a b = do 
+  tell $ "unify " ++ pretty a ++ " and " ++ pretty b  ++ "\n"
+  let v = TVar (TV "''empty" Star)
+  return ((a, v), (b, v))  
