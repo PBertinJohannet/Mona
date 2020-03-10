@@ -47,3 +47,4 @@ main = do
   runDir "test/"
   runDir "test/errors/"
   runDir "test/others/"
+  runDir "test/gadts/"

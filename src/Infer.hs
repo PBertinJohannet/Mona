@@ -106,7 +106,7 @@ instance Pretty TypeErrorV where
     ConstraintsNotMatching t -> "Infered constraints not found in definition : " ++ prettyL t
 
 type ExceptLog a = ExceptT TypeError (Writer String) a;
-type Reconciling a = ReaderT [DontRefine] (ExceptT TypeError (Writer String)) a;
+type Reconciling a = StateT InferState (ExceptT TypeError (Writer String)) a;
 
 type Infer = ReaderT Env (StateT InferState (Except TypeError))
 type InferCons = WriterT Constraints Infer
@@ -122,7 +122,7 @@ asSolve :: ExceptLog a -> Solve a
 asSolve a = ReaderT $ const a
 
 asReconciling :: ExceptLog a -> Reconciling a
-asReconciling a = ReaderT $ const a
+asReconciling a = StateT $ const a
 
 runSolve :: ClassEnv -> [(Pred, Location)] -> ExceptLog [Pred]
 runSolve env cs = runReaderT (solver cs) env
@@ -519,6 +519,27 @@ runReconcile (Reconcile (Constructor from to) ts) norefs = do
   tell $ "found : " ++ pretty final ++ "\n"
   subst <- unifies final (from `mkArr` to)
   return subst
+
+type Generalization = Map.Map Type TVar
+
+freshRec :: Reconciling String
+freshRec = do
+  s <- get
+  put InferState{count = count s + 1}
+  return ("'" ++ letters !! count s)
+
+findGeneralization :: Type -> Type -> Reconciling Generalization
+findGeneralization (a `TApp` b) (a2 `TApp` b2) = findGeneralizations (a, b) (a2, b2)
+findGeneralization (TVar a) b = Map.singleton b a
+findGeneralization b (TVar a) = Map.singleton b a
+findGeneralization a b = do
+  var <- freshRec
+  return $ Map.singleton (TVar $ TV var Star)
+
+findGeneralizations :: (Type, Type) -> (Type, Type) -> Reconciling Generalization
+findGeneralizations (a, b) (a2, b2) = do
+  sub <- findGeneralization a a2
+  sub' <- findGeneralization ()
 
 mergeTypes :: [Constructor] -> Reconciling Type
 mergeTypes [] = return $ TVar (TV "''empty" (KVar "''empty"))
