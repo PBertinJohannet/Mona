@@ -23,11 +23,26 @@ let correct a = case a of
 ```
 >>>compiled successfully
 
+## Should work
+
+When the return depends on the input, it should compile correctly
+```
+
+let correct a = case a of
+    (RI i) -> i,
+    (RB b) -> b;
+
+```
+>>>compiled successfully
+
 ## Should not work
 
 When it has nothing to do with the input it should not
 ```
-let andmoremaybe = assign andMore Star;
-let main = printInt (fromStar andmoremaybe);
+data Something = | S = Something;
+
+let fail a = case a of
+    (RI i) -> i,
+    (RB b) -> S;
 ```
->>>TypeError : Cannot unify : (Star -> Star) -> Star with Star at fileName 18:1 at fileName 18:35
+>>>TypeError : Could not reconcile : R Int -> Int and R Bool -> Something at fileName 13:1

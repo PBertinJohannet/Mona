@@ -84,6 +84,7 @@ data TypeErrorV
   | SignatureMismatch Scheme Scheme
   | ConstructorsNotMatching Type Type
   | CannotRefine TVar
+  | CouldNotReconcile Constructor Constructor
   | ConstraintsNotMatching [Pred] deriving (Show, Eq);
 
 instance Pretty TypeErrorV where
@@ -103,6 +104,7 @@ instance Pretty TypeErrorV where
     KindUnificationFail t t' -> "Cannot unify : " ++ t ++ " with "++ t'
     ConstructorsNotMatching t t' -> "Patterns do not match : " ++ pretty t ++ " with "++ pretty t'
     CannotRefine tv -> "Cannot refine : " ++ pretty tv
+    CouldNotReconcile a b-> "Could not reconcile : " ++ pretty (asType a) ++ " and " ++ pretty (asType b)
     ConstraintsNotMatching t -> "Infered constraints not found in definition : " ++ prettyL t
 
 type ExceptLog a = ExceptT TypeError (Writer String) a;
@@ -122,7 +124,7 @@ asSolve :: ExceptLog a -> Solve a
 asSolve a = ReaderT $ const a
 
 asReconciling :: ExceptLog a -> Reconciling a
-asReconciling a = StateT $ const a
+asReconciling a = StateT $ \i -> fmap (,i) a
 
 runSolve :: ClassEnv -> [(Pred, Location)] -> ExceptLog [Pred]
 runSolve env cs = runReaderT (solver cs) env
@@ -515,12 +517,18 @@ unifyPred (IsIn i t) (IsIn i' t') | i == i' = unifies t t'
 runReconcile :: Reconcile -> [DontRefine] -> ExceptLog Subst
 runReconcile (Reconcile (Constructor from to) ts) norefs = do
   --tell $ "merge : " ++ prettyL ts ++ "\n"
-  final <- runReaderT (mergeTypes ts) norefs
-  tell $ "found : " ++ pretty final ++ "\n"
+  final <- evalStateT (mergeTypes ts) initInfer
+  tell $ "\nfound : " ++ pretty final ++ "\n"
   subst <- unifies final (from `mkArr` to)
   return subst
 
 type Generalization = Map.Map Type TVar
+
+applyG :: Replacable a => Generalization -> a -> a
+applyG g a = replaceAll (Map.toList $ Map.map TVar g) a
+
+mergeG :: [Generalization] -> Generalization
+mergeG gens = (foldr (flip Map.union) Map.empty) gens
 
 freshRec :: Reconciling String
 freshRec = do
@@ -528,18 +536,19 @@ freshRec = do
   put InferState{count = count s + 1}
   return ("'" ++ letters !! count s)
 
-findGeneralization :: Type -> Type -> Reconciling Generalization
+findGeneralization :: Type -> Type -> Reconciling (Generalization, Generalization)
 findGeneralization (a `TApp` b) (a2 `TApp` b2) = findGeneralizations (a, b) (a2, b2)
-findGeneralization (TVar a) b = Map.singleton b a
-findGeneralization b (TVar a) = Map.singleton b a
+-- findGeneralization (TVar a) b = return $ Map.singleton b a
+-- findGeneralization b (TVar a) = return $ Map.singleton b a
 findGeneralization a b = do
   var <- freshRec
-  return $ Map.singleton (TVar $ TV var Star)
+  return $ (Map.singleton a $ TV var Star, Map.singleton b $ TV var Star)
 
-findGeneralizations :: (Type, Type) -> (Type, Type) -> Reconciling Generalization
+findGeneralizations :: (Type, Type) -> (Type, Type) -> Reconciling (Generalization, Generalization)
 findGeneralizations (a, b) (a2, b2) = do
-  sub <- findGeneralization a a2
-  sub' <- findGeneralization ()
+  (subFirst, subSecond) <- findGeneralization a a2
+  (subFirst', subSecond') <- findGeneralization (applyG subFirst b) (applyG subSecond b2)
+  return (subFirst `Map.union` subFirst', subSecond `Map.union` subSecond')
 
 mergeTypes :: [Constructor] -> Reconciling Type
 mergeTypes [] = return $ TVar (TV "''empty" (KVar "''empty"))
@@ -548,41 +557,38 @@ mergeTypes (r:rs) = asType <$> foldM mergeType r rs
 mergeType :: Constructor -> Constructor -> Reconciling Constructor
 mergeType a b | a == b = return a
 mergeType first@(Constructor a b) second@(Constructor a2 b2) = do
-  tell $ "mergin : " ++ pretty a ++ " and " ++ pretty a2
-  (repFirst, repSecond) <- mergeCons (unapply a) (unapply a2)
-  tell $ "\nreplace founds : " ++ prettyL repFirst ++ " and " ++ prettyL repSecond
-  let first' = replaceAll repFirst first
-  let second' = replaceAll repSecond second
-  tell $ "\nafter replace : " ++ pretty (asType first') ++ " and " ++ pretty (asType second')
-  unifyRets first' second'
+  tell $ "\n\n\nmergin : " ++ pretty a ++ " and " ++ pretty a2
+  (genFirst, genSecond) <- mergeCons (unapply a) (unapply a2)
+  tell $ "\nreplace founds : " ++ prettyL (Map.toList genFirst) ++ " and " ++ prettyL (Map.toList genSecond)
+  let b' = applyG genFirst b
+  let b2' = applyG genSecond b2
+  tell $ "\nafter replace : " ++ pretty b' ++ " and " ++ pretty b2'
+  case b' == b2' || b == b2 of
+    True -> do
+      tell $ "\nreturning type : " ++ pretty (asType $ applyG genFirst first)
+      return (applyG genFirst first)
+    False -> throwErrorV $ CouldNotReconcile first second
 
 unifyRets :: Constructor -> Constructor -> Reconciling Constructor
 unifyRets (Constructor a b) (Constructor a2 b2) = do
   sub <- asReconciling $ unifies b b2
   return $ Constructor a (apply sub b)
 
-refined :: TVar -> Reconciling ()
-refined tv = do
-  dont <- ask
-  case elem tv dont of
-    True -> throwErrorV $ CannotRefine tv 
-    False -> return ()
+-- refined :: TVar -> Reconciling ()
+-- refined tv = do
+--   dont <- ask
+--   case elem tv dont of
+--     True -> throwErrorV $ CannotRefine tv 
+--     False -> return ()
 
-mergeCons :: Uncurried -> Uncurried -> Reconciling (Replacements, Replacements)
+mergeCons :: Uncurried -> Uncurried -> Reconciling (Generalization, Generalization)
 mergeCons (a, as) (b, bs) | a /= b = throwErrorV $ ConstructorsNotMatching a b
 mergeCons (a, as) (b, bs) = do 
-  tell $ "\nunfiy : " ++ prettyL as ++ "\nwith : \n" ++ prettyL bs ++ "\n"
+  tell $ "\nunfiy : " ++ prettyL as ++ " with :" ++ prettyL bs ++ "\n"
   mergeArgs as bs
 
-mergeArgs :: [Type] -> [Type] -> Reconciling (Replacements, Replacements)
-mergeArgs as bs = let ts = zip as bs in unzip <$> (traverse (uncurry mergeLeft) $ zip as bs)
-
-mergeLeft :: Type -> Type -> Reconciling (Replacement, Replacement)
-mergeLeft a b | a == b = return ((a, a), (a, a))
-mergeLeft a@(TVar ta) b = do
-  refined ta
-  return ((a, a), (b, a))
-mergeLeft a b = do 
-  tell $ "unify " ++ pretty a ++ " and " ++ pretty b  ++ "\n"
-  let v = TVar (TV "''empty" Star)
-  return ((a, v), (b, v))  
+mergeArgs :: [Type] -> [Type] -> Reconciling (Generalization, Generalization)
+mergeArgs as bs = do
+  let ts = zip as bs
+  (gensFirst, gensSecond) <- unzip <$> (traverse (uncurry findGeneralization) $ zip as bs)
+  return (mergeG gensFirst, mergeG gensSecond)

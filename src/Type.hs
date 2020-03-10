@@ -101,7 +101,7 @@ getV :: Type -> TVar
 getV (TVar t) = t
 
 
-data Constructor = Constructor Type Type deriving Eq
+data Constructor = Constructor Type Type deriving (Eq, Show)
 
 asType :: Constructor -> Type
 asType (Constructor a b) = mkArr a b
@@ -110,19 +110,22 @@ type Replacement = (Type, Type);
 
 type Replacements = [Replacement];
 
+class Replacable a where
+  replaceType :: Replacement -> a -> a
+
+instance Replacable Type where
+  replaceType (from, to) source | source == from = to
+  replaceType (from, to) (TApp a b) = TApp (replaceType (from, to) a) (replaceType (from, to) b)
+  replaceType _ s = s
+
 instance Pretty Replacement where
   pretty (a, b) = " Replace " ++ pretty a ++ " by  " ++ pretty b
 
-replaceType :: Replacement -> Type -> Type
-replaceType (from, to) source | source == from = to
-replaceType (from, to) (TApp a b) = TApp (replaceType (from, to) a) (replaceType (from, to) b)
-replaceType _ s = s
+replaceAll :: Replacable a => Replacements -> a -> a
+replaceAll rep cons = foldr replaceType cons rep
 
-replaceAll :: Replacements -> Constructor -> Constructor
-replaceAll rep cons = foldr replaceCons cons rep
-
-replaceCons :: Replacement -> Constructor -> Constructor
-replaceCons rep (Constructor a b) = Constructor (replaceType rep a) (replaceType rep b)
+instance Replacable Constructor where
+  replaceType rep (Constructor a b) = Constructor (replaceType rep a) (replaceType rep b)
 
 typeInt  = TCon "Int" Star
 typeBool = TCon "Bool" Star

@@ -5,8 +5,13 @@ data Something = | S = Something;
 
 data R a = 
     | RI = Int -> R Int;
+    | RC = Char -> R Char;
+    | RA = a -> R a;
     | RB = Bool -> R Bool;
 
-let fail a = case a of
+
+let correct a = case a of
+    (RC i) -> 1,
     (RI i) -> i,
-    (RB b) -> S;
+    (RA i) -> 2,
+    (RB b) -> 0;
