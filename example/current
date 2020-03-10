@@ -3,15 +3,15 @@ let main = printInt 4;
 
 data Something = | S = Something;
 
-data R a = 
-    | RI = Int -> R Int;
-    | RC = Char -> R Char;
-    | RA = a -> R a;
-    | RB = Bool -> R Bool;
+data Bool = 
+    | True = Bool;
+    | False = Bool;
+
+data R a b= 
+    | RI = a -> R Int a;
+    | RB = a -> R Bool a;
 
 
 let correct a = case a of
-    (RC i) -> 1,
-    (RI i) -> i,
-    (RA i) -> 2,
-    (RB b) -> 0;
+    (RI i) -> 1 + i,
+    (RB b) -> case b of (True) -> 1, (False) -> 4;
