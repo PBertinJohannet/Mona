@@ -1330,4 +1330,449 @@ unifier tout
 donc j'ai plus de Variational partout qui font iech
 go c'est ça le premier changmeent
 
-je vais
+si j'ai 
+Int -> Int
+Bool -> Bool
+je trouve 
+(Int : ''a) (Bool : ''a)
+et de l'autre côté
+(Int : ''b) (Bool : ''b)
+donc on est ok
+
+si j'ai l'inverse : 
+B -> I
+I -> B 
+je trouve 
+(I : ''a) (B : ''a)
+et de l'autre côté
+(B : ''b) (I : ''b)
+rien a voir donc nop
+
+ensuite : 
+I -> I
+B -> I
+je trouve 
+(Int : ''a) (Int : ''a)
+et de l'autre côté
+(Bool : ''b) (Int : ''b)
+
+si il a 2 arguments : 
+B I -> B I 
+I B -> B B
+B B -> B B
+I I -> B I
+je trouve
+(Bool : ''b) (Int : ''a) | (Bool : ''c) (Int : ''d) 
+et de l'autre côté
+(Int : ''h) (Bool : ''g) | (Bool : ''e) (Bool : ''f) 
+
+je trouve que la première se résoud seule
+(Bool : ''b) (Int : ''a) | (Int : ''d) 
+et de l'autre côté
+(Int : ''h) (Bool : ''g) | (Bool : ''f) 
+
+la deuxième se résoud en utilisant la seconde
+
+
+maintenant : 
+est-ce qu'en appliquer une impacte les autres ?
+Ah w8 est ce que c'est possible d'avoir un a a et un b a
+
+ah oui
+
+I a a -> a a
+I a b -> b a
+
+(a : ''a) (a : ''b) | (a : ''c) (a : ''d)
+(a : ''e) (b : ''f) | (b : ''g) (a : ''h)
+a b se résoud avec a b
+
+I ''a ''c -> ''c ''a
+
+ok mtn
+
+I a b -> b a
+I b a -> b b
+
+(a : ''a) (b : ''b) | (b : ''c) (a : ''d)
+(b : ''a) (a : ''b) | (b : ''c) (b : ''d)
+
+a b résoud a b mais rien ne résoud b b
+
+- atomique par type donc n'impacte pas les autres.
+- prend en compte tous les changements.
+
+ok ça a l'air propre
+donc dans l'ordre
+générer des Generalizations de la même façon des deux côtés et 2 par 2 en utilisant la même variable
+  pour chaque généralisation a droite regarder si il y en a une a gauche qui l'annule
+  pour savoir si celle de gauche l'annule je regarde si c'est la même pour l'instant
+  si elle l'annule je l'applique et je l'enlève a droite
+  je répète jusqu'a ce que soit je fail soit c'est bon
+  
+maintenant comment générer la finale ?
+
+I c a -> a
+I a b -> b
+
+(c : ''a) (a : ''b) | (a : ''c)
+(a : ''a) (b : ''b) | (b : ''c)
+a b se résoud avec a b
+
+I c ''b -> ''b
+I a ''b -> ''b
+et ensuite je peux appliquer le reste sans probs
+
+et dans l'autre example : 
+
+I a a -> a a
+I a b -> b a
+
+(a : ''a) (a : ''b) | (a : ''c) (a : ''d)
+(a : ''a) (b : ''b) | (b : ''c) (a : ''d)
+
+a b resoud a b
+I a ''b -> ''b a
+I a ''b -> ''b a
+
+a a resound a a
+I ''a ''b -> ''b ''a
+I ''a ''b -> ''b ''a
+
+
+et si j'avais direct appliqué ici : 
+
+I a b -> b a
+I b a -> b b
+
+(a : ''a) (b : ''b) | (b : ''c) (a : ''d)
+(b : ''a) (a : ''b) | (b : ''c) (b : ''d)
+
+c'est le bordel psk ça dépend de l'ordre d'application etc...
+I ''a ''a -> ''a ''a
+I ''a ''a -> ''a ''a
+la ça passe direct lol...
+...
+mais en fait c'est bon psk ils sont juste pareils du coup.
+
+
+et si ils doivent etre pareils : 
+
+I a b -> b b
+I b a -> b b
+
+(a : ''a) (b : ''b) | (b : ''c) (b : ''d)
+(b : ''a) (a : ''b) | (b : ''c) (b : ''d)
+ici pourtant on pourrait le faire en appliquant tout.
+comme en haut en fait.
+hmm ptet que quand c'est une tvar sur laquelle on peut refiner, 
+
+celui la il est interessant : 
+
+I a a -> a a
+I c d -> d c
+
+(a : ''a) (a : ''b) | (a : ''c) (a : ''d)
+(c : ''a) (d : ''b) | (d : ''c) (c : ''d)
+
+ou alors je dis si je ne peux pas la résoudre avec la gauche j'unifie quand même ?
+
+I a a -> a a
+I c d -> d c
+
+(a : ''a) (a : ''b) | (a : ''c) (a : ''d)
+(c : ''a) (d : ''b) | (d : ''c) (c : ''d)
+
+ça dépend d'ou vient la containte du a a
+si ça vient du constructeur, alors je veux avoir le type : I a b -> b a car pour résoudre l'égalité j'ai juste besoin de savoir que je suis dans cette branche
+si ça vient de l'expression, alors je veux avoir le type : I a a -> a a car j'ai besoin de les unifier pour résoudre l'égalité
+déjà comment je peux savoir ça ?
+si ça vient de l'expression ça veut dire que ça s'est appliqué après
+donc sur mon NoRefine a, NoRefine b, j'ai appliqué a : v puis b : v
+et j'ai NoRefine v, NoRefine v au final
+donc déjà si sur a j'ai qu'un seul NoRefine ça veut dire que tous les a sont égaux
+mais mtn le prob c'est si j'ai a b a => 2 norefines => je sais pas lesquels sont égaux
+ouais en fait il me faut vraiment des contraintes d'égalité ?
+
+ok maintenant quelle stratégie m'amenerait a I a b -> b a ?
+
+I a a -> a a
+I a b -> b a
+
+et si j'essayais de savoir si il y a besoin de généralizer ?
+genre le a a en a pas besoin de base
+w8 si je change : 
+
+I a a -> a a
+I b c -> c b
+
+en 
+I a a -> a a
+I c b -> b c
+
+ça change rien 
+ah ok la confusion venait du fait que je séparais pas les deux lignes
+
+est ce que 
+
+I a a -> a a
+I a b -> b a
+
+est pareil que 
+
+I a a -> a a
+I b a -> a b
+
+oui, si parce que la deuxième colone dépend de la premiere etc... OK
+donc on part du 
+(a : ''a) (a : ''b) | (a : ''c) (a : ''d)
+(c : ''a) (d : ''b) | (d : ''c) (c : ''d)
+
+je prends ac et ac
+a -> ''a
+c -> ''a
+
+I ''a ''a -> ''a ''a
+I ''a d -> d ''a
+
+je prends ad et ad
+
+''a -> ''c
+d -> ''c
+
+I ''c ''c -> ''c ''c
+I ''a ''c -> ''c ''a
+
+hmm c'est ptet la, je réapplique
+appliquer en haut seulement du coup
+
+maintenant : a et b sont des TCon par exemple
+
+I I -> I I
+B I -> I B
+
+j'ai 
+'a I -> I 'a
+la c'est facile en fait
+
+bref on revient sur l'autre : 
+si a a vient de l'expression je dois réduire b a en a a. ptet générer des contraintes malgré tout ? quoi que non c'est des contraintes a l'envers du coup.
+et si b et a doivent être différents comment on fait ? quoi que la en fait nique ça va juste crasher quand on unifiera avec la sig
+
+on revient sur le fait de savoir.
+ah mais w8, et si j'applique pas les... non en fait ça marche pas
+alors la je veux appliquer la transformation suivante :
+R a a -> a a
+R a b -> b a
+==>
+R a b -> b a
+mais en fonction de l'ordre déjà j'ai pas le même résultat.
+
+déjà a quel moment 
+I ''c ''c -> ''c ''c 
+et 
+I ''a ''c -> ''c ''a
+sont pas pareils ?
+ok normal la j'ai juste vérifié que ça pouvait s'unifier.
+fuck aller repense le un peu
+ptet que dans la génération des contraintes tu peux avoir un truc ?
+en gros si j'avais a b et que j'ai a a il faut que je garde a a
+comment je choisis le bon déjà ?
+si j'unifie ça ça donne quoi ?
+I c c -> c c
+I a b -> b a
+je peux chercher la définition qui correspond le plus au constructeur de base ?
+mais si j'ai
+I c c a
+I b d d
+et que je dois avoir 2x le même a chaque fois ?
+imaginons que j'unifie avec le constructeur : 
+
+alors j'ai en cons si ils sont identiques : 
+I c c 
+I a b 
+avec 
+I ''c ''c 
+I ''a ''c
+aui donne 
+c : ''c, a : ''a et b : ''c
+
+
+et ensuite si ils sont différents : 
+I c d 
+I a b 
+avec 
+I ''c ''c 
+I ''a ''c
+qui donne
+c : ''c, d : ''c, a : ''a et b : ''c
+
+pk ça change pas, psk a il est seul
+pourtant ça devrait se transmettre non ?
+ah non psk c'est le même pour l'instant
+retry mais mieux
+
+je veux l'inverse d'une unification un peu, genre 
+c d 
+a b
+-> a a
+et
+c c
+a b
+-> a b
+
+ptet un autre exemple
+b b a
+c d d
+
+si j'ai 
+a b c
+d e f
+je veux 
+a a a
+
+si j'ai
+a b c
+d e e
+je veux
+a a b
+
+si j'ai
+a a b
+d e f
+je veux
+a b b
+
+ok doooooonc, a chaque fois que je remplace une variable une deuxieme fois je change. eg :
+a a b
+d e f
+je sais que a et b sont différents car ils sont pareils dans un des constructeurs ainsi que dans le candidat.
+mais que e et f sont pareils car ils sont différents dans le candidat et pareils dans le constructeur.
+et si on fait a l'envers ? genre pareil dans le candidat et différents dans le constructeur ? alors on les garde pareils
+et si ils sont différents dans les deux cas, on s'en fiche
+
+en gros si ils sont pareils : 
+Cons P, Cand P -> D
+Cons P, Cand D -> NA
+Cons D, Cand P -> P
+Cons D, Cand D -> _
+
+donc en gros je suis intéressé par les cas ou ils sont pareils dans le candidat : 
+Cons P, Cand P -> D
+Cons D, Cand P -> P
+et j'inverse : 
+
+donc la j'ai 
+1 != 2 et c'est tout. mais du coup 3 = 1 ou 2 ?
+ah ouais ok nique
+donc on reessaye :
+
+avec ces constructeurs :
+a a b
+c d d
+
+
+si j'ai 
+a a c
+d e e
+je veux 
+a a a
+
+si j'ai 
+a a a
+d e e
+je veux 
+b a a
+
+si j'ai 
+a a b
+e e e
+je veux 
+b b b
+
+ok donc on reprend : 
+Cons D, Cand P -> P
+
+ok et a partir de ça on calcule tous ceux qui doivent être pareils ?
+eg : 
+avec ces constructeurs :
+a a b
+c d d
+si j'ai 
+a a b
+e e e
+
+je trouve 
+a a Pareils mais aussi dans cons -> rien
+e0 e1 Pareils mais différents dans cons -> Pareils
+e0 e2 Pareils mais différents dans cons -> Pareils
+j'enleve tous ceux qui sont pareils et je repars : 
+e1 seul voila. 
+j'ai donc : 
+e0 = e1 = e2
+
+avec ces constructeurs :
+a a b b
+c d d c
+si j'ai 
+a a b b
+c e e e
+
+je veux : 
+a b b b
+okkkkkkkkk ! 
+je crois que je suis bon la ! 
+
+pour tous les couples j'applique : 
+Cons Différents et Candidat Pareil -> Pareil 
+et la je trouve tous ceux qui doivent être pareil, je sépare les composantes connectées du graphe et je leur mets chacune une variable
+voir les optis a faire en amont aussi.
+
+pour l'autre: 
+j'ai pas besoin d'appliquer, si ? ah wait 
+
+si j'ai 
+Int a
+b b
+
+si Int vient de blabla.
+donc on fait ça pour les deux.
+
+B B -> I I
+I I -> B B
+
+ptet que je peux commencer par trouver la forme commune du truc.
+
+B I -> I 
+I B -> B
+
+ah mais wait je peux ptet faire tout en même temps : 
+si Int est pas dans le constructeur et est dans le candidat. alors je veux avoir Int à cet endroit. sinon n'importe quelle variable 
+
+du coup si j'ai 
+a a
+I B
+
+pour a a et B I on génère B I
+pour I B et I B on génère a b
+hmm
+est ce qu'on peut unifier les templates ? oui ça donne B I et ensuite j'essaye de l'unifier avec les constructeurs séparément pour voir si ça marche ?
+mais si en unifiant je brise une autre contrainte : 
+
+eg j'ai
+
+a a et a b -> on génère a a
+I B et I B -> on génère I B
+ça unifie pas en fait. donc parfait c'est que les contraintes sont respectées par l'unification.
+ce qui est très probable en fait.
+
+donc en unifiant je vérifie que toutes les contraintes sont respectées ? ah mais non psk
+si j'ai
+a a et a a -> a b
+a b et a a -> a a
+ça unifie en a a en fait. oui oui oui, j'y crois de plus en plus
+la je sais quel template garder.
+
+
+ok un autre cas a prendre en compte : 
+le type de retour a des variables en commun. donc les tvars vont unifier seules.

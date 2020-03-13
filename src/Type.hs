@@ -166,6 +166,9 @@ getReturn = \case
   TApp (TApp (TCon "(->)" k) a) b -> getReturn b
   e -> e
 
+sepTypes :: Type -> [Type]
+sepTypes t = let (a, as) = unapply t in a:as
+
 unapply :: Type -> Uncurried
 unapply = \case
   TApp a b -> let (base, args) = unapply a in (base, args ++ [b])
