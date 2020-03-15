@@ -1776,3 +1776,194 @@ la je sais quel template garder.
 
 ok un autre cas a prendre en compte : 
 le type de retour a des variables en commun. donc les tvars vont unifier seules.
+
+ok donc a partir des contraintes des candidats/constructeurs je peux avoir : 
+Si je veux une tvar fraiche/ si je veux garder le type.
+Si je veux des types identiques/ si je veux des types différents.
+et après ?
+
+si j'ai en constructeur 
+a b
+a b
+et en candidat : 
+I B
+B I
+je les unifie pas
+en constructeur : 
+I B
+a b
+en candidat : 
+I B
+B I
+j'ai I B qui unifie pas donc ça marche pas
+en constructeur 
+I a
+a I
+en candidat 
+I B
+B I
+j'unifie pas
+mais en fait si j'ai B et I au même endroit le seul moyen c'est qu'ils soient forcés par le constructeur
+constructeur : 
+I
+B
+candidat  :
+I
+B
+unifie en a
+ensuite retour ?
+I -> B
+B -> I
+I : a
+B : a
+si ils sont différents après bah dommage.
+I B
+B I
+donnait
+I : a, B : b
+B : a, I : b
+donne b b qui sont égaux.
+cette partie je suis pas sur mais ça devrait le faire.
+Donc dans l'ordre je trouve une série de contraintes, est ce que je peux modéliser ça sous forme d'une substitution ? oui.
+ensuite je l'applique de chaque côté.
+mais wait ! 
+pour les types qui sortent d'un constructeur plus bas ?
+R a b et b vaut c a on fait comment ? on le sort ? ok il en reste un peu quand même.
+bon du coup est ce que je sors les constructeurs ? ou est ce que je les traite séparément ?
+hmm je suis obligé de rassembler par instance du constructeur.
+genre 
+RM (Just i)
+et
+RM (Nothing)
+doivent rentrer dans le même RM
+après je peux donner le template dans lequel rentrent chacune des branches et dire quels types sont associés à ce template ?
+genre pour 
+RM (Just i) :: R i
+RC c :: R Char
+RI i :: R Int
+RM (Nothing) :: R a
+je dis quoi quand j'unifie ?
+j'ai deux unifications a faire en fait.
+d'abord R puis Maybe ? ou plutôt d'abord Maybe puis R oui d'abord Maybe
+donc je commence ? ou alors je m'en fous un peu et je les sors au moment du parsing ?
+ouais mais pas trop chaud ? quoi que ?
+ou alors osef ? la si j'essaye d'unifier les types ?
+j'ai RM :: Maybe a -> R a comme constructeur et les autres sont constants.
+j'ai cons : 
+a
+C
+I
+a
+et cand
+i
+C 
+I
+j
+donc je trouve comme unification : 
+i
+a
+b
+i
+=> i
+donc on est bons.
+le truc c'est si j'ai un R dans un R par exemple
+RI :: I
+RC :: I
+RA :: (a b)
+de toute façon je veux la propriété suivante : 
+R (pat a) => ...
+est pareil que : 
+R a => case a of (par a) => ...
+donc pourquoi pas les transformer ? il "suffit" de mettre des case dans des cases. ou alors au moment de l'inférence ?
+nn je préfère après le parsing.
+comme ça j'ai quoi à gérer ?
+et je commence par le fond en plus.
+ok donc l'algo pour unifier ceux la ?
+je peux même en profiter pour les réordonner ?
+si j'ai
+[]
+e:[]
+es
+c'est case e of
+Nil -> ...
+Cons e (Nil)
+es
+donc j'ai es a la fin forcément.
+et ensuite Nil et Cons mais aaaaaaaah wait !
+Cons e blabla doit rentrer dans es. ce qui change un peu non ?
+la c'est facile psk es == Cons mais sinon ça peut vite devenir le seum.
+donc plutôt je peux le faire a l'inférence.
+Nil -> ...
+Cons e (Nil) -> ...
+j'unifie les Cons etc... ensmbles mais ca fait rien
+si j'ai 
+RM (Just i) 
+RC
+RM (Nothing)
+je rassemble les RM et je dis (réconcilie Just i et Nothing d'abord)
+je fais ça pour tous les patterns en bas.
+au final il va me dire quel type je dois avoir pour RM.
+vérifier ça puis gérer le cas des tvars simples.
+hmm quand j'ai 
+as -> truc
+je fais comme si j'avais
+R a -> .. comme constructeur, et après bah voila quoi, enfin jsp c'est ptet plus compliqué ?
+ouais si je pense que c'est acceptable comme sémantique.
+ok donc on a dit qu'on faisait un pattern avec un id a chaque fois ? et un id * unique ?
+ah plutôt [], Maybe pour le catchall
+ou une Map avec les combinaisons d'id ? nn faut plutôt un arbre.
+mais du coup non on a pas de contraintes suplémentaires quand on est dans le catchall ?
+quoi que faudrait voir psk si j'ai
+RM (Just Int) -> Int
+a -> Bool
+le a -> Bool me dit que de toute façon je dois avoir un Bool constant en sortie donc tant pis pour les autres.
+je suis obligé d'unifier avec tous les autres quand je suis dans un catchall
+ensuite je génère un truc de type : 
+[], Maybe catchall ?
+ok donc une liste de listes de ?
+
+RM (Just i) 
+RC
+RM (Nothing)
+
+devient :
+'b :: 
+  1 : (R a), (R 'a)
+  2 : (R C), (R C)
+'a :: 
+  1 : (Maybe a), (Maybe a)
+  2 : (Maybe a), (Maybe a)
+
+je parcours 'b et je trouve 'a donc je calcule 'a
+je parcours 'a et je trouve : 
+1 : (Maybe a), (Maybe Int)
+2 : (Maybe i), (Maybe i)
+j'infère Maybe Int
+j'ai donc pour 'b :
+'b :: 
+  1 : (R a), (R 'a)
+  2 : (R C), (R C)
+  ça a l'air sloppy et compliqué quand même... je devrais ptet trouver autre chose ?
+  pourquoi pas juste un truc récursif ? c'est quand même le plus expressif. 
+Ok donc dans l'ordre .
+  * Je trie les contraintes et je les mets dans un arbre. (constructeur + soit un type soit une sous réconciliation)
+  * J'infere/unifie etc...
+  * Je réconcilie récursivement (sans doute avec un cata)
+    - J'infère les contraintes d'égalité et de types pour chaque paire.
+    - J'unifie toutes les contraintes si je peux.
+    - Je vérifie que chaque candidat unifie avec le candidat final.
+    - J'applique l'unfication au résultat de chaque côté et je vérifie qu'ils sont pareils.
+    - si oui je renvoie le type et j'applique la substitution.
+
+Hmm si j'ai un template du truc le plus générique possible, bah essaye la.
+B -> I
+I -> B
+template forall a . a
+applique la substitution :=> I et B donc non.
+ok nice.
+I B -> I
+B I -> B
+template forall a b . a b
+applique la substitution : a et a donc OK
+en fait c'est la même chose que l'autre mais en mieux psk ça detecte quand ils sont pareils.
+ok nice donc 
