@@ -10,3 +10,6 @@ data Expr a =
   App  :: Expr (a -> b) -> Expr a -> Expr b
   Fix  :: Expr (a -> a)           -> Expr a
 ```
+
+
+>>> compiled successfuly

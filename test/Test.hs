@@ -48,3 +48,4 @@ main = do
   runDir "test/errors/"
   runDir "test/others/"
   runDir "test/gadts/"
+  runDir "test/examples/"

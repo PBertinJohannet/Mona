@@ -36,3 +36,4 @@ let four = S (S (S (S Z)));
 
 let main = printInt (toInt four);
 ```
+>>>compiled successfully

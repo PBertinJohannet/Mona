@@ -200,21 +200,25 @@ inferExpr cenv env ex = case runInfer env (runWriterT $ infer ex) of
     --tell $ "after CO : " ++ pretty b ++ "\n" ++ pretty s ++ "\n"
     return (closeOver ty' preds'' tyBefore')
 
+-- waaaay too complicated. TODO: pls simplify this.
 inferExprT :: ClassEnv -> Env -> Expr -> Scheme -> ExceptLog (Scheme, TExpr)
 inferExprT cenv env ex tp = case runInfer env (runWriterT $ inferEq ex tp) of
   Left err -> throwError err
-  Right ((texp, expected), (unions, preds, things, norefs)) -> do
-    tell $ "things : " ++ prettyL things
+  Right ((texp, tpSub, expected), (unions, preds, things, norefs)) -> do
+    tell $ "things : " ++ prettyL things ++ "\n"
     tell $ "doing : " ++ prettyL unions ++ "\n"
     subst <- runUnify unions things norefs
     preds <- runSolve cenv $ first (apply subst) <$> preds
     let (_, _, Qual _ found) = ann texp
     let Forall _ (Qual expectedPreds _) = tp
-    --tell $ "checking preds : " ++ prettyL preds ++ " vs " ++ prettyL expectedPreds ++ "\n"
-    checkPreds preds expectedPreds
-    --tell $ "found : " ++ pretty (apply subst found) ++ "\n"
-    --tell $ "expected : " ++ pretty (apply subst expected) ++ "\n"
+    tell $ "found : " ++ pretty (apply subst found) ++ "\n"
+    tell $ "expected : " ++ pretty (apply subst expected) ++ "\n"
+    tell $ "tpsub : " ++ pretty tpSub ++ "\n"
     allReplaces <- checkStrict (apply subst found) (apply subst expected)
+    tell $ "all rep" ++ prettyL allReplaces ++ "\n"
+    tell $ "subst is : " ++ pretty subst ++ "\n"
+    tell $ "checking preds : " ++ prettyL (apply (Map.fromList allReplaces) preds) ++ " vs " ++ prettyL (apply subst (apply tpSub expectedPreds)) ++ "\n"
+    checkPreds (apply (Map.fromList allReplaces) preds) $ apply subst (apply tpSub expectedPreds)
     --stest <- checkStrict (apply subst expected) (apply subst found) False
     --tell $ "\nor : " ++ show stest
     let s0 = Map.fromList allReplaces
@@ -314,11 +318,11 @@ lookupEnv x = do
     Just s -> instantiate s
     Nothing -> throwErrorV $ UnboundVariable $ show x
 
-inferEq :: Expr -> Scheme -> InferCons (TExpr, Type)
+inferEq :: Expr -> Scheme -> InferCons (TExpr, Subst, Type)
 inferEq e t0 = do
-  (_, Qual q t1) <- instantiate t0
+  (s, Qual q t1) <- instantiate t0
   t2 <- infer e
-  return (t2, t1)
+  return (t2, s, t1)
 
 infer :: Expr -> InferCons TExpr
 infer = cataCF inferAlgM
@@ -444,10 +448,12 @@ checkStrict t1 t2 = throwErrorV $ UnificationFail t1 t2
 checkPreds :: [Pred] -> [Pred] -> ExceptLog ()
 checkPreds found expected =
   let (f, e) = (Set.fromList found, Set.fromList expected)
-      remaining = (f `Set.difference` e) in
-  if Set.empty == remaining
-    then return ()
-    else throwErrorV $ ConstraintsNotMatching $ Set.toList remaining
+      remaining = (f `Set.difference` e) in do
+        tell $ prettyL (Set.toList f)
+        tell $ prettyL (Set.toList e)
+        if Set.empty == remaining
+          then return ()
+          else throwErrorV $ ConstraintsNotMatching $ Set.toList remaining
 
 
 type Unifier = (Subst, [Union])

@@ -20,4 +20,4 @@ let main = printInt (safeHead (Cons 2 Nil));
 ```
 let main = printInt (safeHead Nil);
 ```
->>>TypeError : Cannot unify : NonEmpty with Empty at fileName 13:1 at fileName 13:21
+>>>TypeError : Cannot unify : NonEmpty with Empty at fileName 13:1 at fileName 13:31
