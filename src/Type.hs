@@ -7,6 +7,7 @@
 {-# LANGUAGE DeriveFoldable #-}
 {-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE DeriveAnyClass #-}
 
 module Type where
 import Pretty
@@ -14,6 +15,8 @@ import Control.Arrow
 import Data.List
 import qualified Data.Set as Set
 import Control.Monad
+import RecursionSchemes
+import Control.Applicative 
 
 data TVar = TV{name :: String, kind :: Kind}
   deriving (Show, Eq, Ord)
@@ -24,15 +27,22 @@ data Qual a = Qual{preds :: [Pred], head :: a} deriving (Show, Eq, Ord)
 
 data Pred = IsIn String Type deriving (Show, Eq, Ord)
 
+
 data Type
   = TVar TVar
   | TCon String Kind
   | TApp Type Type deriving (Show, Eq, Ord)
 
+data BTree a = BTree (BTree a, BTree a) | Leaf a deriving (Show, Eq, Ord, Functor, Traversable, Foldable, Applicative)
+
+instance Pretty a => Pretty (BTree a) where
+  pretty = \case
+    BTree (a, b) -> "{" ++ pretty a ++ ", " ++ pretty b ++ "}"
+    Leaf a -> pretty a
+
 type Class = ([String], [Inst])
 type Inst = Qual Pred
 
-type Uncurried = (Type, [Type]);
 
 -- forall a b c . a -> b
 data Scheme = Forall [TVar] (Qual Type)
@@ -60,6 +70,9 @@ foldNE (x :+: xs) f = foldM f x xs
 
 unzipNonEmpty :: NonEmpty (a, b) -> (NonEmpty a, NonEmpty b)
 unzipNonEmpty l = (fst <$> l, snd <$> l) 
+
+sepTail :: NonEmpty a -> (a, [a])
+sepTail (x :+: xs) = (x, xs)
 
 asList :: NonEmpty a -> [a]
 asList (a :+: b) = a : b
@@ -101,10 +114,10 @@ getV :: Type -> TVar
 getV (TVar t) = t
 
 
-data Constructor = Constructor Type Type deriving (Eq, Show)
+data ArrowType = ArrowType Type Type deriving (Eq, Show)
 
-asType :: Constructor -> Type
-asType (Constructor a b) = mkArr a b
+asType :: ArrowType -> Type
+asType (ArrowType a b) = mkArr a b
 
 type Replacement = (Type, Type);
 
@@ -124,8 +137,8 @@ instance Pretty Replacement where
 replaceAll :: Replacable a => Replacements -> a -> a
 replaceAll rep cons = foldr replaceType cons rep
 
-instance Replacable Constructor where
-  replaceType rep (Constructor a b) = Constructor (replaceType rep a) (replaceType rep b)
+instance Replacable ArrowType where
+  replaceType rep (ArrowType a b) = ArrowType (replaceType rep a) (replaceType rep b)
 
 typeInt  = TCon "Int" Star
 typeBool = TCon "Bool" Star
@@ -167,12 +180,26 @@ getReturn = \case
   e -> e
 
 sepTypes :: Type -> [Type]
-sepTypes t = let (a, as) = unapply t in a:as
+sepTypes t = let (a :+: as) = unapply t in a:as
 
-unapply :: Type -> Uncurried
+unapply :: Type -> NonEmpty Type
 unapply = \case
-  TApp a b -> let (base, args) = unapply a in (base, args ++ [b])
-  e -> (e, [])
+  TApp a b -> let (base :+: args) = unapply a in base :+: (args ++ [b])
+  e -> e :+: []
+
+reApply :: NonEmpty Type -> Type
+reApply (x :+: xs) = foldr TApp x xs
+
+treeToZList :: BTree a -> ZipList a
+treeToZList = ZipList . foldr (:) []
+
+asTree :: Type -> BTree Type
+asTree = \case
+  TApp a b -> BTree (asTree a, asTree b)
+  t -> Leaf t
+
+getMinimalType :: Traversable f => f Type -> BTree (f Type)
+getMinimalType = sequenceA . fmap asTree
 
 kindToFunc :: Kind -> Type
 kindToFunc = \case

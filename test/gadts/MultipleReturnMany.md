@@ -53,4 +53,4 @@ let fail a = case a of
     (RA i) -> 2,
     (RB b) -> S;
 ```
->>>TypeError : Could not reconcile : R ''c ''d -> Int and R Int Bool -> Something at fileName 15:1
+>>>TypeError : could not generalize the types : Int Int Int Something at fileName 15:1

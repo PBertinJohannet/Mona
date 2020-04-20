@@ -5,6 +5,10 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveFoldable #-}
+{-# LANGUAGE DeriveTraversable #-}
+{-# LANGUAGE DeriveAnyClass #-}
 
 module Infer where
 
@@ -17,6 +21,7 @@ import Control.Monad.Reader
 import Control.Monad.Writer
 import Control.Monad.RWS
 import Control.Monad.Identity
+import Data.Maybe
 import Control.Arrow
 import Subst
 import qualified Data.Map as Map
@@ -26,25 +31,49 @@ import Pretty
 import RecursionSchemes
 import Data.Tuple
 import Error
-import Data.List (intersperse)
+import Data.List (intersperse, elemIndex)
+import Control.Applicative 
 
 newtype Union = Union (Type, Type, Location) deriving Show;
-data Reconcile = Reconcile Constructor [Constructor];
-type DontRefine = TVar
+
+data Specialization = Spec{candidate :: Type, argType :: Type, retType :: Type, eqs :: Set.Set TVar};
+data Reconcile = Reconcile ArrowType [Specialization]
 type Constraints = ([Union], [(Pred, Location)], [Reconcile], [DontRefine])
+type DontRefine = ();
 
 instance Pretty Union where
   pretty (Union (a, b, _)) = pretty a ++ " should unify with : " ++ pretty b ++ "\n"
 
 instance Pretty Reconcile where
-  pretty (Reconcile c tps) = prettyArr c ++ "<" ++ mconcat (intersperse "," (prettyArr <$> tps)) ++ ">"
-    where prettyArr (Constructor a b) = pretty a ++ " -> " ++ pretty b
+  pretty (Reconcile c tps) = prettyArr c ++ "<" ++ mconcat (intersperse "," (prettySpec <$> tps)) ++ ">"
+    where 
+      prettySpec (Spec cand arg ret _) = pretty cand ++ "(" ++ pretty arg ++ " -> " ++ pretty ret ++ ")"
+      prettyArr (ArrowType a b) = pretty a ++ " -> " ++ pretty b
 
 instance Pretty (Pred, Location) where
   pretty (a, b) = pretty a
 
 instance Pretty Constraints where
   pretty (a, b, c, d) = prettyL a ++ " => " ++ prettyL b ++ "[" ++ prettyL c ++ "]\n norefine : " ++ prettyL b ++ "\n"
+
+getEqConstraint :: Type -> (TVar, Type) -> Maybe TVar
+getEqConstraint tp (v, TVar tv) =
+  let (t :+: ts) = unapply tp in
+  let t' = foldr TApp t ts in 
+  let tvars = (ftv t) in 
+  if v `Set.member` tvars && tv `Set.member` tvars
+    then Just tv
+    else Nothing
+isEqConstraint _ _ = Nothing
+
+instance Substituable (NonEmpty Type) where 
+  apply s = fmap $ apply s
+  ftv _ = Set.empty
+
+instance Substituable Specialization where
+  apply s (Spec cand arg ret eqs) = Spec (apply s cand) (apply s arg) (apply s ret) (eqs `Set.union` eqs')
+    where eqs' = Set.fromList $ catMaybes (getEqConstraint cand <$> Map.toList s) 
+  ftv = const Set.empty
 
 instance Substituable Reconcile where
   apply s (Reconcile c ts) = Reconcile (apply s c) (apply s <$> ts)
@@ -56,11 +85,9 @@ union loc (a, b) = ([Union (a, b, loc)], [], [], [])
 predicate :: [Pred] -> Location -> Constraints
 predicate p l = ([], (,l) <$> p, [], [])
 
-reconcilie :: Type -> Type -> [Constructor] -> Constraints
-reconcilie a b tps = ([], [], [Reconcile (Constructor a b) tps], [])
-
-dontRefine :: TVar -> Constraints
-dontRefine tv = ([], [], [], [tv])
+-- reconcile R a -> b with [D a -> b, W c -> d]
+reconcilie :: Type -> Type -> [Specialization] -> Constraints
+reconcilie a b tps = ([], [], [Reconcile (ArrowType a b) tps], [])
 
 instance Substituable Union where
   apply s (Union (a, b, c)) = Union (apply s a, apply s b, c)
@@ -84,7 +111,8 @@ data TypeErrorV
   | SignatureMismatch Scheme Scheme
   | ConstructorsNotMatching Type Type
   | CannotRefine TVar
-  | CouldNotReconcile Constructor Constructor
+  | CouldNotGeneralize [Type]
+  | CouldNotReconcile ArrowType ArrowType
   | ConstraintsNotMatching [Pred] deriving (Show, Eq);
 
 instance Pretty TypeErrorV where
@@ -104,6 +132,7 @@ instance Pretty TypeErrorV where
     KindUnificationFail t t' -> "Cannot unify : " ++ t ++ " with "++ t'
     ConstructorsNotMatching t t' -> "Patterns do not match : " ++ pretty t ++ " with "++ pretty t'
     CannotRefine tv -> "Cannot refine : " ++ pretty tv
+    CouldNotGeneralize tps -> "could not generalize the types : " ++ prettyL tps
     CouldNotReconcile a b-> "Could not reconcile : " ++ pretty (asType a) ++ " and " ++ pretty (asType b)
     ConstraintsNotMatching t -> "Infered constraints not found in definition : " ++ prettyL t
 
@@ -269,13 +298,6 @@ freshName = do
 fresh :: InferCons Type
 fresh = freshType
 
-freshNoRefine :: InferCons Type
-freshNoRefine = do
-  name <- freshName
-  let v = TV name Star
-  tell $ dontRefine v
-  return (TVar v)
-
 freshType :: InferCons Type
 freshType = tvar <$> freshName
 
@@ -325,7 +347,7 @@ inferAlgM = \case
       return (In $ (l, nullSubst, Qual [] ret) :< retExpr)
 
     (l, Lam pat) -> do
-      ((Constructor tin tout), pat') <- inferPat l pat
+      (Spec _ tin tout _, pat') <- inferPat l pat
       return $ In ((l, nullSubst, Qual [] (tin `mkArr` tout)) :< Lam pat')
 
     (l, k) -> do
@@ -381,13 +403,24 @@ decomposePattern loc (Raw name) = do
     tret <- freshType
     return (tret, return (name, tret))
 
-inferPat :: Location -> PatternT (InferCons TExpr) -> InferCons (Constructor, (PatternT TExpr))
+inferPat :: Location -> PatternT (InferCons TExpr) -> InferCons (Specialization, (PatternT TExpr))
 inferPat loc (PatternT pat exp) = do
   -- tp = in type, eg: Bool
     (tp, vars) <- decomposePattern loc pat
     tret <- foldl (flip inEnv) exp vars
-    return ((Constructor tp $ getTp tret), PatternT pat tret)
+    cand <- makeCandidate tp
+    return (Spec cand tp (getTp tret) Set.empty, PatternT pat tret)
 
+makeCandidate :: Type -> InferCons Type
+makeCandidate = \case
+  TCon t _ -> fresh
+  TVar t -> return (TVar t)
+  TApp a b -> do
+    a' <- makeCandidate a
+    b' <- makeCandidate b
+    return $ TApp a' b'
+
+  
 -- see the doc for the error message, basicaly it verifies that the same variable is not binded to multiple types
 -- then it adds it to the given substition
 -- the two first args are only to report errors
@@ -438,15 +471,17 @@ unifyMany (t1, t1') (t2, t2') = do
 runUnify :: [Union] -> [Reconcile] -> [DontRefine] -> ExceptLog Subst
 runUnify [] [] _ = return nullSubst
 runUnify [] (r:rs) dr = do
-  tell " ========= start solving =========\n\n "
-  tell $ "reconciling : " ++ pretty r
+  tell " ========= start reconciling =========\n\n "
+  tell $ "reconciling : " ++ pretty r ++ "\n"
+  tell $ "after : " ++ prettyL rs ++ "\n"
   sub <- runReconcile r dr 
   tell $ "sus is then : " ++ pretty sub
   sub' <- runUnify [] (apply sub rs) dr
   tell $ "sub' is then : " ++ pretty sub'
   return (sub' `compose` sub)
 runUnify unions recs dr = do
-  tell " ========= finish solving =========\n\n "
+  tell " ========= start solving =========\n\n "
+  tell $ "unify : " ++ prettyL unions ++ "\n"
   sub <- unionSolve (nullSubst, unions)
   sub' <- runUnify [] (apply sub recs) dr
   return (sub' `compose` sub)
@@ -514,13 +549,83 @@ occursCheck a t = a `Set.member` ftv t
 unifyPred :: Pred -> Pred -> ExceptLog Subst
 unifyPred (IsIn i t) (IsIn i' t') | i == i' = unifies t t'
 
+transpose:: [[a]]->[[a]]
+transpose ([]:_) = []
+transpose x = (map Prelude.head x) : transpose (map tail x)
+
 runReconcile :: Reconcile -> [DontRefine] -> ExceptLog Subst
-runReconcile (Reconcile (Constructor from to) ts) norefs = do
+runReconcile (Reconcile (ArrowType from to) ts) norefs = do
   --tell $ "merge : " ++ prettyL ts ++ "\n"
-  final <- evalStateT (mergeTypes ts) initInfer
-  tell $ "\nfound : " ++ pretty final ++ "\n"
-  subst <- unifies final (from `mkArr` to)
-  return subst
+  (ArrowType from' to') <- mergeSpecs ts
+  tell $ "\nfound : " ++ pretty from' ++ " -> " ++ pretty to' ++ "\n"
+  subst <- unifies from' from
+  subst' <- unifies (apply subst to) (apply subst to')
+  return (subst' `compose` subst) 
+
+data Columns f a = Columns{cand :: a, cols :: f a} deriving (Show, Ord, Eq, Functor, Applicative, Foldable, Traversable)
+
+instance Pretty a => Pretty (Columns [] a) where
+  pretty (Columns cand cols) = "(" ++ pretty cand ++ " | " ++ mconcat (intersperse ", " $ pretty <$> cols) ++ ")"
+
+withCandidate :: [Type] -> Columns [] Type
+withCandidate (a:as) = Columns a (a:as)
+
+unifyAll :: [Type] -> ExceptLog Type
+unifyAll (a:as) = fst <$> foldM combine (a, nullSubst) as
+  where 
+    combine :: (Type, Subst) -> Type -> ExceptLog (Type, Subst)
+    combine (a, sb) b = do
+      sub <- unifies a $ apply sb b
+      return (apply sub b, sub)
+
+checkGeneralization :: Type -> Type -> ExceptLog ()
+checkGeneralization t t' = do
+  unifies t t'
+  return ()  
+
+mergeSpecs :: [Specialization] -> ExceptLog ArrowType
+mergeSpecs specs = do
+  arg <- unifyAll (candidate <$> specs)
+  mapM_ (checkGeneralization arg) (argType <$> specs)
+  -- type de retour, [cases] -> liste de aaaah je peux map le toList ptet ?
+  let colsArgs = getZipList $ traverse (treeToZList . asTree) $ Columns arg (argType <$> specs)
+  tell $ "args : " ++ pretty arg ++ "\n"
+  tell $ "first : " ++ pretty (Columns arg (argType <$> specs)) ++ "\n"
+  tell $ "snd : " ++ pretty (asTree <$> Columns arg (argType <$> specs)) ++ "\n"
+  tell $ "args : " ++ prettyL colsArgs ++ "\n"
+  let colsRets = getZipList $ traverse (treeToZList . asTree) $ withCandidate (retType <$> specs)
+  retSubst <- unifyRets colsArgs colsRets
+  let retFinal = replaceAll retSubst $ Prelude.head (retType <$> specs)
+  return $ ArrowType arg retFinal
+
+unifyRets :: [Columns [] Type] -> [Columns [] Type] -> ExceptLog Replacements
+unifyRets values = mapM (unifyRet values) >>> fmap concat
+
+allEqs :: Ord a => [a] -> Bool
+allEqs xs = Set.size (Set.fromList xs) < 2 
+
+findCorrespondingCol :: Columns [] Type -> Columns [] Type -> Maybe (Type, Type)
+findCorrespondingCol (Columns retC retCols) (Columns argC argCols) = 
+  if argCols == retCols 
+    then Just (retC, argC) 
+    else Nothing
+
+-- TODO : verify that you can actually 
+unifyRet :: [Columns [] Type] -> Columns [] Type -> ExceptLog [(Type, Type)]
+unifyRet finals ret@(Columns cd cols) = do
+  tell $ "hey "  ++ prettyL cols ++ "\n"
+  tell $ "and "  ++ prettyL finals ++ "\n"
+  if allEqs $ cols
+    then return []
+    else let map = asMap finals ret in do
+      tell $ show (findInCombinations (length finals) (isValid map))
+      case findInCombinations (length finals) (isValid map) of
+        Just [(x:xs)] -> return ((cd, cand (finals !! (x - 1))) : (toReplacement finals x <$> xs))
+        Just (x:xs) -> throwErrorV $ CouldNotGeneralize cols
+        _ -> throwErrorV $ CouldNotGeneralize cols
+
+toReplacement :: [Columns [] Type] -> Int -> Int -> (Type, Type)
+toReplacement cols t n = (cand (cols !! (n - 1)), cand (cols !! (t - 1)))
 
 type Generalization = Map.Map Type TVar
 type TwoSided = (Generalization, Generalization)
@@ -531,8 +636,8 @@ instance Pretty TwoSided where
 applyG :: Replacable a => Generalization -> a -> a
 applyG g a = replaceAll (Map.toList $ Map.map TVar g) a
 
-applyBoth :: TwoSided -> Constructor -> Constructor
-applyBoth (a, b) (Constructor a2 b2) = Constructor (applyG a a2) (applyG b b2)
+applyBoth :: TwoSided -> ArrowType -> ArrowType
+applyBoth (a, b) (ArrowType a2 b2) = ArrowType (applyG a a2) (applyG b b2)
 
 mergeG :: [Generalization] -> Generalization
 mergeG gens = (foldr (flip Map.union) Map.empty) gens
@@ -543,49 +648,55 @@ freshRec = do
   put InferState{count = count s + 1}
   return ("'" ++ letters !! count s)
 
-findGeneralizations :: Type -> Type -> Reconciling [(Generalization, Generalization)]
-findGeneralizations a b | a == b = return [(Map.empty, Map.empty)]
-findGeneralizations (a `TApp` b) (a2 `TApp` b2) = do
-  first <- findGeneralizations a a2
-  second <- findGeneralizations b b2
-  return $ first ++ second
-findGeneralizations a b = do
-  var <- freshRec
-  return $ [(Map.singleton a $ TV var Star, Map.singleton b $ TV var Star)]
+type BitVec = [Bool]
 
-mergeTypes :: [Constructor] -> Reconciling Type
-mergeTypes [] = return $ TVar (TV "''empty" (KVar "''empty"))
-mergeTypes (r:rs) = asType <$> foldM mergeType r rs
+asBinary :: Columns [] Type -> Columns [] Type -> BitVec
+asBinary (Columns retC retCols) (Columns argC argCols) = uncurry (==) <$> zip retCols argCols
 
-mergeType :: Constructor -> Constructor -> Reconciling Constructor
-mergeType a b | a == b = return a
-mergeType first@(Constructor a b) second@(Constructor a2 b2) = do
-  argsGens <- unifyArgs (unapply a) (unapply a2)
-  retsGens <- unifyRets (sepTypes b) (sepTypes b2)
-  tell $ "\nsolving : " ++ prettyL argsGens ++ " and " ++ prettyL retsGens
-  case sequence ((solveGeneralizations argsGens) <$> retsGens) of
-    Just allGens -> do
-      tell $ "\nallGens : " ++ prettyL allGens
-      return $ foldr applyBoth first allGens
-    Nothing -> throwErrorV $ CouldNotReconcile first second
+asMap :: [Columns [] Type] -> Columns [] Type -> Map.Map Int BitVec
+asMap finals ret = Map.fromList $ zip [1..] (asBinary ret <$> finals)
 
-unifyArgs :: Uncurried -> Uncurried -> Reconciling [TwoSided]
-unifyArgs (a, _) (b, _) | a /= b = throwErrorV $ ConstructorsNotMatching a b
-unifyArgs (_, as) (_, bs) = unifyRets as bs
+bAnd :: BitVec -> BitVec -> BitVec
+bAnd a b = getZipList $ (||) <$> ZipList a <*> ZipList b
 
-unifyRets :: [Type] -> [Type] -> Reconciling [TwoSided]
-unifyRets as bs = do
-  res <- traverse (uncurry findGeneralizations) $ zip as bs
-  return $ mconcat res
+foldne :: (a -> a -> a) -> [a] -> a
+foldne f (x:xs) = foldr f x xs
 
--- lefts -> next to solve -> current G -> final G
-solveGeneralizations :: [TwoSided] -> TwoSided -> Maybe TwoSided
-solveGeneralizations lefts r = find (== r) lefts
+isValid :: Map.Map Int BitVec -> [Int] -> Bool
+isValid m = fmap (m Map.!) >>> foldne bAnd >>> all id
 
--- refined :: TVar -> Reconciling ()
--- refined tv = do
---   dont <- ask
---   case elem tv dont of
---     True -> throwErrorV $ CannotRefine tv 
---     False -> return ()
 
+fac :: Int -> Int
+fac n = foldr (*) 1 [1..n]
+
+splitToNextSize :: Int -> Int -> [a] -> ([a], [a])
+splitToNextSize n k l = 
+  let next = (fac n) `div` (fac k * fac (n - k)) in splitAt next l
+
+combinations :: [Int] -> [[Int]]
+combinations start = take (2 ^ length start - 1) (combinations' $ fmap (:[]) start)
+  where 
+    combinations' a = a ++ combinations' (next a) 
+    combine b x = (x:) <$> filter ((x <) . Prelude.head) b
+    next b = start >>= combine b
+
+combinationsSeparated :: Int -> [[[Int]]]
+combinationsSeparated n =
+  let l = combinations [1..n] in
+    nextCombinations 1 l
+  where  
+    nextCombinations :: Int -> [[Int]] -> [[[Int]]]
+    nextCombinations k l | k == n + 1 = []
+    nextCombinations k l =
+      let (now, remain) = splitToNextSize n k l in
+        now : nextCombinations (k + 1) remain
+
+findInCombinations :: Int -> ([Int] -> Bool) -> Maybe [[Int]]
+findInCombinations size f =
+  let result = filter f <$> combinationsSeparated size in
+    findFirst (/=[]) result
+
+findFirst :: (Eq a) => (a -> Bool) -> [a] -> Maybe a
+findFirst f [] = Nothing
+findFirst f (x:xs) | f x = Just x
+findFirst f (x:xs) = findFirst f xs

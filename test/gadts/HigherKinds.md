@@ -55,4 +55,4 @@ let fail a = case a of
     (RS i) -> Left 5,
     (RP b) -> Left 1;
 ```
->>>compiled successfully
+>>>TypeError : could not generalize the types : 'h 'q at fileName 21:1

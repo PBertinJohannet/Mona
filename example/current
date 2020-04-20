@@ -1,17 +1,22 @@
 
 let main = printInt 4;
 
-data Something = | S = Something;
 
 data Bool = 
     | True = Bool;
     | False = Bool;
 
-data R a b= 
-    | RI = a -> R Int a;
-    | RB = a -> R Bool a;
+data Prod a b = | P = a -> b -> Prod a b;
+data Sum a b = 
+    | Left = a -> Sum a b;
+    | Right = b -> Sum a b;
+
+data R a = 
+    | RP = P a a -> R a;
+    | RS = S a a -> R a;
 
 
-let correct a = case a of
-    (RI i) -> 1 + i,
-    (RB b) -> case b of (True) -> 1, (False) -> 4;
+
+let fail a = case a of
+    (RS i) -> Left 5,
+    (RP b) -> Left 1;

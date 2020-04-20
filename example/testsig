@@ -1966,4 +1966,824 @@ B I -> B
 template forall a b . a b
 applique la substitution : a et a donc OK
 en fait c'est la même chose que l'autre mais en mieux psk ça detecte quand ils sont pareils.
-ok nice donc 
+ok nice donc on veut :
+le type de l'arbre : 
+type Reconcile = CatchAll | [(Int, Reconcile)]
+w8 et quand j'ai le même constructeur plusieurs fois je fais quoi déjà ?
+en gros j'ai pour l'instant 
+RI (Just a) -> ...
+je crée a et j'infère deriere et je dis : 
+reconcile (source -> 'b) [(R (Maybe a)) -> 'c]
+ce qui ne marche pas avec le truc courant ?
+psk en soit ptet que ça marche tout seul ?
+ah mais comment j'ai le constructeur initial ? ah ben oui izi en fait. c'est comme un pattern custom
+genre si j'ai
+RA (RI i) :: 'i   -> R (R 'i)
+et
+RA (RC k) :: Char -> R (R Char)
+et 
+RC x      :: Char -> R Char 
+en fait pas besoin de tout ça ! :D
+faut juste générer un constructeur un peu plus précis j'imagine.
+w8 par contre on veut ptet comparer les trucs a l'intérieur...
+la par ex on a le set de contraintes : 
+ah ?
+comment on modélise les contraintes déjà ?
+1, 2, 3 etc... ?
+ouais en vrai ça va le faire comme ça je pense.
+juste une substitution,
+ou non juste une liste de contraintes.
+en l'occurence ça donne :
+(R Int)
+(R b)
+a
+donc j'unifie tout ça :
+
+a = R Int
+b = Int
+et j'applique de tous les côtés.
+puis j'unifie avec le constructeur original et j'applique la substitution au retour. ensuite je devrais avoir le même retour partout.
+
+est ce que les contraintes d'égalité peuvent être modélisées sous forme d'une substitution ? non car il y a déjà des égalités qu'on veut enlever. en fait si. 
+on oublie les types candidats. on modélise les contraintes sous forme de
+
+donc pour l'inférence on a dit que : 
+pour chaque paire de variables ? pas forcément. ça va se transmettre tout seul.
+ouais mais non quand même faudrait trouver tous ceux identiques etc... pour l'instant on fait un truc bourrin ça ira. (pareil pour les match recursifs)
+si j'ai
+(R a) Int -> b
+(R a) Bool -> b
+Char Bool -> b
+qui devient
+(R Int) Int -> b
+(R c) Bool -> b
+(Char) Bool -> b
+
+pour chacun je parcours et je dis : 
+si j'ai une TVar dans le cons et pas dans le candidat : alors je génère le candidat ? si j'ai le même 
+cons c'est bon, sinon c'est un bug du compilo de toute façon. quoi que en vrai je pourrais memoriser les substitutions appliquées.
+anyway : 
+(R Int) a
+(R c) a
+a b
+ensuite j'unifie : 
+Int : c, a : a etc...
+(R Int) a
+c'est propre et ça marche bien.
+ok comment je génère les contraintes d'égalité par contre ?
+ah avec le ftv ptet ? toutes les variables libres peuvent être identiques. après faut voir si...
+en fait si je cache la substitution, de base j'ai des variables différentes.
+aaaaaah w8 en fait je veux juste la substitution
+si j'avais
+(f a) b c
+b x (g a b)
+
+et que j'ai g : y, b : x
+alors je garde : 
+('f 'a) 'x 'c
+'x 'x ('y 'a 'b)
+
+j'unifie : 
+'x : ('f 'a)
+'c : ('y 'a 'b)
+j'ai : 
+('f 'a) ('f 'a) ('y 'a 'b)
+
+wow chuis entrain de trouver un truc simple de ouf la.
+alors : 
+ah oui c'est ça : 
+quand je recois une substitution : si elle rend deux variables pareilles ou si elle spécifie une variable alors j'enregistre la variable ?
+
+genre si j'ai 
+a a b
+c d I
+
+et que j'ai la subst : 
+a : 'x, c : I
+je garde : 
+'x 'x b
+I d I
+et je retiens que : 
+c == I
+ensuite j'ai : 
+'x : 'v, b : 'v
+je garde : 
+'v 'v 'v
+I d I
+
+en fait c'est quand j'ai 2x le même résultat en retour : 
+ici quand j'ai eu.. en fait non psk il peut déjà exister.
+donc en gros je regarde quoi ? 
+je regarde quand ils deviennent pareils ou quand je crée un qui existe déjà.
+ou alors ballec et je compte : 
+mais w8 comment ça se passe pour les TApp. il me reste encore le stockage des positions je pense ?
+psk si 
+(R i) i je dois quand même dire que i est pareil que i.
+ou alors je le fais juste avant de reconcilier
+hmm...
+est ce qu'il n'y a pas moyen de le faire autrement ?
+alors une subst elle dit ce qui doit être égal et a quoi certains doivent être égaux.
+donc en gros on peut partir comme ça : 
+on inverse tout ce qui est TCon et ce qui ne l'est pas 
+ensuite on rend différent ce qui est égal ? nn la c'est trop galère...
+le truc c'est que je peux pas stocker la non égalité.
+limite je peux donner une tvar a tous. et quand j'ai un truc qui arrive et qui les rend égaux ?
+genre j'ai 
+a a b d d
+je mets
+e e e e e
+j'applique ma première truc ? a -> b  ou alors ptet que je peux comparer les deux trucs en mode avant après
+a a b d d
+b b b d d
+je prends les deux premiers je dis que c'est x
+x x b d d
+x x x d d
+ou alors plus bourrin je leur donne un groupe ?
+genre 
+x x b d d
+1 2 3 4 5
+puis je dis : 3 = 1 = 2 donc on merge
+1 1 1 4 5
+puis c'est bon.
+mais faut detecter quand deux trucs deviennent égaux.
+et pour ça je regarde avant de remplacer si dans les ftv j'ai la bonne variable ?
+genre la dans 
+ a a b d d j'ai a -> b je vois que j'avais des b donc je dis b == b
+ ok donc j'ai juste besoin de stocker les tvars qui doivent être égales.
+ensuite je parcours et je remplace par des fresh toutes celles qui sont pas dans cet ensemble.
+et j'ai généré : 
+R a' a' Int Int -> a' a'
+R Int (f a) Int b -> (f a) (f a)
+ça m'a donné comme candidat :
+R a' a' 'x 'y
+R 'w (f a) 'z b
+j'ai fait mes bails et je trouve 
+R a' a' 'x 'y
+R 'w (f a) 'z a {a}
+j'applique
+R a' b 'x 'y
+R 'w (f a) 'z a
+je trouve : 
+a' : 'w,b : (f a), 'x : 'z, 'y : a
+donc j'unifie séparément : 
+R 'w (f a) 'z a |><| R a a Int Int ==> a' : 'w, a : (f a), 'z : Int, a : Int
+R 'w (f a) 'z a |><| R Int (f a) Int b ==> 'w : Int, 'z : Int, a : b
+j'applique aux résultats : 
+et de toute façon si j'unifie c'est qu'ils peuvent être pareils non ? ah non
+
+on refait : 
+R a' a' Int Int -> a' a'
+R Int (f a) Int b -> (f a) (f a)
+on a en candidats : 
+R a a b' c' 
+R d' (f b) c' c
+je fais les bails et je trouve : 
+R a a b' c'
+R d' (f b) c' b {b}
+j'applique a tous excepté b.
+R 'a 'b 'c 'd
+R 'e ('f b) 'g b
+je trouve comme subst :
+'a : 'e, 'b : ('f b), 'c : 'g, 'd : b
+j'applique 
+R 'e ('f b) 'g b
+R 'e ('f b) 'g b
+ensuite y a 2 checks a faire : 
+on unifie a gauche : 
+'e ('f b) 'g b |><| R a' a' Int Int => 'e : a', a' : ('f b), 'g : Int, b : Int
+'e ('f b) 'g b |><| R Int (f a) Int b => 'e : Int, g : Int
+ça donne : 
+('f Int) ('f Int) Int Int
+Int ('f b) Int b
+mais j'unifie le retour avec le même truc que le candidat. mais il lui faut plusieurs possibilités ?
+
+ensuite j'unifie les types de retour, j'applique la substitution aux types d'entrée ? quoi que non ? ou si en fait ça fait que le réduire ?
+genre : si j'avais les positions 2 et 3 j'ai b : Int ? quoi que non c'est pas possible, ou si ? ptn je sais pas...
+on alors j'applique la subst a l'envers ?
+genre j'étais passé de : 
+nn mais la je devrais remplacer en fait, pas unifier :
+mais du coup le Int : 'g et Int : 'd ils font comment ? psk de l'autre côté c'est ptet l'inverse...
+je peux dire que {'g, 'd} {'g 'd} ? hmm non si ça se trouve faut juste faire la même chose a l'envers.
+en gros dans le retour je veux trouver ? ce qui change ? les égalités ça c'est sur déjà. et les égalités qui sont créées
+je veux quel retour ? le plus général ? celui qui dépend de ce qui est en entrée, enfin du coup c'est dur a faire...
+Alors la on peut déjà commencer par se demander si il est bien le 
+'e ('f b) 'g b 
+spk en soit : la le premier peut marcher avec tout b donc oui. aaaaaaaaaaaaah non en fait.
+parce que : en fait si il a dit qu'il acceptait tous les 'a donc il accepte tous les b. En fait on s'en fiche du reste tant que ça unifie correctement.
+ok ensuite : 
+si j'avais : 
+R a' a' Int Int -> a' a'
+R Int (f a) Int b -> (f a) (f a)
+je passe dedans et je trouve :
+a' : 'e, 'a : ('f b), 'g : b
+Int : 'e, f : 'f, a : b, Int : 'g, b : b
+j'applique aux retours : 
+'e 'e
+('f b) ('f b)
+ah zut. donc il faut utiliser la strat d'en haut ?
+
+
+
+je peux rebalancer le trikcs de tout remplacer. Ah oui mais c'est le truc a l'intérieur qui me dit : je veux un Int ici, tu peux pas m'envoyer nimp
+
+
+Ah la j'ai un problème :
+le problème c'est que je veux appliquer séparément aux résultats mais j'ai pas mon expression comme ça... donc soit je réconcilie direct ? mais non en fait trop dur...
+ah mais pourquoi j'aurais besoin d'appliquer au types a l'intérieur. c'est juste le type de retour dont j'ai besoin non ?
+et oui. et après je le 
+
+
+ok donc pour completer : 
+a a b Int Int
+je génère l'original, mon candidat (en remplacant tous les TCon par des nouvelles variables) ainsi qu'un ensemble vide
+a a b d d * {}
+a chaque transformation, a -> b, si a et b apparaissent, j'ajoute b a l'ensemble.
+b b b d d * {b}
+ensuite je génère ma généralization en remplacant tous ceux qui sont pas dans l'ensemble par des nouvells : 
+b b b 'a 'b
+ensuite j'unifie tous les autres  
+Int Int Int Bool Char
+ensuite j'unifie individuellement
+Int Int Int Bool Char |><| a a b Int Int ==> sub
+ensuite j'applique la substitution 
+ensuite je vérifie que tous les types de retour sont identiques.
+ensuite je renvoie la substitution finale de la reconciliation. (type entrée => type retour)
+
+
+alors la bonne nouvelle c'est qu'a priori je peux le faire pour tous en même temps.
+genre j'ai 
+a a b d d {d}
+c d d f f {f}
+e i h i h {i}
+je peux remplacer par : 
+a' b' c' d d
+d' e' f' f f
+h' i i' i j'
+en unifiant je trouve : 
+a' i c' i i
+et si j'avais un Int a la place de a' :
+Int i c' i i
+ou un Bool a la place de h : 
+a' Bool c' Bool Bool
+ok donc je peux le faire en paralèle sans trop de probs.
+je vérifie qu'ils unifient pour la compatibilité (faudra voir comment monomorphiser plus tard aussi)
+
+ensuite la je prends toutes les colonnes de retour et je regarde si il y a une colonne a gauche qui contient une substitution qui rendrait tout égal
+donc en gros si j'ai
+Int Bool
+je veux trouver une colonne avec Int Bool
+si j'ai
+f Int, [Int]
+je veux trouver f Int, [Int], pas plus compliqué que ça en fait. je veux l'exacte même identique truc.
+ah non c'est pas ça en fait...
+quoi que en fait si c'est juste que je les fait un par uns.
+le truc c'est que je veux trouver de quoi remplacer les tvars quand un truc est exact 
+genre si j'ai 
+f a b
+g c b
+f (g c) b
+
+et 
+R (f a)
+R (g c)
+R (f (g c))
+
+je veux 
+R a -> a b
+
+alors le noeud père ca doit être le même.
+les noeud de droite et de gauche doivent unifier.
+en fait je dois extraire les patterns communs.
+genre dans (wait je change l'exemple psk il marche pas)
+R (f a)
+R (g c)
+R (f (g c))
+
+donc j'ai des arbres et je veux trouver la structure minimale qui les couvre tous puis je
+la par exemple la structure minimale c'est : 
+R x
+aaah je peux générer une suite de substitutions ? ou juste de 
+
+si j'ai
+R (a b) c
+R (f a b) c
+R (g (h k) Int) (h y)
+R (h (k k)) (h y)
+
+la structure minimale c'est : 
+R (x y) z
+avec : 
+x       y     z
+a       b     c
+(f a)   b     c
+g (h k) Int   (h y)
+h       (k k) (h y)
+
+en retour j'ai (z y) y
+(b c) c
+(Int (h y)) (h y)
+((k k) (h y)) (h y)
+
+donc je parcours pareil en trouvant une substitution minimale ?
+(i j) k
+ensuite je génère pour i j k
+i       j       k
+b       c       c
+Int     (h y)   (h y)
+(k k)   (h y)   (h y)
+je parcours : 
+i => pas tous égaux => je trouve une colonne égale (y) => je dis i : y
+j => pas tous égaux => je trouve une colonne égale (z) => je dis j : z
+k => pas tous égaux => je trouve une colonne égale (z) => je dis k : z
+j'applique au retour et j'ai : 
+(y z) z
+
+j'ai donc : 
+R (x y) z -> (y z) z
+
+l'objectif c'est de prendre les entrées et les sorties et de créer deux arbres types. en utilisant un fold ça marche. (trust me)
+ensuite j'ai par exemple
+R (x y) z -> (y z) z
+je sépare en colonnes
+j'ai donc ([a], [[as]]) et [bs] sans efforts, ensuite j'aimerais quand même créer un skelette de base des deux côtés.
+genre j'aurais une fonction : qui prend une liste de types et qui renvoie : ? ([(replacementCols, [actuals])], replacement)
+
+bon on refait.
+j'ai le candidat final tf. je le prend lui ainsi que tous les args tas, je crée un sous arbre a partir de tout ça, ainsi qu'un arbre candidat tc
+j'ai tf, tas -> tass et tfs
+namely Type, [Type] -> [Type, [Type]]
+ensuite avec la liste de types de retours je crée le retour final tr et les types de retours trs
+j'ai rets -> tr, trs
+j'ai donc : tas, tc, tr, trs.
+je zip et je transforme : [as, c] [rs] -> for r in rs, match as.findId(r) of{Just id -> $ a[id]; Nothing -> Error}
+la question c'est l'autre la : le 
+**** ICI ****
+  genre faut que j'ai une struct qui me donne [(a, [bs])] ou a est le type général et bs sont les types de la colonne.
+  et puis je génère petit a petit
+  pour ca je génère [a] et pour chaque candidat [a, b, c, ...] et ensuite je les zippe pour avoir [[a0, a1], [b0, b2], ...]
+**** ICI ****
+
+donc pas trop dur au final non ?
+je regarde soit ils sont tous identiques, soit j'ai une colonne identique.
+si j'ai une colonne, je prend le type général de la colonne et je le garde dans le type de retour.
+si ils étaient égaux je prends le type du résultat.
+donc pour ça j'ai besoin du vrai type d'entrée et de retour.
+ce qui veut dire que pour chaque branche j'ai besoin de : 
+ - type du candidat
+ - type d'entrée
+ - type de sortie
+
+ensuite je génère un type général en unifiant les candidats
+je le compare avec chaque type d'entrée.
+ensuite je génère une structure [(a, [bs])] ou a est le type général et bs sont les types de la colonne.
+puis je génère le type de retour.
+
+
+hmm ça reste compliqué...
+surtout que j'ai oublié un truc.
+mais il faut un dernier cas je crois.
+faut prendre en compte quoi du coup ?
+ah est ce que j'ai la même partout et que j'ai une différente à un autre endroit.
+de la même façon que l'autre ?
+en fait hmmm. compliqué ptet.
+genre si j'ai un cas 
+
+donc le truc : 
+si j'ai plusieurs contraintes.
+aaaah ! faut juste rajouter tous les constructeurs ? mais du coup c'est le bordel faut toutes les combinaisons...
+ça devient un bordel monstre. mais je crois en toi tkss
+donc j'ai des combinaisons de types pour chaque constructeur ?
+et je regarde quels constructeurs manquent ?
+je veux ensuite un type qui marche pour ceux présents et pas pour ceux pas présents.
+mon exemple c'était 
+a a Int
+b b Bool
+c d e     (pas présent)
+les premiers étaient inférés en 
+a b c
+mais c'est possible d'exclure le deuxième en doublant les deux autres.
+il faut une unification a l'envers.
+unifier a b c'est troruver c tel que c > a && c > b, desunifier c'est trouver c tel quel c < a et c < b, en gros generaliser.
+bref quand j'essaye d'unifier (a b) avec (a a) puis (b b) je trouve l'unification suivante : 
+c : a | b
+d : a | b
+en appliquant et en comptant les contraintes je trouve : 
+a a {a}
+et 
+b b {b}
+je trouve que j'ai la même (comment ? de la même façon que pour le type de retour ? hmm non)
+je vois que j'ai une contrainte que j'ai pas dans l'original.
+en fait no npsk si j'ai : 
+a Int
+ouais mais quand même si il me demande ça c'est normal. donc je peux pas demander au type de me dire si j'ai tout complété ?
+ou alors je fais une analyse après monomorphisation. et la je saurai faire des trucs de base je pense. ouais la ca sera pas mal.
+ok donc ça on give up.
+on revient sur le type de retour.
+
+l'objectif c'est de trouver la structure minimale et de la representer en 
+
+reeee ! hello ! je pense qu'on finira avant d'avoir atteint les 3000 lignes non ?
+donc l'objectif c'est pas seulement de trouver une colonne qui remplit tout ?
+c'est aussi de trouver une colonne qui permet 
+
+ok donc pour l'instant je voulais le faire en une colonne
+le truc c'est qu'en utiliser une ça peut en niquer une autre. donc on essaye d'en utiliser le moins possible ?
+hmm non ça en nique pas une autre de toute façon, au pire sinon on fait du bfs ?
+on dit je prends les deux
+ok et comment on unifie ?
+si j'ai 
+a b    b
+c d    c
+je dis que c'est les mêmes, et du coup dans les deux cas j'ai le bon ?
+mais il faut qu'ils puissent être les mêmes par contre...
+ah oui c'est ça le critère, si ils peuvent unifier séparément, alors je dis que c'est les mêmes.
+G a b -> b
+G a a -> a
+et de toute façon ce qui rentrera sera toujours pareil.
+ok et comment je vérifie que ça match ?
+j'essaye de tous les unifier -> je trouve une subst : j'applique a gauche et a droite. je regarde si c'est pareil.
+ouais mais la c'est ultra fat...
+faudrait que j'ai une map de quel colonne unifie quel retour.
+après je regarde quelles combinaisons marchent ? ou juste je prends la première.
+prob : les ambiguités.
+1 2 3
+b b c      b
+f e f      f
+g i i      i
+je peux prendre 1&2 ou 2&3.
+dans un cas j'ai
+1 1 2 -> 1
+dans l'autre 
+1 2 2 -> 2
+hmm faut pousser cet exemple plus loin.
+pas besoin en fait...
+ou alors c'est une matrice :
+1 1 0
+0 1 0
+1 1 1
+et en multipliant par 0 1 0 je trouve 1 1 1
+alors que :
+1 1 0
+0 0 1
+1 1 1
+ok fuck on part sur une exponentielle ? quoi que j'avais un algo qui le faisait.
+quoi que est-ce que c'est pas bcp moins dans le cas amorti ?
+ouais je vais faire au moins cette optim ? ou après ptet.
+l'optim ça sera de prendre que ceux qui rajoutent un truc.
+pour l'instant, j'associe un tableau de bool avec chaque colonne. ensuite je lance un bfs sur toutes les combinaisons
+avec un state en plus pour le nombre de trucs. courant ?
+ou pas en fait j'ai juste une liste.
+j'ai 
+1 1 0
+0 0 1
+1 1 1
+je compte : 3
+je veux juste trouver la premiere solution possible au pire ? ouais pour l'instant ça suffit.
+donc je balance un bfs. je parcours toutes les trucs puis je zip.
+maintenant qu'on peut tout tester il reste plus qu'a ecrire une fonction qui check qu'une combinaison est valide.
+pour ça je peux ptet les transformer en lignes et tester dans ghci aussi
+
+
+si on a un qui prend 
+a a b b
+et un qui prend 
+x a a y
+ils se compensent de tt façon.
+par contre on peut juste pas avoir plus de 8 variables pareilles au pire ? genre on s'arrete a 
+ah j'avais ptet une autre façon d'attaquer.
+zut je l'ai plus, c'est pas un bail de dire, qu'est ce qui est redondant ou un truc comme ça ?
+ouais en soit déjà on peut tout remplacer par des 1 ou 0
+mais après ça nous aide pas du tout... ou alors je peux classer par ceux qui sont utiles ?
+genre 
+0 0 1
+1 0 1
+1 1 0
+
+ah oui c'est ça faut inverser.
+genre au lieu de tester tous les nombres binaires en mode (celui la + celui la etc...)
+je prends le résultat et je dis : 
+      x
+      y
+      z
+0 0 1 z
+1 0 1 z + x
+1 1 0 x + y
+ca fait si on met en binaire :
+4 
+5
+3
+je veux le minimum tel que tout est > 1
+je cherche le minimum de z + x + y tel que z >=1 et z + x >= 1 et x + y >= 1
+ah mais w8
+z >= 1
+z + x >= 1
+x + y >= 1
+
+je soustrais z en dessous. => rien
+0 0 1
+1 0 1
+1 1 0
+j'inverse :
+-1  1  0
+ 1 -1  1
+ 1  0  0
+j'ai
+
+Ax = sol, ou sol est ce qu'il est. et donc A^-1sol = x
+eg ici : 
+
+z >= 1
+x >= 0
+y >= (1 - x)
+(>=0) + y >= 1
+
+alors que si j'avais : 
+0 0 1
+1 0 1
+0 1 0
+
+-1 1 0
+ 0 0 1
+ 1 0 0
+
+en echangeant les 2 premieres lignes j'ai échangé les 2 premiers colones.: 
+1 -1 0
+0  0 1
+0  1 0
+
+en echangeant les 2 premieres colonnes j'ai échangé les 2 premieres lignes.
+on va s'en faire quelques unes après ?
+0 0 1
+1 0 1
+0 1 1
+
+-1 1 0
+-1 0 1
+ 1 0 0
+
+=> 
+
+1 0 1
+1 1 1 
+1 0 1
+
+pas d'inverse.
+
+=>
+
+1 0 1
+0 0 0
+1 1 0
+
+pas d'inverese. donc ok on est bons déjà.
+
+
+=>
+
+ok on s'interesse a ceux ou on gagne en 1 coup :
+0 0 1
+1 0 1
+0 1 1
+
+-1 1 0
+-1 0 1
+ 1 0 0
+
+ =>
+
+1 0 1
+1 0 1
+0 1 1
+
+ =>
+
+0 0 1
+0 1 1
+0 0 1
+
+revoir elim gaussienne et gérer cas ou on peut ajouter/enlever a droite.
+
+a = \case
+  (RF a b c) -> if a then b else c
+  (RS a b c) -> if b then a else c
+  (RT a b c) -> if c then a else b
+
+RF :: Int -> b -> c -> RF Int b c
+RF :: a -> Int -> b -> RF a Int b
+RF :: a -> b -> Int -> RF a b Int
+
+
+
+RF a b b -> b
+RS c d c -> c
+RT e e f -> e
+
+R a b b -> b
+ou
+R a a b -> a
+ou
+R a b a -> a
+
+les trois fonctionnent... en vrai nique du coup je dis juste je sais pas lequel choisir.
+ok ensuite comment on choisi le bon
+je pense que si j'en ai un en une seule étape je suis ok.
+comment je cherche les combinaisons qui marchent ?
+genre
+0 1 0 1
+1 1 0 0
+1 0 1 0
+je peux prendre le deuxieme
+ok alors en fait c'est izi il suffit de savoir si il y a un 1 sur chaque ligne pour savoir qu'il en existe un.
+ensuite je trouve toutes les lignes et j'enlève et je regarde si j'ai une ligne qui répond.
+hmm c'est chiant quand même non ? ou alors je peux compter le nombre pour chacun ?
+ici j'ai 2 2 2, en fait oui déjà si j'ai 2 sur une ligne ou j'ai un zero je peux pas deviner.
+est ce que c'est possible d'avoir qu'une seule possibilité ? oui en fait si y a une autre avec zero.
+
+ok en fait la question c'est de trouver le plus petit aussi.
+avec ça :
+0 1 1
+1 1 0
+1 0 1
+j'ai les trois possibilités.
+n'importe quelle autre combinaison m'en enlève un
+on va faire 2x2
+0 0
+0 0  nn
+
+0 0
+0 1  nn
+
+0 0
+1 0  nn
+
+0 0
+1 1  nn
+--
+
+0 1
+0 1  => en 1
+
+0 1
+1 0  => en 2
+
+0 1
+1 1  => en 1
+--
+1 0
+1 0  => en 1
+
+1 0
+1 1  => en 1
+--
+1 1  => plusieurs en 1
+1 1
+que en 2 et 3 et tous les 2 et 3
+parce que tu peux avoir que en 1 aussi...
+pour 3
+je rajoute 1 en haut ou bas. en haut je rend le truc possible pour certains mais difficile pour d'autres. en vrai c'est compliqué.
+je peux dire que de toute façon si j'ai besoin d'en unifier plusieurs je suis niqué non ?
+genre si j'ai
+0 1 0
+1 0 1
+1 0 0
+j'ai en deux fois psk j'ai pas trouvé direct.
+si je déplace en bas il se passe rien. si je déplace au milieu ça aide pas mais si je déplace en haut ça marche en un, est ce que je peux avoir en 3 ? oui si j'ai 3
+avec 2x3 mtn, en 2 ou 1, de toute facon ca sera jamais plus psk tu prends minimum 1 par colonne.
+0 1 0
+1 0 1
+
+0 0 1
+1 0 0, j'en prend un par colonne, je compte ensuite. si j'ai 2 et 2
+0 1 0 1
+1 0 1 0 si y a 4 avec 2 de profondeur. je peux pas en fait. si y a 2 avec 4 c'est pareil en fait.
+si y a 3 avec 4 je peux pas.
+si j'ai ça c'est comme si j'avais :
+0 0 1
+1 0 0
+0 1 0
+
+j'ai
+a -> c
+b -> a
+c -> b
+j'ai donc une solution ?
+0 0 1
+1 0 1
+0 1 0
+j'ai une sol en 2 ?
+a -> c
+b -> a
+b -> c
+c -> b
+a --> c
+^     ^
+|     |
+b <---
+ok et ensuite :
+0 1 ....
+a -> b
+
+b <--> a
+^
+|
+\/
+c
+ah y a pas de cycle ? nn
+renverse les graphs.
+
+ouais bon ben fuck go bfs.
+mtn la vraie question c'est :
+non c'est pas SAT du tout ! psk j'ai pas de negation
+est ce que je peux transformer ça en xor
+a & b => a xor !b | b xor !a
+att w8
+1 0 1
+0 1 0
+1 1 0
+c'est
+a | c & b & a | b
+j'ai
+a b c
+!a => false
+!b => false
+!c => true
+  ok.
+
+un autre plus dur :
+1 0 1
+1 1 0
+0 1 1
+
+a b c
+!c => true
+!b => true
+!a => true
+ !ca => false
+ !ba => false
+
+ !bc => false
+donc on a : c b a
+complexité ?
+
+un autre :
+1 0 0 1
+0 1 0 1
+1 1 0 0
+0 0 1 1
+
+a b c d
+!a => true
+!b => true
+!c => true
+!d => true
+je peux donc enlever (a, b, c, d)
+!ab => false
+!ac => true
+!ad => false
+je peux donc enlever (a, b, c, d, ac) et pas (ab, ad)
+!bc => true
+!bd => false
+je peux donc enlever (a, b, c, d, ac, bc) et pas (ab, ad, bd)
+!dc => false
+je peux donc enlever (a, b, c, d, ac, bc) et pas (ab, ad, bd, dc)
+nice. mtn un cas dégénéré.
+
+1 1 0 1
+1 1 1 1
+0 1 1 1
+1 1 1 1
+
+a b c d
+je peux enlever (a, b, c d)
+!ab => true
+!ac => true
+!ad => true
+!bc => true
+!cd => true
+
+en fait sans parler de ça, la strat c'est de partir des deux et de voir ce qui coupe le plus vite.
+a savoir du coup que :
+quand j'enlève un cas, je peux que ralentir le truc, psk ça va couper plus vite.
+donc le cas le plus long est un cas a n/2
+et a n/2 c'est compliqué d'avoir masse trucs...
+ouais mais j'aimerais avoir mieux quand même
+
+ici j'ai pas une multiplication c'est ça le prob non ?
+att w8 c'était quoi le problème du truc déjà ?
+a xor b c'est comme a + b % 2
+ouais pour l'instant on part de zero et on teste tout. et après on partira des deux côtés etc...
+pour l'implementation mtn ?
+
+att et : le truc c'est ça aussi, la longueur. est ce que c'est possible d'avoir un 3 avec ça ?
+1 0 1 1 0 1
+0 1 0 0 1 1
+0 0 1 0 0 0
+1 1 0 1 0 0
+breeeeef !
+je les décris comme des Binary
+
+ensuite j'ai une Map Int Binary
+quand j'ai une liste, je la filtre en faisant un & binaire de tout. izi
+je dois aussi splitAt avec mes trucs et demander l'indice jusqu'au truc de pascal samer.
+et c'est tout non ?
+ah oui faut aussi renvoyer la liste des variables associées, donc créer une map Int Type.

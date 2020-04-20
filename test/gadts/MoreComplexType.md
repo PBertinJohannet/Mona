@@ -60,4 +60,4 @@ let fail a = case a of
     (RI i) -> True,
     (RB b) -> 1;
 ``` 
->>>TypeError : Could not reconcile : R Int 'c -> Bool and R Bool 'f -> Int at fileName 16:1
+>>>could not generalize the types : Bool Int at fileName 16:1
