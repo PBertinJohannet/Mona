@@ -52,7 +52,7 @@ When it has nothing to do with the input it should not
 ```
 
 let fail a = case a of
-    (RS i) -> Left 5,
+    (RS i) -> Left True,
     (RP b) -> Left 1;
 ```
->>>TypeError : could not generalize the types : 'h 'q at fileName 21:1
+>>>TypeError : could not generalize the types : Bool Int at fileName 21:1 at fileName 21:14

@@ -190,16 +190,29 @@ unapply = \case
 reApply :: NonEmpty Type -> Type
 reApply (x :+: xs) = foldr TApp x xs
 
-treeToZList :: BTree a -> ZipList a
-treeToZList = ZipList . foldr (:) []
-
 asTree :: Type -> BTree Type
 asTree = \case
   TApp a b -> BTree (asTree a, asTree b)
   t -> Leaf t
 
+treeToList :: BTree a -> [] a
+treeToList = foldr (:) []
+
 getMinimalType :: Traversable f => f Type -> BTree (f Type)
-getMinimalType = sequenceA . fmap asTree
+getMinimalType tps = 
+  case traverse sep tps of
+    Just l -> BTree (getMinimalType `mapTuple` unzipF l)
+    Nothing -> Leaf tps 
+  where
+    sep = \case 
+      TApp a b -> Just (a, b)
+      _ -> Nothing
+
+mapTuple :: (a -> b) -> (a, a) -> (b, b)
+mapTuple = join (***)
+
+unzipF :: Functor f => f (a, b) -> (f a, f b)
+unzipF = fmap fst &&& fmap snd
 
 kindToFunc :: Kind -> Type
 kindToFunc = \case

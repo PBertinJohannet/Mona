@@ -60,4 +60,4 @@ let fail a = case a of
     (RI i) -> True,
     (RB b) -> 1;
 ``` 
->>>TypeError : could not generalize the types : Bool Int at fileName 16:1
+>>>TypeError : could not generalize the types : Bool Int at fileName 16:1 at fileName 16:14

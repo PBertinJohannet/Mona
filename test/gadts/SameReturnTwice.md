@@ -45,4 +45,4 @@ let fail a = case a of
     (RI i) -> i,
     (RB b) -> S;
 ```
->>>TypeError : could not generalize the types : Int Something at fileName 13:1
+>>>TypeError : could not generalize the types : Int Something at fileName 13:1 at fileName 13:14

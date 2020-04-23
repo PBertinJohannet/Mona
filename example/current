@@ -4,10 +4,9 @@ data Maybe a =
   | Just = a -> Maybe a
   | Nothing = Maybe a;
   
-let const a b = a;
-
-let id f v = case v of
-  (Just i) -> Just (f i),
-  (Just i) -> const Nothing (f i);
+let correct f v = case v of
+  (Both j k) -> f,
+  (Just j) -> Just j,
+  (Nothing) -> f;
 
 let main = printInt 4;

@@ -3029,6 +3029,61 @@ j m
 quand même 
 mais j'ai quand même un type final quelque part.
 si j'essaye de le récupérer ça dit quoi ?
+donc la j'ai bel et bien pas le M
+att w8.
+si j'ai pas le m à ce moment la 
+comment je peux avoir le f qui crée le bon truc ?
+
+alors si il n'apparait pas dans le type d'en haut, et une seule fois dans les colonnes
+c'est qu'il n'apparaitra pas dans le type final.
+est ce qu'on peut contredire ça ?
+ =====> oui si il apparait dans les autres reconciliations.
+ok donc ptet que pour chaque type, je compte combien de fois il apparait au total. et si c'est 1, je dis qu'on peut en 
+faire ce qu'on veut. 
+mais si il apparait dans les autres reconciliations ? on verra après.
+quoi. que.
+si il apparait dans une autre reconciliation, c'est soit sous la forme d'un arg, soit dans w8.
+il peut pas apparaitre dans une autre non ?
+ah si en fait.
+si j'ai un 'm dans un case précédent.
+mais si c'était un 'm forall aussi ? ouais mais dans ce cas la il apparait qu'une seule fois quand même.
+en fait c'est surtout compter combien de fois il apparait non ?
+quoi que non en fait psk il peut être copié a deux endroits.
+genre \x -> (x, x) (Nothing) ici j'ai bien le même 'm.
+hmm
+est-ce que ça peut apparaitre ?
+oui même sans parler d'un autre reconcilie. mais il apparait pas dans les types d'entrée.
+ah oui mais si il apparait dans un reconcilie d'un autre type qui peut unifier ?
+genre \x -> case x of blabla
+genre la j'ai 
+a b -> m
+
+========= Preuve que pas regarder dans les autres reconcilie ======
+et m apparait autre part. genre dans un précédent truc ? ouais mais c'est qu'il apparait dans le constructeur.
+quodlibet ?
+si j'ai m qui apparait autre part c'est qu'il y a eu une unification. le seul moyen c'est quand j'applique une fonction.
+et pour ca faut qu'il y ait une variable partagée qui utilise un m. et pour que ça soit un m qui vient pas du constructeur
+faut que ça soit un forall.
+yep c'est bien ça.
+donc si j'ai un m qui apparait autre part, soit c'est un forall, soit il apparait dans le constructeur.
+donc j'ai pas besoin de regarder les autres reconcilie.
+====================================================================
+
+ok donc dans l'ordre.
+je regarde si 'm apparait dans un constructeur ou dans le type de retour final (si c'est pas le cas c'est qu'il est forall.)
+si oui, je peux pas le mettre dedans. sinon je peux le refiner.
+ça c'est pour le retour. pour l'entrée comment on fait ? plus tard ?
+ahah tu peux jamais t'arreter.
+si je l'ai en entrée a un seul endroit c'est pareil non ? si elle est a un autre endroit dans la même ligne ça marche ?
+oui c'est pareil. en fait c'est si elle apparait dans une autre ligne ou dans le type final.
+psk c'est pas possible si elle est dans ces deux cas, et dans le cas contraire c'est forcément ça.
+en vrai coup de chance tu t'en sors bien.
+mais va expliquer ça après mdrrr.
+en vrai faudra repasser dans tous les points expliqués et les documenter bien. rien que pour toi.
+
+donc je veux regarder pour chaque tvar dans le constructeur ou les types de retour.
+ - si elle apparait dans le type de retour.
+ - si elle apparait dans un autre argument (entrée ou sortie.)
 
 unify : 'c -> Maybe 'd should unify with : 'd -> Maybe 'd
  'a should unify with : 'c -> 'f
@@ -3037,3 +3092,27 @@ unify : 'c -> Maybe 'd should unify with : 'd -> Maybe 'd
  'k -> 'l -> 'k should unify with : Maybe 'm -> 'n
  'a should unify with : 'i -> 'o
  'n should unify with : 'o -> 'p
+
+alors comment c'est sensé marcher déjà ?
+si je l'unifie avec un autre type c'est bon.
+c'est quoi le bail déjà ? la je peux pas savoir ce qui a été spécialisé...
+comment je vois les tvars spécialisées ?
+j'ai l'impression que c'est le même bail.
+ici je perd de la généralité un peu ?
+ah oui
+faut prouver que le fait d'unifier k |><| r en r casse le principe d'exaustivité.
+en gros quand j'ai
+a b qui devient a Int
+je l'unifie en ayant forcément un Int de chaque côté.
+quand j'ai 
+a b qui unifie en a c
+je l'unifie en ayant forcément un c de chaque côté. et je remplace des c partout.
+psk forcément si j'ai c qui vient du type de début
+ah oui mais w8 comment ça se passe du coup ?
+oui dans les autres branches je devrai marcher avec un c de toute façon.
+le truc c'est est-ce que je dois renvoyer le replace final ? je pense que oui en fait...
+
+ah wait
+
+si j'ai unifié avec k a de toute façon c'est que oui bref.
+je me souviens même plus de l'algo de base.

@@ -190,6 +190,7 @@ applyAnn f = mapAnn applyAnn'
     applyAnn' :: (Location, Subst, Qual Type) -> (Location, Subst, Qual Type)
     applyAnn' (loc, sub, Qual preds t) = (loc, f <$> sub, Qual (fmap (mapPred f) preds) $ f t)
 
+-- TODO merge these two pls.
 inferExpr :: ClassEnv -> Env -> Expr -> ExceptLog (Scheme, TExpr)
 inferExpr cenv env ex = case runInfer env (runWriterT $ infer ex) of
   Left err -> throwError err
@@ -199,7 +200,7 @@ inferExpr cenv env ex = case runInfer env (runWriterT $ infer ex) of
     --tell $ "found : "++ pretty ty ++ "\n"
     tell $ "with type : " ++ pretty ty ++ " solve => \n"
     --tell $ "constraints : " ++ pretty preds ++ " go \n"
-    subst <- runUnify unions dims norefs
+    subst <- runUnify unions dims norefs ty
     tell $ "found subst : " ++ pretty subst
     --preds' <- sequence (_vtoT . apply subst <$> preds)
     preds'' <- runSolve cenv (first (apply subst) <$>  preds)
@@ -217,9 +218,9 @@ inferExprT cenv env ex tp = case runInfer env (runWriterT $ inferEq ex tp) of
   Right ((texp, tpSub, expected), (unions, preds, things, norefs)) -> do
     tell $ "things : " ++ prettyL things ++ "\n"
     tell $ "doing : " ++ prettyL unions ++ "\n"
-    subst <- runUnify unions things norefs
-    preds <- runSolve cenv $ first (apply subst) <$> preds
     let (_, _, Qual _ found) = ann texp
+    subst <- runUnify unions things norefs found
+    preds <- runSolve cenv $ first (apply subst) <$> preds
     let Forall _ (Qual expectedPreds _) = tp
     tell $ "found : " ++ pretty (apply subst found) ++ "\n"
     tell $ "expected : " ++ pretty (apply subst expected) ++ "\n"
@@ -483,30 +484,48 @@ unifyMany (t1, t1') (t2, t2') = do
   s2 <- unifies (apply s1 t2) (apply s1 t2')
   return $ s2 `compose` s1
 
-runUnify :: [Union] -> [Reconcile] -> [FreeVars] -> ExceptLog Subst
-runUnify u r f = 
-  let actualFree = Set.fromList f `Set.difference` ftv u in
-    evalStateT (unifyTop u r) $ actualFree
+runUnify :: [Union] -> [Reconcile] -> [FreeVars] -> Type -> ExceptLog Subst
+runUnify u r f t = evalStateT (unifyTop u r t) $ Set.fromList f
 
-unifyTop :: [Union] -> [Reconcile] -> Unifying Subst
-unifyTop [] [] = return nullSubst
-unifyTop [] (r:rs) = do
+unifyTop :: [Union] -> [Reconcile] -> Type -> Unifying Subst
+unifyTop [] [] _ = return nullSubst
+unifyTop [] (r:rs) base = do
   tell " ========= start reconciling =========\n\n "
-  tell $ "reconciling : " ++ pretty r ++ "\n"
+  tell $ "reconciling : \n" ++ pretty r ++ "\n"
   tell $ "after : " ++ prettyL rs ++ "\n"
-  sub <- runReconcile r 
+  f <- gets Set.toList
+  tell $ "bfore filtering : " ++ prettyL f ++ "\n"
+  modify $ Set.filter (isForall base r)
+  f <- gets Set.toList
+  tell $ "after filtering : " ++ prettyL f ++ "\n"
+  sub <- runReconcile r
   tell $ "sus is then : " ++ pretty sub
-  sub' <- unifyTop [] (apply sub rs)
+  sub' <- unifyTop [] (apply sub rs) base
   tell $ "sub' is then : " ++ pretty sub'
   return (sub' `compose` sub)
-unifyTop unions recs = do
+unifyTop unions recs t = do
   tell " ========= start solving =========\n\n "
   dr <- Set.toAscList <$> get
   tell $ "free are : " ++ prettyL dr
   tell $ "unify : " ++ prettyL unions ++ "\n"
   sub <- unionSolve (nullSubst, unions)
-  sub' <- unifyTop [] (apply sub recs)
+  tell $ "ty would be " ++ pretty (apply sub t)
+  sub' <- unifyTop [] (apply sub recs) (apply sub t)
   return (sub' `compose` sub)
+
+
+-- donc je veux regarder pour chaque tvar dans le constructeur ou les types de retour.
+--  - si elle apparait dans le type de retour.
+--  - si elle apparait dans un autre argument (entrée ou sortie.)
+
+isForall :: Type -> Reconcile -> TVar -> Bool
+isForall base (Reconcile _ specs _) tv = (tv `appearsInType` base + sum (countAppearances tv <$> specs)) <= 1
+
+countAppearances :: TVar -> Specialization -> Int
+countAppearances tv (Spec _ arg ret _) = tv `appearsInType` arg + tv `appearsInType` ret 
+
+appearsInType :: TVar -> Type -> Int
+appearsInType tv tp = fromEnum (tv `Set.member` ftv tp)  
 
 
 solver :: [(Pred, Location)] -> Solve [Pred]
@@ -575,15 +594,15 @@ unifyPred (IsIn i t) (IsIn i' t') | i == i' = unifies t t'
 transpose:: [[a]]->[[a]]
 transpose ([]:_) = []
 transpose x = (map Prelude.head x) : transpose (map tail x)
-
+-- TODO renommer les subst un peu partout
 runReconcile :: Reconcile -> Unifying Subst
 runReconcile (Reconcile (ArrowType from to) ts l) = do
   --tell $ "merge : " ++ prettyL ts ++ "\n"
-  (ArrowType from' to') <- mergeSpecs ts `withErrorLoc` l
+  (ArrowType from' to', sub) <- mergeSpecs ts `withErrorLoc` l
   tell $ "\nfound : " ++ pretty from' ++ " -> " ++ pretty to' ++ "\n"
   subst <- unifies from' from
   subst' <- unifies (apply subst to) (apply subst to')
-  return (subst' `compose` subst) 
+  return (subst' `compose` subst `compose` sub) 
 
 data Columns f a = Columns{cand :: a, cols :: f a} deriving (Show, Ord, Eq, Functor, Applicative, Foldable, Traversable)
 
@@ -593,38 +612,63 @@ instance Pretty a => Pretty (Columns [] a) where
 withCandidate :: [Type] -> Columns [] Type
 withCandidate (a:as) = Columns a (a:as)
 
-unifyAll :: [Type] -> Unifying Type
-unifyAll (a:as) = fst <$> foldM combine (a, nullSubst) as
+unifyAll :: [Type] -> Unifying (Type, Subst)
+unifyAll (a:as) = foldM combine (a, nullSubst) as
   where 
     combine :: (Type, Subst) -> Type -> Unifying (Type, Subst)
     combine (a, sb) b = do
       sub <- unifies a $ apply sb b
-      return (apply sub b, sub)
+      return (apply sub b, sub `compose` sb)
 
 checkGeneralization :: Type -> Type -> Unifying ()
 checkGeneralization t t' = do
   unifies t t'
-  return ()  
+  return ()
 
-mergeSpecs :: [Specialization] -> Unifying ArrowType
+mergeSpecs :: [Specialization] -> Unifying (ArrowType, Subst)
 mergeSpecs specs = do
-  arg <- unifyAll (candidate <$> specs)
-  mapM_ (checkGeneralization arg) (argType <$> specs)
+  (arg, sub) <- unifyAll (candidate <$> specs)
+  let specs' = apply sub specs
+  mapM_ (checkGeneralization arg) (argType <$> specs')
   -- type de retour, [cases] -> liste de aaaah je peux map le toList ptet ?
-  let colsArgs = getZipList $ traverse (treeToZList . asTree) $ Columns arg (argType <$> specs)
+  let colsArgs = treeToList (getMinimalType (Columns arg (argType <$> specs')))
   tell $ "args : " ++ pretty arg ++ "\n"
-  tell $ "first : " ++ pretty (Columns arg (argType <$> specs)) ++ "\n"
-  tell $ "snd : " ++ pretty (asTree <$> Columns arg (argType <$> specs)) ++ "\n"
-  let colsRets = getZipList $ traverse (treeToZList . asTree) $ withCandidate (retType <$> specs)
+  tell $ "first : " ++ pretty (Columns arg (argType <$> specs')) ++ "\n"
+  tell $ "snd : " ++ pretty (asTree <$> Columns arg (argType <$> specs')) ++ "\n"
+  let colsRets = treeToList (getMinimalType $ withCandidate (retType <$> specs'))
   tell $ "args : " ++ prettyL colsArgs ++ "\n"
   tell $ "rets : " ++ prettyL colsRets ++ "\n"
-  retSubst <- unifyRets colsArgs colsRets
-  let retFinal = replaceAll retSubst $ Prelude.head (retType <$> specs)
-  return $ ArrowType arg retFinal
+  retSubst <- unifyRets colsArgs colsRets []
+  tell $ "replace final is : " ++ prettyL retSubst ++ "\n"
+  let retFinal = replaceAll retSubst $ Prelude.head (retType <$> specs')
+  tell $ "final ret is : " ++ pretty retFinal ++ "\n"
+  return (ArrowType arg retFinal, sub)
 
-unifyRets :: [Columns [] Type] -> [Columns [] Type] -> Unifying Replacements
-unifyRets values = mapM (unifyRet values) >>> fmap concat
- 
+unifyRets :: [Columns [] Type] -> [Columns [] Type] -> Replacements -> Unifying Replacements
+unifyRets values [] rep = return rep
+unifyRets values (x:xs) rep = do
+  newRep <- unifyRet values x
+  orderedRep <- reorderReplaces newRep
+  unifyRets values xs (rep ++ orderedRep)
+
+reorderReplaces :: Replacements -> Unifying Replacements
+reorderReplaces = mapM reorderReplace
+  where 
+    reorderReplace (a, b) = do
+      isFa <- removeIfFree a
+      isFb <- removeIfFree b
+      if isFb && (not isFa) then return (b, a) else return (a, b)
+
+removeIfFree :: Type -> Unifying Bool
+removeIfFree t@(TVar tv) = do
+  isF <- isFree t
+  if isF
+    then do
+      modify $ flip Set.difference (Set.singleton tv)
+      return True
+    else return False
+removeIfFree _ = return False
+
 isFree :: Type -> Unifying Bool
 isFree = \case
   TVar tv -> gets $ Set.member tv
@@ -647,9 +691,7 @@ findCorrespondingCol (Columns retC retCols) (Columns argC argCols) =
     then Just (retC, argC) 
     else Nothing
 
-
-
--- TODO : verify that you can actually 
+-- TODO : clean up this mess
 unifyRet :: [Columns [] Type] -> Columns [] Type -> Unifying [(Type, Type)]
 unifyRet finals ret@(Columns cd retCols@(r:rs)) = do
   let getCandAt x = cand (finals !! (x - 1))
@@ -658,35 +700,34 @@ unifyRet finals ret@(Columns cd retCols@(r:rs)) = do
   tell $ "args Columns "  ++ prettyL finals ++ "\n"
   --tell $ "same : " ++ show same ++ "\n"
   if allEqs retCols
-  then do
-    modify $ flip Set.difference (Set.fromList $ retCols >>= Set.toList . ftv)
-    tell $ "unify all these " ++ prettyL ((r,) <$> rs) ++ "\n"
-    return ((r,) <$> rs)
-  else do
-    map <- asMap finals ret 
-    tell $ (show map) 
-    tell $ show (findInCombinations (length finals) (isValid map))
-    case findInCombinations (length finals) (isValid map) of
-      Just [(x:xs)] -> do
-        -- remove the actual values from the free list. not cand then !!
-        let newSubst = ((cd, cand (finals !! (x - 1))) : ((getCandAt x,) . getCandAt <$> xs))
-        tell $ "new subst tvars : " ++ prettyL (x:xs >>= (Set.toList . ftv . getArgsAt)) ++ "\n"
-        dr <- gets Set.toAscList
-        tell $ "free were : " ++ prettyL dr ++ "\n"
-        tell $ "args : " ++ prettyL (x:xs >>= (Set.toList . ftv . getArgsAt)) ++ "\n"
-        modify $ flip Set.difference (Set.fromList (x:xs >>= (Set.toList . ftv . getArgsAt)))
-        dr <- gets Set.toAscList
-        tell $ "free became : " ++ prettyL dr ++ "\n"
-        tell $ "unify all these " ++ prettyL newSubst ++ "\n"
-        return newSubst
-      _ -> do
-        same <- allEqsOrFree retCols 
-       {- if same then do
-          modify $ flip Set.difference (Set.fromList $ retCols >>= Set.toList . ftv)
-          tell $ "unify all these " ++ prettyL ((r,) <$> rs) ++ "\n"
-          return ((r,) <$> rs)
-        else -}
-        throwErrorV $ CouldNotGeneralize retCols
+    then do
+      modify $ flip Set.difference (Set.fromList $ retCols >>= Set.toList . ftv)
+      tell $ "unify all these " ++ prettyL ((r,) <$> rs) ++ "\n"
+      return ((r,) <$> rs)
+    else do
+      map <- asMap finals ret 
+      tell $ (show map) 
+      tell $ show (findInCombinations (length finals) (isValid map))
+      case findInCombinations (length finals) (isValid map) of
+        Just [(x:xs)] -> do
+          -- remove the actual values from the free list. not cand then !!
+          let newSubst = ((cd, cand (finals !! (x - 1))) : ((getCandAt x,) . getCandAt <$> xs))
+          tell $ "new subst tvars : " ++ prettyL (x:xs >>= (Set.toList . ftv . getArgsAt)) ++ "\n"
+          dr <- gets Set.toAscList
+          tell $ "free were : " ++ prettyL dr ++ "\n"
+          tell $ "args : " ++ prettyL (x:xs >>= (Set.toList . ftv . getArgsAt)) ++ "\n"
+          --modify $ flip Set.difference (Set.fromList (x:xs >>= (Set.toList . ftv . getArgsAt)))
+          dr <- gets Set.toAscList
+          tell $ "free became : " ++ prettyL dr ++ "\n"
+          tell $ "unify all these " ++ prettyL newSubst ++ "\n"
+          return newSubst
+        _ -> do
+          same <- allEqsOrFree retCols 
+          if same 
+            then do
+              tell $ "unify all these " ++ prettyL ((r,) <$> rs) ++ "\n"
+              return ((r,) <$> rs)
+            else throwErrorV $ CouldNotGeneralize retCols
 
 
 type Generalization = Map.Map Type TVar
