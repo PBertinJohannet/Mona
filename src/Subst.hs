@@ -65,6 +65,10 @@ instance Substituable ArrowType where
   apply s (ArrowType a b) = ArrowType (apply s a) (apply s b)
   ftv _ = Set.empty
 
+instance Substituable (Type, Type) where 
+  apply s (a, b) = (apply s a, apply s b)
+  ftv (a, b) = ftv a `Set.union` ftv b
+
 mapRes :: (Type -> Type) -> TExpr -> TExpr
 mapRes func = mapAnn
   (\(loc, sub, Qual q tp) -> (loc, sub, Qual (mapPred func <$> q) $ func tp))

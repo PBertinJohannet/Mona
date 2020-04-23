@@ -2787,3 +2787,253 @@ quand j'ai une liste, je la filtre en faisant un & binaire de tout. izi
 je dois aussi splitAt avec mes trucs et demander l'indice jusqu'au truc de pascal samer.
 et c'est tout non ?
 ah oui faut aussi renvoyer la liste des variables associées, donc créer une map Int Type.
+
+ok maintenant les contraintes existentielles.
+le problème ici c'est que j'ai une tvar qui sort de nul part.
+et quand j'essaye de généralizer elle apparait nul part évidement.
+donc, je peux l'unifier avec nimporte quoi en theorie, pourquoi il y arrive pas la ?
+ah oui c'est ça c'est qu'il faut dire qu'une variable comme ça c'est un 1 tout le temps.
+mais comment je fais pour savoir qu'elle est existentielle ?
+les autres elles sont associées a une variable. mais att faut pas fail non plus.
+genre si j'ai Nothing :: Maybe a b et Nothing :: Maybe a a c'est pas la même chose.
+en quoi c'est pas la même. ah oui c'est que dans un cas je dis quand même que voila bref donc faut faire gaffe 
+faudrait que dès que hmm. elle peut venir de n'importe ou après...
+chaud le problème ici c'est que je peux pas dire (ou ptet si en fait)
+lets try : 
+quand j'ai let a = Nothing in (a, a)
+j'infère Maybe a, Maybe a => psk j'ai inféré qu'une fois.
+avant je disais, faut que ça soit les mêmes. mais sauf que la je veux pas les unfier en mode yolo.
+je veux les unifier seulement si ?
+en vrai on teste : 
+ptet qu'il faut appliquer la substitution avant de passer a la prochaine colonne.
+comme ça : 
+Nothing :: Maybe a a
+i j -> a a
+b a -> b a
+alors mon algo candidat c'est :
+quand je génère cette variable, si elle apparait pas dans le truc, je l'enregistre comme existentielle.
+ensuite quand je génère le truc je regarde si toutes les variables sont egales ou je mets des 1 sinon.
+ensuite je dis que je l'ai utilisée ?
+mais si j'avais Maybe a a 
+je sors une contrainte existentielle 
+je sais que 'i 
+si j'ai une contrainte existentielle sur une tvar
+en fait c'est pas un exists. c'est un forall.
+donc pour l'instant je dis que je l'accepte ? nn ça me suffit pas.
+
+ok donc c'est le meme bail.
+en gros quand une variable est pas utilisée faudrait le detecter et lui dire qu'elle peut être refinée autant qu'on veut.
+le problème c'est comment on fait ça ?
+si elle n'apparait pas dans le type de retour ? nn ?
+est ce qu'elle peut apparaitre autre part ?
+si je la refine sur autre chose, oui la ça marche
+ou si je dis qu'elle est égale/différente aussi.
+ok donc comment on sait qu'elle est free ?
+si j'avais 
+(a, b) -> if a == b then 1 else 0
+j'ai unifié a et b
+j'arrive sur l'autre et je vois que a peut unifier avec n'importe quoi donc je l'accepte et c'est niqué.
+aussi pour mettre de côté, si je peux valider plusieurs fois en l'unifiant mais qu'après j'ai un fail ça devrait pas être le cas 
+ou alors, dès qu'elle est dans une contrainte je dis qu'elle vire des variables libres.
+et après je l'enlève des variables.
+bon dans l'ordre.
+je rajoute toutes les variables créées dans un Set.
+quand j'arrive dans unionMachin je sors toutes les variables et je les enlève du Set.
+dans allEq je dis oui si y en a une comme ça.
+dans la génération du BitVec je fais pareil.
+quand je renvoie le allReplace, j'enlève toutes les variables potetielles comme ça.
+alors j'ai un autre problème c'est qu'il est pas dedans en fait.
+psk c'est déjà un autre truc...
+c'est le 's
+
+pour l'instant j'unifie car : 
+j'ai : 
+a -> b -> Maybe a
+je dis unify 
+
+la en gros mon problème c'est que j'ai
+l i
+e c
+je trouve un candidat 
+l i
+ah wait c'est le allEq qui fait chier.
+psk ici je veux pas ce allEq la.
+en fait il me faut un allEq que si c'est pas des tvars ?
+hmm reflechissons.
+si j'ai :
+Int -> Int
+je veux pas avoit a -> Int
+non la c'était pire psk : 
+je pouvais lui passer n'importe quoi.
+ah w8 c'est pas ça le prob.
+c'est que si je peux pas prédire
+ah non c'est que je veux pas prédire avec une contrainte comme ça.
+genre prédire avec des tvars c'est pas ouf. je veux pas prédire un forall a . a
+ou est ce que je peux vouloir.
+forget :: 
+  Just a -> Nothing
+  Just b -> Nothing
+mais la c'est qu'il y a aucun lien avec l'interieur.
+si j'avais
+
+nn j'ai un autre prob.
+quand j'ai 
+Nothing -> Nothing
+Just a -> Just a
+ici je veux un Maybe a mais ça devrait aller ?
+quoi que non je veux que 
+ah w8 j'ai ptet un décalage. vérifie ! 
+ok donc on revient : 
+si j'ai un Nothing a la fin je veux pouvoir l'unifier si j'ai pas eu d'autres choix.
+ah non c'est toujours pas bon. la je veux pas un forall a. a
+je veux dire je remplace le retour par ce que je veux ici.
+
+let id f v = case v of
+  (Just i) -> Just i,
+  (Just i) -> Nothing;
+
+je veux pas qu'ils soient égaux. je veux qu'ils soient prédictibles.
+c'est ça je crois en fait.
+ok et ça fera chier pour le cas ou c'est le retour qui est en Nothing je pense.
+
+ici c'est bien que j'ai un j m -> m
+l'objectif c'est de savoir si m est utilisé ? psk la c'est chaud.
+hmm je pense qu'on peut malgré tout. en remontant les cycles de dépendences.
+en fait y a ptet une histoire de w8
+trouve un cas ou ça marche pas d'accepter nimp.
+quand y a vraiment une variable de type 'm/truc de 'm
+ici c'est pas le cas non ?
+comment je fais la diff entre 
+Just a -> ...
+et 
+Just a -> ..a..
+et surtout 
+Prod m 
+Just m
+quand je crée mon Nothing.
+le problème il vient du fait que quand j'ai 
+Just a b -> a + b
+je peux pas unifier nimporte whaat j'y arrive pas ptn.
+reveille toi cerveau ! 
+si je dis que j'unifie toutes les tvars.
+j'ai 
+a b c -> b
+a b c -> b
+a b c -> b
+qui marche parfaitement et qui dit vous êtes tous des 'a.
+ce qui est ultra relou psk le bon type c'est pas celui la.
+hmmmmmmmmmmmmmmmmmm
+même la en plus a je l'utilise pas O.o
+hmm, en fait a on va le mettre qu'a droite pour l'instant.
+donc a droite j'ai un 'm qui n'est jamais utilisé. et dont le type ne changerait rien au reste surtout.
+et a droite pourquoi je peux pas dire ça ?
+ah oui le truc c'est que si 'm n'apparait pas a droite, je peux pas le deviner.
+ouais sauf si c'est un forall a . a
+mais comment je le reconnais.
+psk si j'accepte n'imp c'est pareil qu'en haut, je dis, ouais ben le type de retour c'est celui de a.
+en fait faudrait que l'un n'apparaisse pas dans l'autre.
+genre si j'ai 
+a b c -> b, et que b n'apparait nulle part dans le truc ça devrait être bon non ?
+quoi que même pas psk si il vient d'une fonction qui dépend de a.
+meh.
+genre 
+a b c -> f b (f :: b -> m)
+d e f -> d
+ça vaut m mais je peux pas l'unifier en disant je renvoie tjrs le premier.
+alors que 
+a b c -> f (f :: forall m . m) 
+d e f -> d
+c'est bon je peux prendre le premier.
+en fait c'est psk le m apparait pas en position negative après un forall ?
+en vrai quand j'avais f:: a -> b -> a, j'avais un b -> a pourtant le a était libre.
+psk il vient pas d'une variable locale.
+mais si m apparait pas dans le type final ?
+
+quoi que je peux créer const/f autrement.
+le f peut etre issu de const. comment je fais la du coup ?
+let f = const(:: a -> b -> a) m
+a b c -> f b (f :: b -> m)
+d e f -> d
+hmm mais en fait même si j'utilise m. ici il dépend pas de b.
+le truc c'est que est-ce que je peux vraiment avoir un b -> m qui est pas un forall m ?
+ah oui si m apparait dans le type final de retour.
+psk sinon j'ai forcément un forall m. psk ici au moment ou je l'utilise j'ai déjà reconcilié l'autre.
+et comment je sais si il apparait dans le type de retour ? AH !
+si il apparait autre part que dans cette reconciliation ?
+genre le cas ou j'ai f :: b -> m qui vient de l'exterieur on l'a géré.
+le cas ou il vient de l'intérieur par contre ?
+je peux créer une forall m . b -> m depuis l'intérieur de la fonction mais je peux pas appeler la fonction sans spécialiser.
+ok le nerf de la guerre la c'est bien la spécialisation.
+quand j'ai f :: b -> m qui vient de l'exterieur ça veut dire que l'user peut m'apporter une fonction qui fonctionne pas pour tous les m.
+comment écrire ça plus simplement.
+
+const m :: (forall b . b -> m)
+f :: (b -> m)
+c'est surtout ça en fait.
+le type en entrée de la fonction c'est pas 
+f :: forall b m . b -> m
+c'est étant donné un b et un m => b -> m
+ok donc la différence réside la.
+psk pareil si j'ai 
+c -> m
+et que je crée un b -> c, je peux créer des m. mais spécifiques.
+par contre si j'ai un :
+forall b . b -> c; c -> m, je peux créer un forall b . b -> m, ce qui est pas gênant.
+a l'envers :
+b -> c; forall c . c -> m, je crée rien psk c'est pas le même c.
+aaaaah w8 en fait déjà 
+nn en fait dommage.
+ici ça donne quoi ? forall c . c -> m, ça veut dire que je crée un m a partir de n'importe quoi.
+hmm, j'ai pas besoin de ça quand même.
+on revient.
+j'ai une fonction forall c . c -> m que je spécialize a b. du coup c'est plus un forall m.
+bon ok je peux pas avoir du rank > 2 oublie pas (enfin je crois)
+la l'objectif c'est de savoir si m est spécialisé quelque part.
+en sachant que je peux le spécialiser qu'une fois non ? en fait non.
+je peux utiliser 2x la même fonction.
+ok on revient.
+dans un cas, le m est spécifié par l'appelant, d'une façon ou d'une autre (typeclass ? ouch.)
+dans un autre cas il est spécifié nulle part.
+en fait de toute façon un forall b . b -> a qui vient pas d'une typeclass ça peut pas utiliser b
+par opposition a un forall b . b -> a
+ouais alors ghc a l'air d'accepter. mais moi je pense pas.
+ok donc confirmation que ghc n'accepte pas ça.
+doooooonc est ce que tu vas vraiment partir sur la strat de dire je regarde si y a un forall d'une variable a l'interieur ?
+nn y a sans doute un autre moyen.
+je sais que si la fonction est créée la c'est que ?
+ok go, on se concentre.
+j'ai un forall b . b -> m ? Non
+j'ai une fonction x -> y -> x
+j'ai eu une unification a un moment pour avoir x : m et y : b
+donc j'ai 
+b -> m. et impossible de savoir d'ou ils viennent.
+ok donc nul.
+d'un autre côté si j'ai pas spécifié m dans le type final c'est que j'en ai pas besoin non ?
+ça c'est risqué mais on peut le tenter ptet.
+de toute façon je vois pas comment je peux construire (ah preuve pas exfalsoquodlibet) un b -> m qui marche pas pour tout m
+ah déjà l'écrire c'est chaud.
+je serai niqué si on pouvait écrire une fonction.
+de b vers m
+sans infos sur m (donc forall m)
+qui est pas forall m.
+ok on peut pas c'est évident.
+maintenant la question c'est comment je sais si m va apparaitre dans le type final ?
+en fait je le sais ptet déjà a ce moment la non ?
+
+ici j'ai
+j o
+j m
+si il apparaissait j'aurais ?
+j o
+j m
+quand même 
+mais j'ai quand même un type final quelque part.
+si j'essaye de le récupérer ça dit quoi ?
+
+unify : 'c -> Maybe 'd should unify with : 'd -> Maybe 'd
+ 'a should unify with : 'c -> 'f
+ 'e -> Maybe 'e should unify with : 'f -> 'g
+ 'i -> Maybe 'j should unify with : 'j -> Maybe 'j
+ 'k -> 'l -> 'k should unify with : Maybe 'm -> 'n
+ 'a should unify with : 'i -> 'o
+ 'n should unify with : 'o -> 'p
