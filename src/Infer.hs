@@ -426,13 +426,15 @@ inferPat loc (PatternT pat exp) = do
     return (Spec cand tp (getTp tret) Set.empty, PatternT pat tret)
 
 makeCandidate :: Type -> InferCons Type
-makeCandidate = \case
-  TCon t _ -> fresh
-  TVar t -> return (TVar t)
-  TApp a b -> do
-    a' <- makeCandidate a
-    b' <- makeCandidate b
-    return $ TApp a' b'
+makeCandidate = makeCandidate' True
+  where 
+    makeCandidate' isLeft = \case
+      tp@(TCon t _) -> if isLeft then return tp else fresh
+      TVar t -> return (TVar t)
+      TApp a b -> do
+        a' <- makeCandidate' isLeft a
+        b' <- makeCandidate' False b
+        return $ TApp a' b'
 
   
 -- see the doc for the error message, basicaly it verifies that the same variable is not binded to multiple types
@@ -628,10 +630,13 @@ checkGeneralization t t' = do
 mergeSpecs :: [Specialization] -> Unifying (ArrowType, Subst)
 mergeSpecs specs = do
   (arg, sub) <- unifyAll (candidate <$> specs)
-  let specs' = apply sub specs
+  let specs' = specs
   mapM_ (checkGeneralization arg) (argType <$> specs')
   -- type de retour, [cases] -> liste de aaaah je peux map le toList ptet ?
   let colsArgs = treeToList (getMinimalType (Columns arg (argType <$> specs')))
+  tell $ "first step : " ++ pretty (Columns arg (argType <$> specs')) ++ "\n"
+  tell $ "second step : " ++ pretty (getMinimalType (Columns arg (argType <$> specs'))) ++ "\n"
+  tell $ "first step : " ++ prettyL (treeToList (getMinimalType (Columns arg (argType <$> specs')))) ++ "\n"
   tell $ "args : " ++ pretty arg ++ "\n"
   tell $ "first : " ++ pretty (Columns arg (argType <$> specs')) ++ "\n"
   tell $ "snd : " ++ pretty (asTree <$> Columns arg (argType <$> specs')) ++ "\n"

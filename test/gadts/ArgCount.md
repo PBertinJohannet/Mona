@@ -2,14 +2,23 @@
 
 When the constructors have different argument counts it should also work.
 This is especially tricky when constructors have zero arguments or when variables are unused.
-Here is a list of examples using this type : 
+Here is a list of examples using these types : 
 ```
+
+  
+data Prod a b c = 
+  | P = a -> b -> c -> Prod a b c;
 
 data Maybe a =
   | Both = a -> a -> Maybe a
   | Just = a -> Maybe a
   | Nothing = Maybe a;
   
+let snd a = case a of  
+  (P a b c) -> b,
+  (P a b c) -> b,
+  (P a b c) -> b;
+
 let main = printInt 4;
 ```
 
@@ -18,10 +27,53 @@ let main = printInt 4;
 infering correct type for the function arguments.
 
 ```
+sig correct = forall a . Maybe a -> Maybe a -> Maybe a;
+let correct f v = case v of
+  (Both j k) -> f,
+  (Just j) -> Just j;
+```
+>>>compiled successfully
+
+
+## Same type than outside case, twice
+
+infering correct type for the function arguments.
+
+```
+sig correct = forall a . Maybe a -> Maybe a -> Maybe a;
 let correct f v = case v of
   (Both j k) -> f,
   (Just j) -> Just j,
   (Nothing) -> f;
+```
+>>>compiled successfully
+
+## Same type than outside case, twice but in args
+
+infering correct type for the function arguments.
+
+```
+let const a b = a;
+
+sig correct = forall a . Maybe a -> Maybe a -> a;
+let correct f v = case v of
+  (Both j k) -> const f j,
+  (Just j) -> const j f,
+  (Nothing) -> f;
+```
+>>>compiled successfully
+
+
+## Same type than outside case, twice but different
+
+infering correct type for the function arguments.
+
+```
+sig correct = forall a . Maybe a -> Maybe a -> Maybe a -> Maybe a;
+let correct f g v = case v of
+  (Both j k) -> f,
+  (Just j) -> Just j,
+  (Nothing) -> g;
 ```
 >>>compiled successfully
 
@@ -31,7 +83,8 @@ let correct f v = case v of
 Basic identity.
 
 ```
-let id f v = case v of
+sig id = forall a . Maybe a -> Maybe a;
+let id v = case v of
   (Both j k) -> Both j k,
   (Just j) -> Just j,
   (Nothing) -> Nothing;
@@ -44,6 +97,7 @@ let id f v = case v of
 the i variable of the last branch is not used.
 
 ```  
+sig id = forall a . Maybe a -> Maybe a;
 let id v = case v of
   (Nothing) -> Nothing,
   (Just i) -> Just i,
@@ -55,6 +109,7 @@ let id v = case v of
 
 when starting with the easy branch, we also have a good result (the unification would prefer keeping the type of the last branch.)
 ```
+sig correct = forall a b . (a -> b) -> Maybe a -> Maybe b;
 let fmap f v = case v of
   (Just i) -> Just (f i),
   (Nothing) -> Nothing;
@@ -66,6 +121,7 @@ let fmap f v = case v of
 
 When there is only one branch, we still infer a correct type.
 ```
+sig correct = forall a b . (a -> b) -> Maybe a -> Maybe b;
 let id f v = case v of
   (Just i) -> Just (f i);
 ```
@@ -73,8 +129,9 @@ let id f v = case v of
 
 ## Both variables unused
 
-When both variables are unused and the first variable was modified we still infer correctly (pretty tricky this one).
+When both variables are unused and the first variable was modified we still infer correctly (was pretty tricky this one).
 ```
+sig correct = forall a b . (a -> b) -> Maybe a -> Maybe b;
 let id f v = case v of
   (Just i) -> Just (f i),
   (Both i j) -> Nothing;
@@ -88,43 +145,78 @@ The fact that the type variable of the nothing is unused could be hidden by the 
 ```
 let const a b = a;
 
+sig correct = forall a b . (a -> b) -> Maybe a -> Maybe b;
 let id f v = case v of
   (Just i) -> Just (f i),
   (Just i) -> const Nothing (f i);
 ```
 >>>compiled successfully
 
-## Do not generalize too easly
+
+## Generalize correctly
 
 This one should keep the second argument. 
 
 ```
-a b c -> b
-a b c -> b
-a b c -> b
+sig correct = Int;
+let x = (snd (P (Just 1) (2) (Just 1))) + 2;
 ```
 >>>compiled successfully
 
-## oh oh oh
-completer quand je le comprend. 
+## But not too early
+
+And the first should be different.
 ```
-a b c -> f b (f :: b -> m)
-d e f -> d
+let x = (snd (P (1) (Just 2) (Just 1))) + 2;
+```
+>>>TypeError : Cannot unify : Int with Maybe Int at fileName 20:1 at fileName 20:41
+
+
+## Unifying by function
+
+Here the first type must unify with the result of f applied to the second.
+```
+sig secondToFirst = forall a b c d . (b -> b) -> Prod a b c -> a;  
+let secondToFirst f x = case x of
+  (P a b c) -> f b,
+  (P d e f) -> d;
 ```
 >>>compiled successfully
 
-## brutal
-pareil que le précédent.
+## Unifying by local function
+
+Same than preceding but the function is created inside.
 ```
-let f = const(:: a -> b -> a) m
-a b c -> f b (f :: b -> m)
-d e f -> d
+let secondToFirst x = (\f -> case x of 
+  (P a b c) -> f Nothing b,
+  (P d e f) -> d) (\a b -> b);
 ```
 >>>compiled successfully
 
-## aussi
-le faire dans un autre fichier celui la ptet.
+## Catch all
+Dont forget this one.
 ```
-voir si on peut faire apparaitre un type dans d'autres réconciliations et quand meme vouloir qu'il soit refinable.
+let catchALl x = case x of
+  (Just i) -> Both i i,
+  b -> b;
+
+```
+>>>compiled successfully
+
+## Just to wrap it up.
+
+Combination of many of the above.
+
+```
+let secondToFirst x = 
+  (\f -> case x of 
+    (P (Just a) b c) -> f (Both a a),
+    (P a b c) -> case a of 
+      (Just i) -> f (Nothing),
+      b -> f b)
+  (\v -> case v of
+      (Nothing) -> Nothing,
+      (Just i) -> Just i,
+      (Both j i) -> Just j);
 ```
 >>>compiled successfully

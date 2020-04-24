@@ -15,10 +15,9 @@ data Expr a =
 ## This should be of the correct type 
 
 ```
+
 let interpret f e = case e of
   (Lift a) -> a,
-  (Tup a b) -> P (f a) (f b);
-
-let interpretFull = fix intepret;
+  (Tup a b) -> P (a) (b);
 ```
 >>> compiled successfuly

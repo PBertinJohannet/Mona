@@ -2933,7 +2933,7 @@ mais comment je le reconnais.
 psk si j'accepte n'imp c'est pareil qu'en haut, je dis, ouais ben le type de retour c'est celui de a.
 en fait faudrait que l'un n'apparaisse pas dans l'autre.
 genre si j'ai 
-a b c -> b, et que b n'apparait nulle part dans le truc ça devrait être bon non ?
+a b c -> m, et que b n'apparait nulle part dans le truc ça devrait être bon non ?
 quoi que même pas psk si il vient d'une fonction qui dépend de a.
 meh.
 genre 
@@ -3116,3 +3116,87 @@ ah wait
 
 si j'ai unifié avec k a de toute façon c'est que oui bref.
 je me souviens même plus de l'algo de base.
+
+la j'ai encore un tout nouveau problème.
+si j'ai un truc qui apparait que dans le a demain gros !
+j'ai un truc dans l'entrée. je peux le refiner non ?
+pourquoi je pouvais pas tout a l'heure.
+psk si en fait si ça se trouve je pouvais.
+
+maintenant j'ai un problème psk j'unifie les types a gauche.
+
+quand j'ai unifié
+w8 dabord les types.
+
+bon faut se rendre a l'evidence l'algo est cassé de partout.
+on va réparer dans l'ordre jusqu'a desesperer.
+
+bon la question c'est quand et ce que je veux pouvoir unifier ces trucs
+
+genre si j'ai
+a -> f
+a -> Maybe j
+a -> f
+ici je veux que ça marche non ?
+ah ptet que comme l'autre je veux tester d'abord sans puis après avec ?
+
+en gros quand j'ai
+a b -> b
+a b -> b
+a b -> b
+le b avec le a c'est pas possible.
+par contre le f avec le Maybe ça le serait.
+en fait le problème c'était pas est ce que ça change le type de retour psk je veux pouvoir le changer j'imagine.
+le problème c'est quoi ?
+soit j'unifie trop vite ?
+ici 
+a b -> a
+a b -> b
+a b -> a
+j'ai deux solutions : 
+a a -> a
+a a -> a
+en fait l'unification entre deux elle se fait déjà toute seule normalement.
+c'est ptet juste ça qui marchait pas ?
+ok et la j'ai : 
+f -> b
+i -> i
+je peux les reconcilier en niquant tout le reste.
+en fait c'est ça c'est que je veux tester toutes les 
+substitutions possibles ? non même pas.
+bon je veux avoir le comportement suivant quand j'ai pas de gadts. 
+j'unifie a gauche et a droite.
+quand j'ai pas de gadts. toutes les variables des candidats sont settées
+sauf celles qui sont utilisées nul part ou qui ont pas eu de chance.
+en vrai c'est quoi la diff vraiment.
+
+dans un cas j'unifie, dans l'autre pas déjà.
+la j'aurais tendence à dire j'unifie avec f et d en mode normal.
+pk je voulais pas déjà ? 
+psk si j'ai pas la même structure ?
+ou si j'ai 
+Int a -> b
+a b -> b
+et que le premier était demandé comme Int.
+je veux comme type : a -> a
+et que ça marche pour 
+Int
+a
+Char
+
+ok premiere différence.
+mais celle la elle est résolue non ?
+ensuite c'est quoi le problème ?
+si j'ai
+f -> m
+j -> j
+ok la question maintenant, dans le type de retour, quand est-ce que je veux les unifier.
+oooh wait, dans l'autre sens j'aurais le cancer ! 
+
+aaah attends 
+si j'ai 
+a b -> b
+a c -> a
+a c -> b
+je fais quoi ?
+j'unifie b et a et je renvoie le premier.

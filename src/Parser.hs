@@ -87,11 +87,13 @@ manyOne p = do
 
 -- returns the transformed function.
 pat :: Parser Pattern
-pat = patternId <|> patternParen
+pat = patternParen <|> patternId
 
 patternId :: Parser Pattern
 patternId = do
+  spaces
   ident <- identifier
+  spaces
   return $ Raw ident
 
 patternParen :: Parser Pattern
@@ -210,7 +212,9 @@ caseof = mkCF $ do
 
 caseline :: Parser (PatternT Expr)
 caseline = do
+  spaces
   p <- pat
+  spaces
   reservedOp "->"
   body <- expr
   return $ PatternT p body

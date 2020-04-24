@@ -1,12 +1,17 @@
 
+
+data Prod a b c = 
+  | P = a -> b -> c -> Prod a b c;
+
 data Maybe a =
   | Both = a -> a -> Maybe a
   | Just = a -> Maybe a
   | Nothing = Maybe a;
   
+
+sig correct = forall a . Maybe a -> Maybe a -> Maybe a;
 let correct f v = case v of
-  (Both j k) -> f,
   (Just j) -> Just j,
-  (Nothing) -> f;
+  (Both j k) -> f;
 
 let main = printInt 4;
