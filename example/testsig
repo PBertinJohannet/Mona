@@ -3200,3 +3200,184 @@ a c -> a
 a c -> b
 je fais quoi ?
 j'unifie b et a et je renvoie le premier.
+
+bon on l'explique bien pour le relire correctement :
+
+j'ai le type d'entrée général TEG.
+j'ai le type d'entrée de la branche i : TEI
+j'ai le type de sortie de la branche i : TSI
+et j'ai le type de sortie général : TSG
+niveau substitution j'ai : 
+la substitution donnée par le constructeur : h
+la substitution donnée par la branche : f
+la transformation donnée par la branche : u
+la transformation générale : g
+j'ai aussi du coup le type avant f, type d'entrée avant unification. 
+On va dire type du constructeur d'entrée : TEC
+
+ok on a donc : 
+TEG -g-> TSG
+TEG -h-> TEC -f-> TEI -u-> TSI
+on veut que 
+appliquer g a TEC donne TSI
+donc en gros on veut avoir les diagrames : 
+TEG -g-> TSG
+TEC -g-> TSI
+u . f = g en gros (non : lire dessous)
+/!\ le problème (yes) c'est que /!\
+f s'applique sur un sous type de TEG, après qu'il y ait eu h
+du coup u . f s'applique a un sous type de g
+donc c'est pas 
+u . f < g 
+mais 
+u $ f $ TEC < g TEC
+ok et du coup pourquoi la subst inverse ?
+la en l'occurence comment je trouve g ?
+je peux pas unifier u . f entre eux.
+ ==> si y avait qu'une seule branche je pourrais juste unifier u et f et dire que oui ça marche
+ mais la u et f de différentes branches vont pas être compatibles psk ils travaillent pas sur les même types.
+ ok j'ai envie de bien l'écrire.
+donc u et f ils vont de TEC différents vers un TSI différent.
+on veut une fonction i telle que : 
+si u $ f $ TEC =  
+ok stoup
+la base du truc c'est que j'avais spécialisé un truc avec h pour pouvoir l'utiliser.
+et je veux m'assurer que l'unification est bonne.
+en fait je veux qu'en utilisant h sur TSG on trouve TSI non ?
+alors on trouve plus ou moins ?
+si j'ai 
+a -> Maybe a et que h : a -> Int alors c'est bon.
+mais si j'ai a -> Maybe Int et h : a -> Int
+déjà h c'est toujours une spécialisation.
+ok l'objectif de base c'est compiler et trouver le type le plus spécifique 
+nan le plus spécifique c'était parce que il avait une autre propriété.
+je veux un type tel que tout ce qui rentre est ok : 
+je crée des animaux -> je crée un cheval OK
+je crée des chevaux -> je crée un animal NN
+
+je nouris des chevaux -> machine a nourir des animaux OK
+je nouris des animaux -> machine a nourir des chevaux NN
+
+Int -> Cheval peut remplacer Int -> Animal
+Cheval -> Int peut être remplacée par Animal -> Int
+
+ok dans mon cas on est qui.
+TSI remplace TSG.
+et TEI remplace TEG ? oui mais celui la il est garanti je crois non ?
+ah c'est plutôt TEG remplace TSG
+genre si j'ai  '-> [a]' et la branche est '-> [Int]' on est bons ?
+non on est pas bons. et l'inverse non plus.
+ok pour le retour déjà y a un truc qui va pas.
+en vrai normal on veut pas de a qui soit seul non ?
+si j'ai un case avec 
+ -> [0, 2]
+ -> absurd
+ouais deja y a le absurd psk sinon je peux pas sortir un a de mon chapeau
+mais je peux avoir a qui sort d'autre part.
+en tout cas si j'ai un Int qui vient pas du constructeur ça int de partout.
+on peut continuer avec cet ex: 
+|||||||||||||||||||||||||||||||||||WHOU|||||||||||||||||||||||||||||||||||
+TSG = [a]
+TSI = [Int]
+on sait qu'il y a au moins a -> Int dans h
+car on veut g $ h $ TEG = TSI
+
+h apporte la preuve de certaines spécialisations
+si le code est valide pour TSG et que h $ TSG = TSI alors le code est valide pour TSI
+les preuves apportées par h ne peuvent pas invalider les code 
+par invalider on veut dire quoi ? tous les types ont été remplacés donc np non ?
+ptet pour les typeclasses y aura des blèmes ? mais même pas sur ça va se résoudre aussi (plus tard)
+
+Ok mtn je veux trouver quoi ? TSG ou g ?
+en fait pareil vu qu'il y en a qu'un.
+j'ai mon schèma
+
+une unification c'est toujours une spécialisation.
+je veux h' qui me donne tous les TCI (candidats branche i) tels que : 
+h $ TCI = TEI
+ok pour la spécialisation on dit quoi ?
+si j'ai 
+Int a
+et 
+Int Bool
+bah en vrai entre eux ils fonctionnent j'imagine ?
+ah non psk h dit a -> Int. hmmmm
+donc j'applique a et je vérifie que h est toujours bon ? 
+nn psk si Int Bool est valide alors ils est donné par h' et sera bon autre part.
+ok mais du coup h' est fat ?
+psk tous les sous types de a c'est fat.
+ok donc on revoit h'
+si j'ai h : a -> Int
+et TSI = Int Int b
+j'ai a a b, Int a b, a Int b et Int Int b
+je peux unifier avec Bool Bool Bool mais h va pas passer.
+ouais au pire je fais ça et dans la majorité des cas ça marche rapidement psk ça vire masse candidats a chaque fois.
+du coup comment je définis h' ? 
+h' donne pas tous les types qui donnent h en retour.
+tiens pourquoi j'ai besoin du Int au final ?
+si il reste Int a b et Int Int b je choisis quoi ?
+je sens que je comprends plus rien. ça s'en va T.T
+si j'ai CII et CIA j'ai un Int qui vient du constructeur et un qui vient de la fonction.
+du coup comment je fais pour assurer ça ?
+mais osef du Int en fait le prooblème c'est les tvars que j'output avec h, elles doivent être protégées ou Int.
+anyway osef de ça psk elles peuvent se répandre etc et ça devient le bordel.
+
+<========================== fonction pour recup les types possibles ==========================>
+donc je donne pour chaque variable les valeurs qu'elle peut prendre.
+ensuite pour chaque couple de branche je fais le produit et j'unifie (toutes celles qui fonctionnent)
+Ensuite je filtre celles qui unifient avec leur branche.
+et ainsi de suite.
+ensuite je filtre les valeurs pour lesquelles le case serait incomplet 
+ => pour toutes les branches non utilisées, le type est incompatible.
+et la j'ai sorti tous les types 
+</========================== fonction pour recup les types possibles ==========================>
+
+ensuite je poursuis tout jusqu'en haut de la fonction, je dégage toutes les versions (en les ajoutant aux erreurs si y faut)
+ensuite je vérifie si
+ - signature compatible => on la prend
+ - pas de sig mais qu'une possibilité => on la prend
+ - pas de possibilités => erreur
+ - pas de sig compatible => erreur
+
+et ça devrait être bon
+
+Ok maintenant comment je fais quand j'en ai plusieurs.
+est ce que je peux dire que vu que j'ai sortie toutes les valeurs telles que le code est valide, alors je peux juste les fusionner ? oui je pense.
+Ok ensuite est-ce que je sors les possibilités au top-level ? oui c'est bcp plus simple.
+Don ça devrait suffire pour l'instant.
+
+donc si j'ai un sous pattern, pour passer dedans c'est qu'il est forcément valide 
+
+=================================================================================
+============================ TENTATIVE D'EXPLICATION ============================
+=================================================================================
+
+j'ai le type d'entrée général TEG.
+j'ai le type du constructeur d'entrée TEC
+j'ai le type d'entrée de la branche i : TEI
+j'ai le type de sortie de la branche i : TSI
+et j'ai le type de sortie général : TSG
+niveau substitution j'ai : 
+la substitution donnée par le constructeur : h
+la substitution donnée par la branche : f
+la transformation donnée par la branche : u
+la transformation générale : g
+
+on a donc : 
+TEG -g-> TSG
+TEG -h-> TEC -f-> TEI -u-> TSI
+h apporte la preuve de certaines spécialisations
+on a aussi
+TEG -g-> TSG -h-> TSI
+car si le code est valide pour TSG et que h $ TSG = TSI alors le code est valide pour TSI
+car h n'est pas au même niveau que les autres flèches, c'est une preuve pas un code de l'user.
+
+
+
+=================================================================================
+=================================== A tester ====================================
+=================================================================================
+
+
+plusieurs depth de patterns nestés
+plusieurs fois le meme pattern (CA (CI i j) et CA (CB k l)) pour la complétion.

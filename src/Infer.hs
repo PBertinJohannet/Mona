@@ -43,7 +43,7 @@ quand je renvoie le allReplace, j'enlève toutes les variables potetielles comme
 
 newtype Union = Union (Type, Type, Location) deriving Show;
 
-data Specialization = Spec{candidate :: Type, argType :: Type, retType :: Type, eqs :: Set.Set TVar};
+data Specialization = Spec{candidate :: Type, argType :: Type, retType :: Type, eqs :: Set.Set TVar, cand' :: Type};
 data Reconcile = Reconcile ArrowType [Specialization] Location
 type Constraints = ([Union], [(Pred, Location)], [Reconcile], [FreeVars])
 type FreeVars = TVar;
@@ -54,7 +54,7 @@ instance Pretty Union where
 instance Pretty Reconcile where
   pretty (Reconcile c tps _) = prettyArr c ++ " rec with (" ++ mconcat (intersperse "," (prettySpec <$> tps)) ++ ")"
     where 
-      prettySpec (Spec cand arg ret _) = "(" ++ pretty cand ++ " @ " ++ pretty arg ++ " -> " ++ pretty ret ++ ")"
+      prettySpec (Spec cand arg ret _ pat) = "(" ++ pretty cand ++ " @ " ++ pretty arg ++ " -> " ++ pretty ret ++ " pat : [" ++ pretty pat ++ "])"
       prettyArr (ArrowType a b) = pretty a ++ " -> " ++ pretty b
 
 instance Pretty (Pred, Location) where
@@ -78,7 +78,7 @@ instance Substituable (NonEmpty Type) where
   ftv _ = Set.empty
 
 instance Substituable Specialization where
-  apply s (Spec cand arg ret eqs) = Spec (apply s cand) (apply s arg) (apply s ret) (eqs `Set.union` eqs')
+  apply s (Spec cand arg ret eqs cand') = Spec (apply s cand) (apply s arg) (apply s ret) (eqs `Set.union` eqs') (apply s cand')
     where eqs' = Set.fromList $ catMaybes (getEqConstraint cand <$> Map.toList s) 
   ftv = const Set.empty
 
@@ -360,12 +360,12 @@ inferAlgM = \case
       -- patType = sourceType -> ret
       tell $ reconcilie sourceType ret trets l
 
-      pats' <- return (fmap return <$> pats)
+      let pats' = fmap return <$> pats
       retExpr <- sequence $ Case sourceT pats'
       return (In $ (l, nullSubst, Qual [] ret) :< retExpr)
 
     (l, Lam pat) -> do
-      (Spec _ tin tout _, pat') <- inferPat l pat
+      (Spec _ tin tout _ _, pat') <- inferPat l pat
       return $ In ((l, nullSubst, Qual [] (tin `mkArr` tout)) :< Lam pat')
 
     (l, k) -> do
@@ -411,19 +411,19 @@ decomposePattern loc (Pattern name vars) = do
     let (subTypes, varsTypes) = unzip subPats
     tname <- typeOf name
     let tret = getReturn tname
-    tell (union loc (foldr mkArr tret subTypes, tname))
+    tell (loc `union` (foldr mkArr tret subTypes, tname))
     return (tret, mconcat varsTypes)
 decomposePattern loc (Raw name) = do
     tret <- freshType
     return (tret, return (name, tret))
 
-inferPat :: Location -> PatternT (InferCons TExpr) -> InferCons (Specialization, (PatternT TExpr))
+inferPat :: Location -> PatternT (InferCons TExpr) -> InferCons (Specialization, PatternT TExpr)
 inferPat loc (PatternT pat exp) = do
   -- tp = in type, eg: Bool
     (tp, vars) <- decomposePattern loc pat
     tret <- foldl (flip inEnv) exp vars
     cand <- makeCandidate tp
-    return (Spec cand tp (getTp tret) Set.empty, PatternT pat tret)
+    return (Spec cand tp (getTp tret) Set.empty tp, PatternT pat tret)
 
 makeCandidate :: Type -> InferCons Type
 makeCandidate = makeCandidate' True
@@ -524,7 +524,7 @@ isForall :: Type -> Reconcile -> TVar -> Bool
 isForall base (Reconcile _ specs _) tv = (tv `appearsInType` base + sum (countAppearances tv <$> specs)) <= 1
 
 countAppearances :: TVar -> Specialization -> Int
-countAppearances tv (Spec _ arg ret _) = tv `appearsInType` arg + tv `appearsInType` ret 
+countAppearances tv (Spec _ arg ret _ p) = tv `appearsInType` arg + tv `appearsInType` ret 
 
 appearsInType :: TVar -> Type -> Int
 appearsInType tv tp = fromEnum (tv `Set.member` ftv tp)  

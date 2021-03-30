@@ -36,10 +36,10 @@ lamPat :: Pattern -> a -> ExprF a
 lamPat p = Lam . PatternT p
 
 instance Pretty a => Pretty (PatternT a) where
-  pretty (PatternT pat a) = "(" ++ pretty pat ++ ")" ++ "->" ++ pretty a
+  pretty (PatternT pat a) = "(" ++ pretty pat ++ ")" -- ++ "->" ++ pretty a
 
 instance Pretty Pattern where
-  pretty (Pattern a ps) = "(" ++ a ++ prettyL ps ++ ")"
+  pretty (Pattern a ps) = "(" ++ a ++ " " ++ prettyL ps ++ ")"
   pretty (Raw n) = n
 
 type Expr = Cofree ExprF Location; -- expression with position information (after the parsing)

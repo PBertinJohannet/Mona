@@ -1,17 +1,23 @@
 
+data Bool =
+  | True = Bool
+  | False = Bool;
 
-data Prod a b c = 
-  | P = a -> b -> c -> Prod a b c;
+data Prod a b = 
+  | P = a -> b -> Prod a b;
 
-data Maybe a =
-  | Both = a -> a -> Maybe a
-  | Just = a -> Maybe a
-  | Nothing = Maybe a;
-  
 
-sig correct = forall a . Maybe a -> Maybe a -> Maybe a;
-let correct f v = case v of
-  (Just j) -> Just j,
-  (Both j k) -> f;
+data D a b = 
+  | CI = Int -> Int -> D Int Int
+  | CB = Bool -> Bool -> D Bool Bool
+  | CA = D Int Int -> a -> D (D Int Int)a;
+
+
+let correct a = case a of
+  (CI i j) -> P i j,
+  (CA (CI i j) k) -> P (CI 1 2) 3,
+  (CB b j) -> P b 0;
+
+let c = correct (CI 0 1);
 
 let main = printInt 4;

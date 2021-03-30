@@ -268,7 +268,9 @@ instance Pretty Type where
       a -> pretty a ++ " -> " ++ pretty b
     TApp (TCon "List" _) a -> "[" ++ pretty a ++ "]"
     TApp a b@(TApp (TApp (TCon "(->)" _) _) _) -> pretty a ++ " (" ++ pretty b ++ ")"
-    TApp a b -> pretty a ++ " " ++ pretty b
+    TApp a b@(TCon _ _) -> pretty a ++ " " ++ pretty b
+    TApp a b@(TVar _) -> pretty a ++ " " ++ pretty b
+    TApp a b -> pretty a ++ " " ++ "(" ++ pretty b ++ ")"
 
 instance Pretty (TVar, Type) where
   pretty (a, b) = "(" ++ pretty a ++ " : " ++ pretty b ++ ")"

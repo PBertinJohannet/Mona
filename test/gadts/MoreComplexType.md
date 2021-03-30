@@ -53,7 +53,7 @@ let correct a = case a of
 
 ## Should not work
 
-When it has nothing to do with the input it should not
+When it has nothing to do with neither the input or the other output it should not
 ```
 
 let fail a = case a of
@@ -61,3 +61,27 @@ let fail a = case a of
     (RB b) -> 1;
 ``` 
 >>>TypeError : could not generalize the types : Bool Int at fileName 16:1 at fileName 16:14
+
+## Should refuse
+
+refuse coz subpattern C a b does not cover all type possibles (a != C a b)
+```
+data Bool =
+  | True = Bool
+  | False = Bool;
+
+data Prod a b = 
+  | P = a -> b -> Prod a b;
+
+data D a b = 
+  | CI = Int -> Int -> D Int Int
+  | CB = Bool -> Bool -> D Bool Bool
+  | CA = a -> b -> D a b
+
+let correct a = case a of
+  (CI i j) -> P i j,
+  (CA (CI i j) k) -> P (CI 1 2) 3,
+  (CA (CB i j) k) -> P (CB True False) 3,
+  (CB b j) -> P b 0;
+
+```

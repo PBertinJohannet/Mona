@@ -244,12 +244,12 @@ mychainr p op = do {a <- p; rest a}
 mychainl :: Parser a -> Parser (a -> a -> a) -> Parser a
 mychainl p = mychainlfirst p id
 
-
+-- type arr app
 mychainrl :: Parser a -> Parser (a -> a -> a) -> Parser (a -> a -> a) -> Parser a
 mychainrl p opr opl = do {a <- p; rest a}
   where
     rest a = more a <|> return a
-    more a = left a <|> right a
+    more a = right a <|> left a
     left a = do
       f <- opl
       b <- p
@@ -294,8 +294,7 @@ inSpaces a = do
 parsePred :: Parser Pred
 parsePred = do
   cls <- identifier
-  tp <- parseType
-  return $ IsIn cls tp
+  IsIn cls <$> parseType
 
 parseType :: Parser Type
 parseType = mychainrl ((tvar <$> identifier) <|> inParen parseType) parseArrow parseApp
@@ -308,7 +307,9 @@ inParen p = do
   return r
 
 parseApp :: Parser (Type -> Type -> Type)
-parseApp = return TApp
+parseApp = do
+  spaces
+  return TApp
 
 parseArrow :: Parser (Type -> Type -> Type)
 parseArrow = do
