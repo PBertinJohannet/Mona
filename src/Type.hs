@@ -17,6 +17,7 @@ import qualified Data.Set as Set
 import Control.Monad
 import RecursionSchemes
 import Control.Applicative 
+import Data.Maybe (isNothing, isJust, catMaybes, fromMaybe)
 
 data TVar = TV{name :: String, kind :: Kind}
   deriving (Show, Eq, Ord)
@@ -132,7 +133,7 @@ instance Replacable Type where
   replaceType _ s = s
 
 instance Pretty Replacement where
-  pretty (a, b) = " Replace " ++ pretty a ++ " by  " ++ pretty b
+  pretty (a, b) = "(" ++ pretty a ++ ", " ++ pretty b ++ ")"
 
 replaceAll :: Replacable a => Replacements -> a -> a
 replaceAll rep cons = foldr replaceType cons rep
@@ -195,18 +196,30 @@ asTree = \case
   TApp a b -> BTree (asTree a, asTree b)
   t -> Leaf t
 
+treeToType :: BTree Type -> Type
+treeToType = \case
+  BTree (a, b) -> TApp (treeToType a) (treeToType b)
+  (Leaf a) -> a
+
 treeToList :: BTree a -> [] a
 treeToList = foldr (:) []
 
-getMinimalType :: Traversable f => f Type -> BTree (f Type)
-getMinimalType tps = 
-  case traverse sep tps of
-    Just l -> BTree (getMinimalType `mapTuple` unzipF l)
-    Nothing -> Leaf tps 
+getSubStruct :: ([Maybe (Type, Type)] -> [(Type, Type)]) -> [Type] -> BTree ()
+getSubStruct f tps = 
+  case f (sep <$> tps) of
+    [] -> Leaf () 
+    l -> BTree (getSubStruct f `mapTuple` unzipF l)
   where
     sep = \case 
       TApp a b -> Just (a, b)
       _ -> Nothing
+
+getMinimalType :: [Type] -> BTree ()
+getMinimalType = getSubStruct (fromMaybe [] . sequence)
+
+getMaximalType :: [Type] -> BTree ()
+getMaximalType = getSubStruct catMaybes
+
 
 mapTuple :: (a -> b) -> (a, a) -> (b, b)
 mapTuple = join (***)
@@ -277,6 +290,11 @@ instance Pretty (TVar, Type) where
 
 instance Pretty (Type, TVar) where
   pretty (a, b) = "(" ++ pretty a ++ " : " ++ pretty b ++ ")"
+
+instance Pretty (Maybe (Type, Type)) where
+  pretty = show . \case
+    Just (a, b) -> Just (pretty a, pretty b)
+    Nothing -> Nothing 
 
 class ShowKind a where
   showKind :: a -> String

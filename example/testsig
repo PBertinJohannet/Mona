@@ -3347,6 +3347,11 @@ Ok ensuite est-ce que je sors les possibilités au top-level ? oui c'est bcp plu
 Don ça devrait suffire pour l'instant.
 
 donc si j'ai un sous pattern, pour passer dedans c'est qu'il est forcément valide 
+OK donc 3 types : 
+Le type de retour -> structure commune maximale.
+Le type candidat -> avant h.
+Le pattern -> après h.
+1. je prends la liste des types de retour, je la transpose, j'en fais un arbre a tvars.
 
 =================================================================================
 ============================ TENTATIVE D'EXPLICATION ============================
@@ -3373,7 +3378,6 @@ car si le code est valide pour TSG et que h $ TSG = TSI alors le code est valide
 car h n'est pas au même niveau que les autres flèches, c'est une preuve pas un code de l'user.
 
 
-
 =================================================================================
 =================================== A tester ====================================
 =================================================================================
@@ -3381,3 +3385,4 @@ car h n'est pas au même niveau que les autres flèches, c'est une preuve pas un
 
 plusieurs depth de patterns nestés
 plusieurs fois le meme pattern (CA (CI i j) et CA (CB k l)) pour la complétion.
+des substitutions qui créent de la structure dans des patterns qui n'en ont pas.

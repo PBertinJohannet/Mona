@@ -6,12 +6,10 @@ data Bool =
 data Prod a b = 
   | P = a -> b -> Prod a b;
 
-
 data D a b = 
   | CI = Int -> Int -> D Int Int
   | CB = Bool -> Bool -> D Bool Bool
-  | CA = D Int Int -> a -> D (D Int Int)a;
-
+  | CA = c b Int -> a -> D (c Int b)a;
 
 let correct a = case a of
   (CI i j) -> P i j,

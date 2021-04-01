@@ -147,7 +147,6 @@ instance Pretty TypeErrorV where
     ConstraintsNotMatching t -> "Infered constraints not found in definition : " ++ prettyL t
 
 type ExceptLog a = ExceptT TypeError (Writer String) a;
-type Reconciling a = StateT InferState (ExceptT TypeError (Writer String)) a;
 
 type Infer = ReaderT Env (StateT InferState (Except TypeError))
 type InferCons = WriterT Constraints Infer
@@ -160,10 +159,7 @@ initInfer :: InferState
 initInfer = InferState { count = 0 }
 
 asSolve :: Unifying a -> Solve a
-asSolve a = ReaderT $ const (evalStateT a Set.empty) 
-
-asReconciling :: ExceptLog a -> Reconciling a
-asReconciling a = StateT $ \i -> fmap (,i) a
+asSolve a = ReaderT $ const (evalStateT a (Set.empty, 0)) 
 
 runSolve :: ClassEnv -> [(Pred, Location)] -> ExceptLog [Pred]
 runSolve env cs = runReaderT (solver cs) env
@@ -436,7 +432,6 @@ makeCandidate = makeCandidate' True
         b' <- makeCandidate' False b
         return $ TApp a' b'
 
-  
 -- see the doc for the error message, basicaly it verifies that the same variable is not binded to multiple types
 -- then it adds it to the given substition
 -- the two first args are only to report errors
@@ -467,7 +462,7 @@ checkPreds found expected =
           then return ()
           else throwErrorV $ ConstraintsNotMatching $ Set.toList remaining
 
-type Unifying a = StateT (Set.Set TVar) (ExceptT TypeError (Writer String)) a
+type Unifying a = StateT (Set.Set TVar, Int) (ExceptT TypeError (Writer String)) a
 type Unifier = (Subst, [Union])
 
 emptyUnifier :: Unifier
@@ -487,7 +482,13 @@ unifyMany (t1, t1') (t2, t2') = do
   return $ s2 `compose` s1
 
 runUnify :: [Union] -> [Reconcile] -> [FreeVars] -> Type -> ExceptLog Subst
-runUnify u r f t = evalStateT (unifyTop u r t) $ Set.fromList f
+runUnify u r f t = evalStateT (unifyTop u r t) $ (Set.fromList f, 0)
+
+data DType
+  = DVar TVar
+  | Or [DType]
+  | DCon String Kind
+  | DApp Type Type deriving (Show, Eq, Ord)
 
 unifyTop :: [Union] -> [Reconcile] -> Type -> Unifying Subst
 unifyTop [] [] _ = return nullSubst
@@ -495,11 +496,6 @@ unifyTop [] (r:rs) base = do
   tell " ========= start reconciling =========\n\n "
   tell $ "reconciling : \n" ++ pretty r ++ "\n"
   tell $ "after : " ++ prettyL rs ++ "\n"
-  f <- gets Set.toList
-  tell $ "bfore filtering : " ++ prettyL f ++ "\n"
-  modify $ Set.filter (isForall base r)
-  f <- gets Set.toList
-  tell $ "after filtering : " ++ prettyL f ++ "\n"
   sub <- runReconcile r
   tell $ "sus is then : " ++ pretty sub
   sub' <- unifyTop [] (apply sub rs) base
@@ -507,8 +503,6 @@ unifyTop [] (r:rs) base = do
   return (sub' `compose` sub)
 unifyTop unions recs t = do
   tell " ========= start solving =========\n\n "
-  dr <- Set.toAscList <$> get
-  tell $ "free are : " ++ prettyL dr
   tell $ "unify : " ++ prettyL unions ++ "\n"
   sub <- unionSolve (nullSubst, unions)
   tell $ "ty would be " ++ pretty (apply sub t)
@@ -596,15 +590,17 @@ unifyPred (IsIn i t) (IsIn i' t') | i == i' = unifies t t'
 transpose:: [[a]]->[[a]]
 transpose ([]:_) = []
 transpose x = (map Prelude.head x) : transpose (map tail x)
+
+getTVarTree :: [Type] -> Unifying Type
+getTVarTree = getMaximalType >>> traverse (fmap tvar . const freshRec) >>> fmap treeToType 
+
 -- TODO renommer les subst un peu partout
 runReconcile :: Reconcile -> Unifying Subst
 runReconcile (Reconcile (ArrowType from to) ts l) = do
   --tell $ "merge : " ++ prettyL ts ++ "\n"
-  (ArrowType from' to', sub) <- mergeSpecs ts `withErrorLoc` l
-  tell $ "\nfound : " ++ pretty from' ++ " -> " ++ pretty to' ++ "\n"
-  subst <- unifies from' from
-  subst' <- unifies (apply subst to) (apply subst to')
-  return (subst' `compose` subst `compose` sub) 
+  structs <- getTVarTree (retType <$> ts)
+  tell $ "structs compared : " ++ prettyL (retType <$> ts) ++ "\n"
+  throwError $ CompilerError (InfiniteType structs) [l]
 
 data Columns f a = Columns{cand :: a, cols :: f a} deriving (Show, Ord, Eq, Functor, Applicative, Foldable, Traversable)
 
@@ -627,65 +623,6 @@ checkGeneralization t t' = do
   unifies t t'
   return ()
 
-mergeSpecs :: [Specialization] -> Unifying (ArrowType, Subst)
-mergeSpecs specs = do
-  (arg, sub) <- unifyAll (candidate <$> specs)
-  let specs' = specs
-  mapM_ (checkGeneralization arg) (argType <$> specs')
-  -- type de retour, [cases] -> liste de aaaah je peux map le toList ptet ?
-  let colsArgs = treeToList (getMinimalType (Columns arg (argType <$> specs')))
-  tell $ "first step : " ++ pretty (Columns arg (argType <$> specs')) ++ "\n"
-  tell $ "second step : " ++ pretty (getMinimalType (Columns arg (argType <$> specs'))) ++ "\n"
-  tell $ "first step : " ++ prettyL (treeToList (getMinimalType (Columns arg (argType <$> specs')))) ++ "\n"
-  tell $ "args : " ++ pretty arg ++ "\n"
-  tell $ "first : " ++ pretty (Columns arg (argType <$> specs')) ++ "\n"
-  tell $ "snd : " ++ pretty (asTree <$> Columns arg (argType <$> specs')) ++ "\n"
-  let colsRets = treeToList (getMinimalType $ withCandidate (retType <$> specs'))
-  tell $ "args : " ++ prettyL colsArgs ++ "\n"
-  tell $ "rets : " ++ prettyL colsRets ++ "\n"
-  retSubst <- unifyRets colsArgs colsRets []
-  tell $ "replace final is : " ++ prettyL retSubst ++ "\n"
-  let retFinal = replaceAll retSubst $ Prelude.head (retType <$> specs')
-  tell $ "final ret is : " ++ pretty retFinal ++ "\n"
-  return (ArrowType arg retFinal, sub)
-
-unifyRets :: [Columns [] Type] -> [Columns [] Type] -> Replacements -> Unifying Replacements
-unifyRets values [] rep = return rep
-unifyRets values (x:xs) rep = do
-  newRep <- unifyRet values x
-  orderedRep <- reorderReplaces newRep
-  unifyRets values xs (rep ++ orderedRep)
-
-reorderReplaces :: Replacements -> Unifying Replacements
-reorderReplaces = mapM reorderReplace
-  where 
-    reorderReplace (a, b) = do
-      isFa <- removeIfFree a
-      isFb <- removeIfFree b
-      if isFb && (not isFa) then return (b, a) else return (a, b)
-
-removeIfFree :: Type -> Unifying Bool
-removeIfFree t@(TVar tv) = do
-  isF <- isFree t
-  if isF
-    then do
-      modify $ flip Set.difference (Set.singleton tv)
-      return True
-    else return False
-removeIfFree _ = return False
-
-isFree :: Type -> Unifying Bool
-isFree = \case
-  TVar tv -> gets $ Set.member tv
-  _ -> return False
-
--- TODO : verify that this is not fucked up sometimes. quoi que je 
-allEqsOrFree :: [Type] -> Unifying Bool
-allEqsOrFree xs = do
-  tell $ "filtered : " ++ prettyL xs ++ "\n"
-  xs' <- filterM (fmap not . isFree) xs
-  tell $ "filtered : " ++ prettyL xs' ++ "\n"
-  return $ Set.size (Set.fromList xs') <= 1
 
 allEqs :: [Type] -> Bool
 allEqs xs = Set.size (Set.fromList xs) <= 1
@@ -696,44 +633,6 @@ findCorrespondingCol (Columns retC retCols) (Columns argC argCols) =
     then Just (retC, argC) 
     else Nothing
 
--- TODO : clean up this mess
-unifyRet :: [Columns [] Type] -> Columns [] Type -> Unifying [(Type, Type)]
-unifyRet finals ret@(Columns cd retCols@(r:rs)) = do
-  let getCandAt x = cand (finals !! (x - 1))
-  let getArgsAt x = cols (finals !! (x - 1))
-  tell $ "ret Column "  ++ prettyL retCols ++ "\n"
-  tell $ "args Columns "  ++ prettyL finals ++ "\n"
-  --tell $ "same : " ++ show same ++ "\n"
-  if allEqs retCols
-    then do
-      modify $ flip Set.difference (Set.fromList $ retCols >>= Set.toList . ftv)
-      tell $ "unify all these " ++ prettyL ((r,) <$> rs) ++ "\n"
-      return ((r,) <$> rs)
-    else do
-      map <- asMap finals ret 
-      tell $ (show map) 
-      tell $ show (findInCombinations (length finals) (isValid map))
-      case findInCombinations (length finals) (isValid map) of
-        Just [(x:xs)] -> do
-          -- remove the actual values from the free list. not cand then !!
-          let newSubst = ((cd, cand (finals !! (x - 1))) : ((getCandAt x,) . getCandAt <$> xs))
-          tell $ "new subst tvars : " ++ prettyL (x:xs >>= (Set.toList . ftv . getArgsAt)) ++ "\n"
-          dr <- gets Set.toAscList
-          tell $ "free were : " ++ prettyL dr ++ "\n"
-          tell $ "args : " ++ prettyL (x:xs >>= (Set.toList . ftv . getArgsAt)) ++ "\n"
-          --modify $ flip Set.difference (Set.fromList (x:xs >>= (Set.toList . ftv . getArgsAt)))
-          dr <- gets Set.toAscList
-          tell $ "free became : " ++ prettyL dr ++ "\n"
-          tell $ "unify all these " ++ prettyL newSubst ++ "\n"
-          return newSubst
-        _ -> do
-          same <- allEqsOrFree retCols 
-          if same 
-            then do
-              tell $ "unify all these " ++ prettyL ((r,) <$> rs) ++ "\n"
-              return ((r,) <$> rs)
-            else throwErrorV $ CouldNotGeneralize retCols
-
 
 type Generalization = Map.Map Type TVar
 type TwoSided = (Generalization, Generalization)
@@ -742,32 +641,21 @@ instance Pretty TwoSided where
   pretty (a, b) = "(" ++ prettyL (Map.toList a)  ++ ", " ++ prettyL (Map.toList b) ++ ")"
 
 applyG :: Replacable a => Generalization -> a -> a
-applyG g a = replaceAll (Map.toList $ Map.map TVar g) a
+applyG g = replaceAll (Map.toList $ Map.map TVar g)
 
 applyBoth :: TwoSided -> ArrowType -> ArrowType
 applyBoth (a, b) (ArrowType a2 b2) = ArrowType (applyG a a2) (applyG b b2)
 
 mergeG :: [Generalization] -> Generalization
-mergeG gens = (foldr (flip Map.union) Map.empty) gens
+mergeG = foldr (flip Map.union) Map.empty
 
-freshRec :: Reconciling String
+freshRec :: Unifying String
 freshRec = do
-  s <- get
-  put InferState{count = count s + 1}
-  return ("'" ++ letters !! count s)
+  s <- gets snd
+  modify (second (+1))
+  return ("'" ++ letters !! s)
 
 type BitVec = [Bool]
-
-asBinary :: Columns [] Type -> Columns [] Type -> Unifying BitVec
-asBinary (Columns retC retCols) (Columns argC argCols) = 
-  cmpType `mapM` zip retCols argCols
-  where 
-    cmpType (a, b) = do
-      isFa <- isFree a
-      return (isFa || a == b)
-
-asMap :: [Columns [] Type] -> Columns [] Type -> Unifying (Map.Map Int BitVec)
-asMap finals ret = Map.fromList <$> zip [1..] <$> mapM (asBinary ret) finals
 
 bAnd :: BitVec -> BitVec -> BitVec
 bAnd a b = getZipList $ (||) <$> ZipList a <*> ZipList b
@@ -776,15 +664,15 @@ foldne :: (a -> a -> a) -> [a] -> a
 foldne f (x:xs) = foldr f x xs
 
 isValid :: Map.Map Int BitVec -> [Int] -> Bool
-isValid m = fmap (m Map.!) >>> foldne bAnd >>> all id
+isValid m = fmap (m Map.!) >>> foldne bAnd >>> and
 
 
 fac :: Int -> Int
-fac n = foldr (*) 1 [1..n]
+fac n = product [1..n]
 
 splitToNextSize :: Int -> Int -> [a] -> ([a], [a])
 splitToNextSize n k l = 
-  let next = (fac n) `div` (fac k * fac (n - k)) in splitAt next l
+  let next = fac n `div` (fac k * fac (n - k)) in splitAt next l
 
 combinations :: [Int] -> [[Int]]
 combinations start = take (2 ^ length start - 1) (combinations' $ fmap (:[]) start)
