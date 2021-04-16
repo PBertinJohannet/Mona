@@ -76,7 +76,7 @@ passes a = do
   tell $ "after sigs : " ++ pretty (varEnv env) ++ "\n"
   tell $ pretty env
   --tell $ pretty exprs
-  tell $ "infering : " ++ mconcat (intersperse "\n" (pretty <$> exprs))
+  --tell $ "infering : " ++ mconcat (intersperse "\n" (pretty <$> exprs))
   env <- withExceptT TypeError $ Infer.inferTop env exprs
   env <- withExceptT TypeError $ Infer.checkInstances env insts
   let (Envs _ _ _ TAst{compiled = comp}) = env

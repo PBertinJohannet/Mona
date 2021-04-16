@@ -3351,7 +3351,493 @@ OK donc 3 types :
 Le type de retour -> structure commune maximale.
 Le type candidat -> avant h.
 Le pattern -> après h.
-1. je prends la liste des types de retour, je la transpose, j'en fais un arbre a tvars.
+je fais un arbre a tvars avec mon candidat : 
+il faut que l'arbre soit la structure minimale et qu'il ait une option pour couper a chaque fois.
+au passage il faut unifier les types ? jsp jsp
+
+on exp h : 
+
+J'ai un h qui part du type général et me dit : 
+si je passe dans ce constructeur, alors j'ai construit le type suivant : 
+
+cas plus compliqué du sous type :
+si j'ai 
+CA :: a -> C a
+CM :: Maybe a -> C (Maybe a)
+quand j'ai 
+CA (True), je sais que je peux rentrer dans cette branche uniquement si j'ai C Bool
+peut être que dans le cas ou je monomorphise pas.
+genre par ex si j'ai une fonction qui prend Show a => a -> b et qui appelle juste show a
+nan je vois pas de probs. mais est-ce que je peux avoir le même bail ?
+oui a priori, mais c'est dégueu psk du coup j'ai masse types dispo.
+bon on se dit qu'on interdit ça mais sans trop savoir.
+OK donc j'ai trouvé,
+si j'écris : 
+case a of
+  True -> 1
+  1 -> 1
+  "" -> 1
+
+et que j'infère a -> Int, je dis que ça marche pour tous les a et je peux l'appeler sans probs sur des trucs qui vont rien renvoyer
+en fait c'est qu'elle est pas totale !
+CA :: a -> C a
+CI :: Int -> C Int
+si j'ai le pattern CI i, alors je sais que le type de cette branche est forcément CI Int
+si j'ai au contraire CA i, alors i n'est pas forcément un Int.
+
+mais je pourrais compiler cette branche uniquement dans le cas ou c'est un Int.
+sauf que si je monomorphise pas, j'ai aucun moyen de savoir si c'est un int ou autre chose vu que l'info n'est pas
+Aussi si j'ai créé CA True quelque part, il est forcément de type Int, donc je peux l'envoyer dans cette fonction
+mais il whaaat ?!!?!
+
+je peux pas créer un C Bool comme je pourrais créer un Bool
+si j'avais 
+case e of
+  1 -> 1
+  True -> 1
+je peux créer n'imp, genre un "" et le mettre dedans.
+
+Mais si j'ai
+case e of
+  CA i -> Int
+  CA True -> Int
+c'est pareil
+parce que je peux créer un CA "" et le lancer dedans.
+
+alors qu'un
+CI int
+CB Bool
+tout ce que je crée je le remplis. (a condition d'avoir le CA à côté)
+j'autorise CI Int parce que je peux juste regarder le constructeur et dire oui c'est un Int ?
+je peux pas créer CA Bool et CA String psk j'aurais CA a, et je peux mettre autre chose dedans.
+alors que CI Int je sors CA a et si c'est a différent de Int c'est que je l'ai créé via un autre constructeur.
+et cet autre constructeur sera géré par une autre branche.
+Donc on réécrit :
+
+OK pour les sous patterns.
+y a une notion de structure qui se rajoute.
+genre si mon constructeur prévoyait pas de structure et que j'en ai une je suis obligé de la forcer dans le type.
+OK et le trick que j'avais fait c'était supprimer les type imposés par le constructeur pour garder les autres.
+mais ça marche ptet même pas pour les sous types.
+psk CA (True) je suis sur qu'il le comptait en vrai.
+bref on a dit que la structure ajoutée c'est un truc ajouté, évidement.
+mais normal non ? bon on verra après.
+en fait non on voit pas après.
+si je prévoyais pas de structure et que j'en ai une j'en ai pas en fait, enfin si mais via le type que j'ai mis.
+ah oui mais avec un sous pattern c'est ça.
+mais normal jusqu'ici.
+====> je garde que ce qui apparait dans le tout premier pattern.
+ok ensuite c'est quoi le problème
+Par contre si il était prévu, on a plusieurs cas
+nn mais sinon le plus simple c'est parcourir le pattern et montrer ce qui est forcé à chaque fois.
+
+à partir de 
+
+CA (CI Int) -> C (C a) 
+CA (CA Int) -> C (C Int)
+CC (CI Int) -> C a    
+CC (CA Int) -> C (k Int)
+CR (CI Int) -> C (C a)
+CR (CA Int) -> C (C Int)
+
+je dois forcer la structure si elle était pas prévue, et je dois le faire récursivement sur les sous patterns.
+comment je représente ça ?
+si j'avais pas prévu de structure et que j'ai une structure je relance l'algo pour la sous branche
+y a 2 cas, un ou j'ai le pattern, l'autre ou j'ai rien, donc je dois savoir si y avait un pattern.
+si j'avais pas prévu 
+sinon je prends un DType et je rajoute la possibilité d'une tvar si le constructeur en prévoyait une.
+dès que jai un constructeur imbriqué, j'ai une tvar du coup.
+ensuite quand je génère le candidat je peux dire ce qui est imposé c'est quand il y avait une tvar ?
+nan c'est cheum de ouf
+sinon je fais tout en même temps non ?
+en fait je veux savoir ce qui est forcé et ce qui ne l'est pas.
+donc je peux parcourir le pattern et l'autre
+en fait le prob c'est que pour l'instant je mets les types demandés par le pattern et le sous pattern.
+mais ils sont pas forcément forcés.
+donc faudrait juste sortir ce qui est forcé par le constructeur et le comparer.
+Ok on est bons jusqu'ici.
+comment on fait ?
+avec une subst peut être ?
+genre je mets juste le pattern attendu ?
+donc je sors le pattern attendu en tant que liste.
+ensuite je compare la taille des 2 listes, si c'est pas bon je sors une erreur.
+
+donc je parcours : 
+j'ai 
+C forcé, Int pas forcé, a = Int forcé.
+je dois sortir un candidat en mode : 
+bon bref le problème technique la c'est que je dois sortir un sous candidat non ?
+mais osef non du sous candidat c'est juste la var de droite qui nous intéresse.
+a la limite je peux le mettre par defaut en var le truc de gauche et avoir le tuple en retour.
+
+Ok donc je sors le type de retour du pattern mais
+ - je remplace le type de base par une var.
+ - je renvoie la var ainsi que le type de base à côté (renvoyer un Maybe si c'est une var)
+
+une fois que j'ai ça ?
+je prends la valeur de gauche pour chaque sous type et je compare avec l'argument expected.
+si j'attendais un C et que j'ai un C -> je l'ajoute a h
+si j'attendais un C et que j'ai un D -> je sors une erreur
+si j'attendais un a et que j'ai un C -> je laisse le C
+si j'attendais un a et que j'ai un a je fais rien.
+si j'attendais un C et que j'ai un a je dis que a est C et je l'ajoute a h.
+
+ok donc on veut avoir stocké h qui nous dit quelque chose sur les candidats non ?
+la valeur de gauche apparait que dans le candidat en fait.
+si j'avais une valeur de gauche je dis qu'elle apparait dans le candidat.
+on doit comuniquer 2 choses : 
+le type des variables pour la branche : si j'avais une variable et que j'ai un C je l'ajoute.
+le type du candidat pour le case : C a par exemple.
+le type qui est du au pattern : C Int par exemple.
+bon qu'est ce que c'est h maintenant, en fait il me faut pas h, il me faut un truc qui stocke le candidat ?
+genre quand j'attends un C, quoi qu'il arrive derière je dis que je l'attendais. et dans tous les cas ça va être un C deriere.
+donc au final je sors juste mon candidat ? mais je peux pas.
+enfin si mais comment ? psk mon unification elle va me donner un truc 
+psk les valeurs elles sont ?
+hmmm
+si j'ai 
+a -> (C k Int) -> C (C k Int) a
+args : [a, CI i j] 
+targs : [a, C Int Int]
+j'ai lancé des unifications (i : Int, j : Int)
+expectedArgs : [b, C (C k Int)]
+tret : [C (C k Int) b]
+
+
+si je tag avec une * ce qui était attendu
+je lance l'unification (a : b)
+j'ai les args : a, C* Int Int*
+et j'ai le tret : C (C Int Int) a => car le seul truc nouveau est le Int a la fin.
+
+si par contre j'avais eu 
+a -> (j k Int) -> C (j k Int) a
+j'aurais eu un C alors que j'attendais un j et donc j'aurais lancé j : C
+en fait ce qui fait chier c'est de pas pouvoir appliquer direct la subst.
+mais en fait si je le fais j'ai pas de probs.
+
+genre la j'ai
+a, C Int Int <=> b, C k Int
+je trouve direct k = Int, b = a.
+j'applique au retour et j'ai : 
+C (C Int Int) a
+ensuite je compare et je trouve C (j Int l) a mais en fait non psk le type de retour c'était CI l m
+bref !!!
+je l'ai un peu plus la.
+je génère la subst :
+Int -> Int -> C Int Int <=> [i, j] je trouve i : Int, j : Int
+j'applique au retour : C Int Int -> C Int Int
+je fais mon candidat : C i j
+j'arrive plus haut, je génère la subst : 
+a -> (C k l) -> C (C k l) a <=> [b, (C Int Int)] je trouve k : Int, l : Int, a : b
+j'applique au retour : C (C Int Int) b
+je fais mon candidat : C (d ? ?) b 
+
+
+si mon candidat me dit a gauche que c'est un C que j'attendais pas je force le C.
+si il me dit que c'est un a et que j'attendais un a je laisse un a.
+si il me dit que c'est un a et que j'attendais un C. je laisse un a.
+ok donc la diff entre gauche et droite c'est que a gauche j'écoute pas mon candidat alors qu'a droite si.
+genre a droite si le candidat dit que c'est un b et que j'ai un Int je mets un Int
+mais si il me dit que c'est un Int, je laisse un Int.
+par contre si il me dit que c'est un b et que j'ai un b je laisse un b.
+la diff avec la gauche c'est que si il me dit que c'est un Int et que j'ai un Int 
+
+
+au final c'est la même chose que la derniere fois mais je compare en paralèle mes arbres.
+donc on reprend.
+la même chose mais je crée mon candidat à chaque étape.
+Int -> Int -> C Int Int <=> [i, j] je trouve [](i : Int, j : Int).
+j'applique au retour : C Int Int.
+je fais le candidat en comparant le retour et le candidat : C i j
+plus haut je fais les deux substs :
+a -> (C k l) -> C (C k l) <=> [b, C i j] je trouve [i : k, j : l](a : b).
+a -> (C k l) -> C (C k l) <=> [b, C Int Int] je trouve i : Int, a : b, j : Int.
+j'applique au retour : C (C Int Int) b
+j'applique au candidat : C (C k l) b
+je compare ce que j'attendais : C (m k l) b
+si b devient Bool plus tard : C (m k l) Bool.
+
+mainteant si j'avais eu Int a la place de k dans le cons et CA au lieu de CI
+premiere étape : 
+i -> j -> C i j <=> [i, j] je trouve i : Int, j : Int
+j'applique au retour : C i j
+j'applique au candidat : C i j
+plus haut je fais les deux substs : 
+a -> (C Int l) -> C (C Int l) a <=> [c, C i j] je trouve i : Int, j : l, a : b
+a -> (C Int l) -> C (C Int l) a <=> [c, C i j] je trouve i : Int, j : l, a : b
+j'applique au retour : C (C Int j) b
+j'applique au candidat : C (C Int l) b
+je compare : C (m k j) b
+et vu que b et m sont liées à des variables si elles finissenet par devenir Int et Bool: 
+C (m k Int) Bool
+wow ok donc j'ai a peu près ce qu'il me faut.
+
+a chaque étape je renvoie 2 types au lieu d'un.
+je crée deux substs pour les types et je les applique au type de retour pour renvoyer le nouveau type.
+ensuite je compare le type de retour avec le candidat et j'enlève ce qui est attendu par le type de retour.
+ensuite je renvoie les deux types que j'ai eu.
+
+autre option bcp plus simple, séparer les sous patterns en plusieurs cases.
+genre 1000 fois plus simple et équivalent.
+je regarde quand j'ai la même branche et je refais le truc.
+comme ça après j'ai juste un seul constructeur avec une seule branche et j'imagine que le type final respecte les
+mêmes propriétés.
+
+l'avantage si j'ai pas de pat imbriqué c'est que je peux pas créer de variables et forcer un type en même temps.
+genre c'est soit je crée une variable, soit je donne un sous type.
+et si je donne un sous type, les tvars qu'il introduits sont forcéments intouchables oui
+j'ai que celui de gauche de profondeur 1 qui peut pas se valider lui même (et celui de gauche de profondeur 0 aussi)
+
+bon en fait si j'ai une version avant et une version après
+j'ai le constructeur qui demande : 
+a (f a) Int
+si j'ai 
+(f a) (Maybe Int) Int
+je sais que je demande 
+(f a) (Maybe Int) a
+donc en gros si j'ai
+TVar | TCon -> TCon
+TCon | TCon -> TVar
+TCon | TCon -> si c'est les mêmes.
+yep c'est la qu'il y a un bail différent.
+ok mais si j'ai changé une tvar en une tvar je fais quoi ? je dis que j'ai vraiment changé ou pas ?
+psk si c'est une tvar ????
+ptn fck un exemple svp.
+en fait le prob c'est si j'ai changé une tvar dans une sous structure je pense
+ah shit j'ai l'impression de retomber sur le même prob.
+en gros j'ai des variables qui sont données par le constructeur.
+ah oui c'est ça en fait.
+je peux avoir besoin de ces sous variables ?
+en gros c'est quoi le prob ?
+a la base je veux pouvoir dire quelle est la structure la plus spécialisée commune a tous les constructeurs.
+ah att je l'ai ptet
+genre si j'ai
+Int
+(f a)
+je peux pas reposer sur le (f a) qui soit autre que la première valeur.
+mais dès fois je veux pouvoir reposer dessus.
+mais du coup si j'avais pas un Int en haut j'aurais eu mon (f a) sans problèmes.
+donc en gros la je fais quoi ?
+est-ce que juste donner la structure la plus spécialisée ?
+ah w8 je l'ai perdue.
+on le refait.
+ici je veux pouvoir dire a l'autre, quelles variables il peut utiliser.
+en combinant les trucs je veux pouvoir dire
+La structure tu peux l'utiliser en tant que tel.
+ah mais j'ai un problème.
+psk soit je veux utiliser la structure pour prédire la sortie du case, soit je veux utliliser la tvar pour ailleur.
+sauf que si j'utilise la structure ?
+hmm on regarde les exemples 
+ah mais si j'ai spécialisé la tvar, c'est qu'elle est forcément utilisée par quelque chose d'autre non ?
+genre une fonction etc...
+mais est-ce que je vais le voir qu'elle est utilisée ?
+genre si j'appelle const 1 a, mon a il est utilisé. hmm mais est-ce que je peux avoir une fonction qui utilise a
+hmmm, si je l'utilise avec autre chose qu'une 
+la question c'est est-ce que je peux être spécifique de plusieurs façons ?
+oui a priori je peux. mais est-ce que je peux être spécifique de plusieurs façons compatibles ?
+spécifique ça veut dire quoi dans ce cas ?
+en gros je veux pouvoir demander des trucs plus spécifiques, mais peut-il y avoir plusieurs possibilités ?
+genre si j'avais 
+a (f a) et que j'ai besoin du (f a) ?
+ah mais la j'ai le problème d'avant ça y est.
+en gros si j'ai
+a (f a) -> (f a)
+a b     -> b
+je veux a b -> b comme type final.
+et du coup je veux pas avoir gardé un type candidat en mode (f a)
+bon on revient.
+la question c'est de savoir qu'est ce que mon candidat peut être au max ?
+genre la a (f a) et a b j'ai gardé a (f a)
+mais si a (f a) est créé par autre chose que le candidat (fmap par ex) je dois garder a (f a)
+ah je l'ai.
+si j'ai f b dans mon retour et que j'ai (f a) dans mon entrée, je vais pas pouvoir exprimer mon retour sans f.
+et du coup la en disant (f a) bla bla je me suis niqué.
+ok ça va mieux.
+donc ça veut dire qu'on va pas pouvoir cheese avec une seule entrée.
+par contre j'ai bien un h en entrée, qui me dit ce qui était demandé par le constructeur.
+mais ce qui peut être demandé c'est
+- égalité de tvars
+- TCon
+- structure.
+donc il me faudrait un moyen
+si j'ai
+a (Maybe Int) (f Int) Bool
+et
+b (Maybe Int) ((Prod Int) Int) Bool
+h c'est :
+Int : k
+Maybe : l
+Maybe Int : m
+Int : n
+Bool : p
+((Prod Int) Int) : q
+
+Ok je génère ça, mais pour ça il me faut un arbre a TVar assez grand.
+et pour ça je dois savoir quelle est la structure la plus grande.
+et la j'ai déjà créé mon tvar tree avec la structure la plus grande possible.
+ensuite le case est simple.
+si j'avais un TCon et que je l'ai toujours : je le met dans h.
+si j'avais une structure et que je l'ai toujours à l'identique, je relance en dessous et je mets dans h.
+
+ah j'ai le problème de la structure à l'identique.
+si j'ai changé le f en g c'est que je l'ai utilisé ? ptet pas psk c'est ptet juste pour faire un fmap
+mais si j'ai fait un fmap il faut conditionner sur le f.
+ou si je l'ai utilisé pour faire un const, ou dans une liste. ouais mais j'ai jamais utilisé le f en question non ?
+genre si j'ai une tvar mais qu'elle est utilisée en dehors par contre, genre j'ai créé une fonction qui utilise 
+un autre case.
+si j'ai créé cette fonction qui utilise un autre case et que je lance a dessus, je vais avoir une substitution.
+et je veux pas qu'il disparaisse, ou pas forcément.
+au pire je le garde non ? je dis je garde la possibilité de remplacer la structure si je veux.
+donc je génère une tvar pour la structure et pareil pour en dessous.
+faut juste pas générer des trucs pas possibles.
+ah mais si j'ai
+(f a) et que j'utilise a quelque part je veux pas que ça valide un (h : f a) pour tout (f a).
+sauf que j'ai dit que je voulais que h soit compatible avec (f a) plus tard.
+pour que h soit compatible avec f, il faut quoi ?
+la par ex j'ai gardé la variable h.
+elle vaut b | (f a)
+j'arrive sur le reste et je dis que (f a) apparait dans la sig, ou juste que f est Maybe.
+alors je trouve que (Maybe a) est b.
+du coup la c'est pas de problèmes.
+ok faut juste retenir ce qu'ils étaient a la base.
+genre faut pouvoir le requeter des deux côtés.
+donc il me faut une HashMap avec toutes les variables du tvarTree en mode 0 remplacements.
+si j'avais une structure et que je l'ai toujours, je lance en dessous et je l'ajoute a h.
+si j'avais une TCon et que je l'ai toujorus, je l'ajoute a h.
+si j'avais une TVar et que j'en ai une, je l'ajoute.
+si j'avais une TVar et que j'ai une structure, je l'ajoute pas.
+si j'avais une TVar et que j'ai un TCon je l'ajoute pas.
+
+Ok cas de j'avais une tvar et j'en ai une autre ? ça veut dire que soit :
+elle est utilisée en mode const ou pour mettre dans un Maybe etc...
+soit elle est utilisée ailleurs dans un autre case ou dans la sig.
+si c'est le cas que se passe t'il ?
+
+autre ex :
+j'ai (f a) qui devient (f Int), 
+si je remplace par h en disant : compatible avec (f Int) et que j'ai un remplacement de Int ailleurs ?
+je peux les combiner pour un truc potable ? ah shit y a bien une différence entre sortie et entrée.
+mais elle est simple c'est juste que pour l'entrée le remplacement peut être fait qu'à un seul endroit.
+ouch on reviendra dessus !!!
+
+pour la tvar :
+si elle est utilisée ailleurs, je vais la remplacer ?
+si c'est dans la sig : ptn va falloir refaire le même bail ?
+
+ouais sinon gros bourrin je le fais pour tout, j'enlève ce qui est pas compatible.
+genre toutes les h qui fail ?
+ouais mais comment je sais 
+le truc c'est que les contraintes c'est compliqué en vrai...
+
+pour la signature c'est simple c'est du pour tout A à priori. pareil pour utiliser fmap etc...
+le problème c'est si c'est une autre fonction.
+ultimement si ça sort juste une tvar c'est du pour tout A donc pg, mais si ça sort autre chose ?
+enfin le pour tout A caché dans une sous structure c'est embêtant.
+pas pareil que pour la struct. et surtout que si mon pour tout a il me rend des variables égales ?
+nah faut un autre moyen je pense.
+donc avant si j'utilisais un type pour quelque chose il apparaissait forcément
+soit dans le constructeur soit dans le type.
+la le problème que j'ai c'est que si j'ai utilisé 
+aaaaaaaaaaaaah
+ptet que je peux différencier les forall des non forall ?
+genre si j'ai une autre fonction qui utilise ma tvar quelque part, elle va finir par prendre une valeur.
+et quand elle la prend il faut juste compter les tvars de la signature comme des TCon c'est ça ?
+donc on va tout a la fin et on regarde les compatibilités comme ça.
+à priori y a que la signature on est d'accord ? si y a une autre fonction elle est définie soit en forall soit 
+en TCon soit en fonction de la signature.
+
+ok donc on dit qu'a la fin on veut juste vérifier certains trucs :
+quand je rentre dans la branche 
+
+en fait je veux que quand j'ai dit que ça passait dans la branche ça marche pour tout a.
+si dans la branche j'ai dit que j'avais besoin d'un Int, je peux pas dire ça marche pour tout a.
+si j'ai dit que j'avais besoin d'un a pour faire un maybe a, alors ça marche pour tout a.
+si j'ai besoin d'une contrainte qui apparait dans la signature par contre 
+ça veut dire que :
+||||| 1) |||||
+je dis que je peux tout remplacer sauf le cas ou j'ai une structure avec des sous morceaux irremplacables.
+ou le cas ou j'ai une tvar qui est devenue une TCon.
+sinon j'ai tout le reste remplacable.
+ensuite quand j'ai deux substitutions, je regarde ce qui est incompatible : 
+si j'avais Int ou Bool en dessous je peux pas en gros.
+je peux filtrer les incompatibilités grace au candidat.
+genre je peux forcer des variables à certains endroits.
+si j'avais dit Bool : a, et que j'ai Bool puis Int, je sais que c'est forcément a.
+mais ça m'aide pas trop pour le retour non ?
+par contre je peux faire pareil pour le retour non ?
+||||| 2) |||||
+pour créer l'arbre de retour.
+pour chaque noeud de l'arbre j'ai
+les valeurs de la branche, les valeurs proposées par les deux branches.
+je prends les valeurs en commun a droite qui sont compatibles avec celles de gauche.
+
+une fois que j'ai ça je fais quoi ? psk je sais toujours pas pour les autres cases.
+bon y a deux pistes :
+1 - soit je dis que j'ai une spécialisation maximale et que les autres possibilités sont juste "plus générales"
+    auquel cas je peux ptet garder le squelette de la plus/moins spécialisée pour les autres cases.
+
+oui c'est le cas ?
+si j'ai b et (f a) je peux garder b : (f a) de toute façon je vais les réunir après.
+donc la j'ai quoi ?
+au final j'ai déjà mes variables a, b, c, d etc... c'est dans le candidat/type de retour.
+en fait je peux juste générer toutes mes contraintes direct non ? et générer les combinaisons.
+donc au final je sors des contraintes et des combinaisons en masse.
+les contraintes c'est quoi du coup ?
+c'est des contraintes pour le départ et le retour.
+pour le départ je veux juste que tout soit compatible :
+eg : toutes les variables qui sont remplacées par la substitution étaient remplacées par le constructeur.
+pour le retour c'est pareil, une structure ? ah non pour le retour je veux la structure maximale du candidat.
+ah en fait pour chaque candidat qui marche, je veux tester tous les retours possibles a partir de h.
+si j'en trouve un bon, je remplace dans le prochain case et je reconcilie encore.
+
+donc prochain coup on fait quoi ?
+on génère toutes les possibilités de candidats de manière un minimum opti.
+je passe donc dans la subst et je génère ? non c'est trop long.
+ptn mais ce qui fait chier c'est le a qui peut apparaitre autre part.
+ah mais attends !
+dans le case si je renvoie un f, je le renvoie partout. donc les autres case qui l'utilisent 
+
+le prob que je veux résoudre c'est quand j'ai un case qui spécialise en f.
+eg 
+CA a -> f a.
+et que f est un autre case :
+f = case i of 
+  ...
+si j'ai f qui demande que a soit dans la signature je dois dire que le retour c'est a.
+par contre si j'ai f qui 
+ah ouais mais attends, si j'ai f qui renvoie b je suis juste niqué pour unifier les retours.
+en fait je peux de toute façon pas unifier séparément.
+donc je peux faire quoi ?
+je peux dire si f va apparaitre ou pas ? est-ce que ça peut dépendre d'autre chose ?
+ah mais je suis niqué quand même.
+en vrai non je peux ptet me débrouiller a faire toutes les unifications avec des DTypes 
+OK DONC 
+on reprend du début du coup.
+je génère une série de variables possibles pour chaque entrée (tout ce qui n'a pas changé,
+    ou n'a changé que dans la branche et n'apparait pas dans la signature.)
+ah mais non sinon j'interdis juste les cases mutuellement récursifs.
+par contre j'ai toujours le cas des cases récursifs.
+si j'ai un truc récursif c'est quoi le prob ? je vais avoir ?
+att mais non j'ai dis que la récursion c'est soit avec fix, soit avec une sig.
+donc fix il fait quoi ? au final rien, il donne juste une structure de retour à mon candidat je crois.
+
+OKK donc je fais les structures dans l'ordre d'utilisation, et pas de cycles authorisés.
+pour savoir quelle structure à besoin de quelle autre je fais comment ?
+je regarde si une des variables de retour de ma réconciliation apparait dans les spécialisations de l'autre.
+
+donc il me faut : 
+ - un ID par réconciliation
+ - une hashmap pour chaque réconciliation qui dit si on est dedans/fini/a-faire.
+ - une fonction pour dire si je dépend d'une réconciliation.
+pour chacune je parcours toutes les autres jusqu'a ce que j'en trouve une qui dépend d'aucune autre.
+OK on code, on teste, on ajoute aux tests.
+
+
+
+
+
+
+
 
 =================================================================================
 ============================ TENTATIVE D'EXPLICATION ============================
@@ -3377,6 +3863,41 @@ TEG -g-> TSG -h-> TSI
 car si le code est valide pour TSG et que h $ TSG = TSI alors le code est valide pour TSI
 car h n'est pas au même niveau que les autres flèches, c'est une preuve pas un code de l'user.
 
+Maintenant pour déterminer TEG on veut savoir quelles contraintes il doit imposer aux branches
+exemple simple pour l'instant : 
+j'ai deux facons de construire C
+CA :: a -> C a
+CI :: Int -> C Int
+si j'ai le pattern CI i, alors je sais que le type de cette branche est forcément CI Int
+si j'ai au contraire CA i, alors i n'est pas forcément un Int.
+si i s'avère être un Int dans le deuxième cas, il faut que la contrainte apparaisse dans TEG 
+En gros je veux que les contraintes mises par autre chose que le constructeur s'appliquent sur TEG.
+
+Rappel important avant les constructeurs imbriqués : 
+Lorsque je pattern match, je veux pouvoir assurer la totalité : 
+Pour chaque type unifiant avec TEG, touts les constructeurs compatibles doivent être couvers par une branche.
+je peux pas transformer CA Bool en CA a car je pourrais mettre autre chose dans le a et passer dans cette branche.
+ça pose problème psk on a dit qu'on gérait les CA pour tout a et c'est ptet pas le cas 
+(psk ce constructeur accepte les String et Int etc... aussi)
+
+Pour un constructeur imbriqué c'est pareil, le type est forcé si il n'était pas 
+prévu par le sous constructeur.
+exemple dans 6 cas (on rajoute CC :: C (C a), CCI :: C (C Int) et CR :: C (k a))
+
+CA (CI Int) -> je force C (C a) car tout ce qui rentre dans C (C a) et dans la branche est forcément C (C Int)
+CA (CA Int) -> je force C (C Int)
+CC (CI Int) -> je force t a     car tout ce qui rentre dans CC est forcément C (C a) et pareil pour C (C Int)
+CC (CA Int) -> je force t (k Int)
+CR (CI Int) -> je force C (C a)
+CR (CA Int) -> je force C (C Int)
+CCI (CI Int) -> je force C a
+CCI (CA Int) -> je force C a
+
+on voit qu'on applique le type de base du sous pattern (C) comme une TVar de ce sous pattern 
+et les autres types du sous pattern par rapport a lui
+et quand le constructeur demande une contrainte a n-2 c'est pareil que n-1 (je suis passé dans une branche qui me le demande)
+
+On interdit les cases mutuellement recursifs ainsi que les case (case of) of
 
 =================================================================================
 =================================== A tester ====================================
@@ -3386,3 +3907,15 @@ car h n'est pas au même niveau que les autres flèches, c'est une preuve pas un
 plusieurs depth de patterns nestés
 plusieurs fois le meme pattern (CA (CI i j) et CA (CB k l)) pour la complétion.
 des substitutions qui créent de la structure dans des patterns qui n'en ont pas.
+un test pour chaqu'un de ces cas :
+
+CA (CI Int) -> C (C a) 
+CA (CA Int) -> C (C Int)
+CC (CI Int) -> C a    
+CC (CA Int) -> C (k Int)
+CR (CI Int) -> C (C a)
+CR (CA Int) -> C (C Int)
+CCI (CI Int) -> C a
+CCI (CA Int) ->  C a
+
+Erreur quand mauvais nombre de vars dans pattern.

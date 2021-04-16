@@ -42,8 +42,7 @@ instance Pretty Pattern where
   pretty (Pattern a ps) = "(" ++ a ++ " " ++ prettyL ps ++ ")"
   pretty (Raw n) = n
 
-type Expr = Cofree ExprF Location; -- expression with position information (after the parsing)
-type Forgot = Term ExprF -- expression without any information (to be removed soon)
+type Expr = Cofree ExprF Location;
 
 data Field = FieldS String | FieldApp Field Field deriving (Show, Eq, Ord)
 

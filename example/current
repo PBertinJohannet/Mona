@@ -9,13 +9,17 @@ data Prod a b =
 data D a b = 
   | CI = Int -> Int -> D Int Int
   | CB = Bool -> Bool -> D Bool Bool
-  | CA = c b Int -> a -> D (c Int b)a;
+  | CR = k a b -> c -> D (k a b)c
+  | CA = a -> c -> D a c
+  | CD = D a b -> c -> D (D a b)c;
 
-let correct a = case a of
-  (CI i j) -> P i j,
-  (CA (CI i j) k) -> P (CI 1 2) 3,
-  (CB b j) -> P b 0;
+let correct a = (\b -> case b of
+  (CI i j) -> P (i + 1) 2,
+  (CR i j) -> P i (case True of
+    True -> 2),
+  (CB b j) -> P b 0) ((case a of 
+    True -> 0,
+    False -> 2));
 
-let c = correct (CI 0 1);
 
 let main = printInt 4;
