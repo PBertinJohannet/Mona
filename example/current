@@ -13,13 +13,10 @@ data D a b =
   | CA = a -> c -> D a c
   | CD = D a b -> c -> D (D a b)c;
 
-let correct a = (\b -> case b of
-  (CI i j) -> P (i + 1) 2,
-  (CR i j) -> P i (case True of
-    True -> 2),
-  (CB b j) -> P b 0) ((case a of 
-    True -> 0,
-    False -> 2));
-
+let correct = \a -> case a of
+  (CR (P i (True)) j) -> P (i + 1) (j),
+  (CI i j) -> P i 1,
+  (CB b j) -> P b 1,
+  (CA i j) -> P i 1;
 
 let main = printInt 4;

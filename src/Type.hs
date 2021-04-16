@@ -188,6 +188,11 @@ unapply = \case
   TApp a b -> let (base :+: args) = unapply a in base :+: (args ++ [b])
   e -> e :+: []
 
+uncurryType :: Type -> [Type]
+uncurryType = \case
+  TApp (TApp (TCon "(->)" k) a) b -> a : uncurryType b
+  e -> return e
+
 reApply :: NonEmpty Type -> Type
 reApply (x :+: xs) = foldr TApp x xs
 

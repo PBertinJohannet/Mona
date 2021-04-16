@@ -3832,6 +3832,18 @@ donc il me faut :
 pour chacune je parcours toutes les autres jusqu'a ce que j'en trouve une qui dépend d'aucune autre.
 OK on code, on teste, on ajoute aux tests.
 
+la le problème que j'ai c'est que je peux pas deviner le type candidat car faudrait remplacer les types.
+en soit ça devrait pouvoir se faire non ? je crée une subst simple à chaque fois en plus.
+c'est forcément des tvars.
+genre si j'ai ma liste de valeurs attendues et ma liste d'autres je peux les mettres en paralèlles.
+
+en gros j'ai mon type de retour et je veux remplacer les variables dans le type par autre chose.
+eg si j'ai 
+a -> b -> Prod a b -> C a b
+et que dans a j'ai True
+je trouve que a devient Bool et donc je remplace a par Bool dans le retour.
+si au lieu de Prod a b j'avais Prod (f Int) (b) je remplace a par f Int
+mais si au lieu de (f k) j'avais f Int, je... bref t'as compris.
 
 
 
@@ -3897,7 +3909,19 @@ on voit qu'on applique le type de base du sous pattern (C) comme une TVar de ce 
 et les autres types du sous pattern par rapport a lui
 et quand le constructeur demande une contrainte a n-2 c'est pareil que n-1 (je suis passé dans une branche qui me le demande)
 
-On interdit les cases mutuellement recursifs ainsi que les case (case of) of
+On interdit les cases mutuellement recursifs ainsi que les case (case of) of (on remplace par un lambda sinon)
+
+
+le problème avec ceux la c'est que je peux pas savoir 
+ah mais est-ce que je peux avoir le problème dans le retour ?
+oui a priori. si j'ai Int | a, je peux dire que c'est a ? hmm mais j'ai déjà dit que c'était a non ?
+genre c'est dans l'entrée que j'ai dit que c'était a
+
+on dit qu'un seul case par signature mais du coup on reprend les patterns nestés.
+le problème que ça posait c'était de créer un arbrre candidat je crois ?
+genre pour le créer j'arrivais pas a savoir ce qui était attendu.
+
+
 
 =================================================================================
 =================================== A tester ====================================

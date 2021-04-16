@@ -46,7 +46,7 @@ data RecState = Todo | Doing | Done deriving (Show, Eq);
 
 data Specialization = Spec{candidate :: Type, argType :: Type, retType :: Type};
 data Reconcile = Reconcile ArrowType [Specialization] Location Name RecState
-type Constraints = ([Union], [(Pred, Location)], [Reconcile], [FreeVars])
+type Constraints = ([Union], [(Pred, Location)], [Reconcile], [FreeVars], [String])
 type FreeVars = TVar;
 
 instance Pretty Union where
@@ -62,7 +62,7 @@ instance Pretty (Pred, Location) where
   pretty (a, b) = pretty a
 
 instance Pretty Constraints where
-  pretty (a, b, c, d) = prettyL a ++ " => " ++ prettyL b ++ "[" ++ prettyL c ++ "]\n norefine : " ++ prettyL b ++ "\n"
+  pretty (a, b, c, d, l) = prettyL a ++ " => " ++ prettyL b ++ "[" ++ prettyL c ++ "]\n norefine : " ++ prettyL b ++ "\n"
 
 getRecId :: Reconcile -> Name
 getRecId (Reconcile _ _ _ id _) = id
@@ -97,18 +97,18 @@ instance Substituable Reconcile where
   ftv _ = Set.empty
 
 union :: Location -> (Type, Type) -> Constraints
-union loc (a, b) = ([Union (a, b, loc)], [], [], [])
+union loc (a, b) = ([Union (a, b, loc)], [], [], [], [])
 
 predicate :: [Pred] -> Location -> Constraints
-predicate p l = ([], (,l) <$> p, [], [])
+predicate p l = ([], (,l) <$> p, [], [], [])
 
 
 -- reconcile R a -> b with [D a -> b, W c -> d]
 reconcilie :: Type -> Type -> [Specialization] -> Location -> Name -> Constraints
-reconcilie a b (t:tps) l n = ([], [], [Reconcile (ArrowType a b) (t:tps) l n Todo], [])
+reconcilie a b (t:tps) l n = ([], [], [Reconcile (ArrowType a b) (t:tps) l n Todo], [], [])
 
 free :: TVar -> Constraints
-free a = ([], [], [], [a])
+free a = ([], [], [], [a], [])
 
 instance Substituable Union where
   apply s (Union (a, b, c)) = Union (apply s a, apply s b, c)
@@ -134,7 +134,7 @@ data TypeErrorV
   | CannotRefine TVar
   | CouldNotGeneralize [Type]
   | CouldNotReconcile ArrowType ArrowType
-  | CaseCycle String
+  | WrongPattern Type Type
   | ConstraintsNotMatching [Pred] deriving (Show, Eq);
 
 instance Pretty TypeErrorV where
@@ -157,7 +157,7 @@ instance Pretty TypeErrorV where
     CouldNotGeneralize tps -> "could not generalize the types : " ++ prettyL tps
     CouldNotReconcile a b-> "Could not reconcile : " ++ pretty (asType a) ++ " and " ++ pretty (asType b)
     ConstraintsNotMatching t -> "Infered constraints not found in definition : " ++ prettyL t
-    CaseCycle v -> v ++ " is part of mutualy recursive cases "
+    WrongPattern expected actual -> "Wrong subpattern type : exptected " ++ pretty expected ++ " got " ++ pretty actual
 
 type ExceptLog a = ExceptT TypeError (Writer String) a;
 
@@ -203,7 +203,8 @@ applyAnn f = mapAnn applyAnn'
 inferExpr :: ClassEnv -> Env -> Expr -> ExceptLog (Scheme, TExpr)
 inferExpr cenv env ex = case runInfer env (runWriterT $ infer ex) of
   Left err -> throwError err
-  Right (tyBefore, (unions, preds, dims, norefs)) -> do
+  Right (tyBefore, (unions, preds, dims, norefs, logs)) -> do
+    tell $ intercalate "\n" logs
     let (_, _, Qual _ ty) = ann tyBefore
     tell $ "things : " ++ prettyL dims
     --tell $ "found : "++ pretty ty ++ "\n"
@@ -224,7 +225,8 @@ inferExpr cenv env ex = case runInfer env (runWriterT $ infer ex) of
 inferExprT :: ClassEnv -> Env -> Expr -> Scheme -> ExceptLog (Scheme, TExpr)
 inferExprT cenv env ex tp = case runInfer env (runWriterT $ inferEq ex tp) of
   Left err -> throwError err
-  Right ((texp, tpSub, expected), (unions, preds, things, norefs)) -> do
+  Right ((texp, tpSub, expected), (unions, preds, things, norefs, logs)) -> do
+    tell $ intercalate "\n" logs
     tell $ "things : " ++ prettyL things ++ "\n"
     tell $ "doing : " ++ prettyL unions ++ "\n"
     let (_, _, Qual _ found) = ann texp
@@ -332,7 +334,10 @@ freshQual :: InferCons (Qual Type)
 freshQual = Qual [] <$> fresh
 
 noConstraints :: Constraints
-noConstraints = ([], [], [], [])
+noConstraints = ([], [], [], [], [])
+
+inferLog :: String -> InferCons ()
+inferLog s = tell ([], [], [], [], [s])
 
 lookupEnv :: Name -> InferCons (Subst, Qual Type)
 lookupEnv x = do
@@ -416,17 +421,37 @@ decomposePattern loc (Pattern name vars) = do
     subPats <- traverse (decomposePattern loc) vars
     let (subTypes, varsTypes) = unzip subPats
     tname <- typeOf name
-    let tret = getReturn tname
+    argsSubst <- Map.fromList . mconcat <$> traverse getCandSubst (zip (uncurryType tname) subTypes )
+    let tret = apply argsSubst $ getReturn tname
     tell (loc `union` (foldr mkArr tret subTypes, tname))
+    inferLog $ "tret is : " ++ pretty tret
     return (tret, mconcat varsTypes)
 decomposePattern loc (Raw name) = do
     tret <- freshType
     return (tret, [(name, tret)])
 
+-- given a the expected arg and the type of the sub pattern, tells what to do with the expected arg.
+getCandSubst :: (Type, Type) -> InferCons [(TVar, Type)]
+getCandSubst (expected, actual) = case (expected, actual) of
+  (TVar e, TVar a) -> return [(e, actual)]
+  (_, TVar _) -> return []
+
+  (TVar e, TApp _ _) -> return [(e, actual)]
+  (TCon _ _, TApp _ _) -> throwError $ CompilerError (WrongPattern expected actual) []
+  (TApp a b, TApp a' b') -> (++) <$> getCandSubst (a, a') <*> getCandSubst (b, b')
+  
+  (TCon c k, TCon d k') -> if c == d then return [] else throwError $ CompilerError (WrongPattern expected actual) []
+  (TApp a b, TCon c k) -> throwError $ CompilerError (WrongPattern expected actual) []
+  (TVar e, TCon c k) -> return [(e, actual)]
+
+
 inferPat :: Location -> PatternT (InferCons TExpr) -> InferCons (Specialization, PatternT TExpr)
 inferPat loc (PatternT pat exp) = do
   -- tp = in type, eg: Bool
     (tp, vars) <- decomposePattern loc pat
+    inferLog $ "pat is : " ++ pretty pat
+    inferLog $ "decomposed is : " ++ pretty tp
+    
     tret <- foldl (flip inEnv) exp vars
     return (Spec tp tp (getTp tret), PatternT pat tret)
 
@@ -557,7 +582,6 @@ tryReconcile :: String -> Unifying Subst
 tryReconcile n = do
   res <- gets (fmap fst . Map.lookup n . fst)
   case res of 
-    Just (Reconcile _ _ _ _ Doing) -> throwError $ CompilerError (CaseCycle n) []
     Just (Reconcile _ _ _ _ Done) -> return nullSubst
     Just r@(Reconcile _ _ _ _ Todo) -> runReconcile r
 
