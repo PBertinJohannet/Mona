@@ -1,0 +1,17 @@
+
+ after : rec('v) : 'b -> 'u with 
+ (D Int Int @ D Int Int -> D Int Int,
+ (D Bool Bool @ D Bool Bool -> D Int Bool,
+ (D 'o 'p @ D Int Int -> D Int Int
+ 
+base : 'a -> 'b -> 'u
+new struct : ''a Int Int
+uncollapsables : "*"
+cand : D Int Int     tp :  ''a Int Int
+found sub : ["(D, ''a)"]
+cand : D Bool Bool     tp :  ''a Int Int
+found sub : ["(D, ''a)"]
+cand : D 'o 'p     tp :  ''a Int Int
+found sub : ["(D, ''a)","('o, Int)","('p, Int)"]
+found preds :
+things : with type : 'a solve =>

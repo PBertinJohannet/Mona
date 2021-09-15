@@ -1,0 +1,11 @@
+after : rec('bl) : 'b -> 'bk with 
+((D ('l 'c 'f) 'g @ D (Prod Int Bool) 'j -> Prod Int 'j,
+(D Int Int @ D Int Int -> Prod Int Int,
+(D Bool Bool @ D Bool Bool -> Prod Bool Int,
+(D 'ae 'af @ D 'al 'al -> 'al,
+(D 'am 'an @ D ('aq 'ar 'ar 'as) 'ap -> Bool,
+(D 'au 'av @ D 'aw ('ay 'az) -> Bool,
+(D 'bb 'bc @ D 'bd 'be -> Prod 'bd 'bi)
+
+base : ('be -> 'bi) -> 'b -> 'bk
+new struct : ''a (''b ''c Int Bool) (''b ''c Int Bool)

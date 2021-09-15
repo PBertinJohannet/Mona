@@ -1,22 +1,28 @@
 
 data Bool =
-  | True = Bool
+  | True = Bool;
   | False = Bool;
 
 data Prod a b = 
   | P = a -> b -> Prod a b;
 
 data D a b = 
-  | CI = Int -> Int -> D Int Int
-  | CB = Bool -> Bool -> D Bool Bool
-  | CR = k a b -> c -> D (k a b)c
-  | CA = a -> c -> D a c
-  | CD = D a b -> c -> D (D a b)c;
+  | CI = Int -> Int -> D Int Int;
+  | CB = Bool -> Bool -> D Bool Bool;
+  | CA = a -> c -> D a c;
 
-let correct = \a -> case a of
-  (CR (P i (True)) j) -> P (i + 1) (j),
-  (CI i j) -> P i 1,
-  (CB b j) -> P b 1,
-  (CA i j) -> P i 1;
+sig branch = forall a b . a -> a -> a;
+let branch b c = if True then b else c;
+
+sig useUnder = forall f a b . f a a b -> Bool;
+let useUnder a = True;
+
+sig useUnder1 = forall f b . f b -> Bool;
+let useUnder1 a = True;
+
+let correct f = \a -> case a of
+  (CI i j) -> CA 0 j,
+  (CB i j) -> CA 1 j,
+  (CA k l) -> CA 5 l;
 
 let main = printInt 4;

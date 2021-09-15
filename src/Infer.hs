@@ -26,12 +26,11 @@ import Control.Arrow
 import Subst
 import qualified Data.Map as Map
 import qualified Data.Set as Set
-import Data.List (nub, find, length, intercalate)
+import Data.List (nub, find, length, intercalate, intersperse, elemIndex)
 import Pretty
 import RecursionSchemes
 import Data.Tuple
 import Error
-import Data.List (intersperse, elemIndex)
 import Control.Applicative
 
 {-
@@ -42,10 +41,13 @@ quand je renvoie le allReplace, j'enlève toutes les variables potetielles comme
 -}
 
 newtype Union = Union (Type, Type, Location) deriving Show;
-data RecState = Todo | Doing | Done deriving (Show, Eq);
 
+
+-- candidate tells what the constructor expected (structure and TCon)
+-- argType tells us what the final arg type was (cand + branch)
+-- retType is the final ret type (cand + branch + transformation)
 data Specialization = Spec{candidate :: Type, argType :: Type, retType :: Type};
-data Reconcile = Reconcile ArrowType [Specialization] Location Name RecState
+data Reconcile = Reconcile ArrowType [Specialization] Location Name
 type Constraints = ([Union], [(Pred, Location)], [Reconcile], [FreeVars], [String])
 type FreeVars = TVar;
 
@@ -53,7 +55,7 @@ instance Pretty Union where
   pretty (Union (a, b, _)) = pretty a ++ " should unify with : " ++ pretty b ++ "\n"
 
 instance Pretty Reconcile where
-  pretty (Reconcile c tps _ name _) = "rec(" ++ name ++ ") : " ++ prettyArr c ++ " with (" ++ mconcat (intersperse "," (prettySpec <$> tps)) ++ ")"
+  pretty (Reconcile c tps _ name) = "rec(" ++ name ++ ") : " ++ prettyArr c ++ " with (" ++ mconcat (intersperse "," (prettySpec <$> tps)) ++ ")"
     where
       prettySpec (Spec cand arg ret) = "(" ++ pretty cand ++ " @ " ++ pretty arg ++ " -> " ++ pretty ret
       prettyArr (ArrowType a b) = pretty a ++ " -> " ++ pretty b
@@ -64,48 +66,30 @@ instance Pretty (Pred, Location) where
 instance Pretty Constraints where
   pretty (a, b, c, d, l) = prettyL a ++ " => " ++ prettyL b ++ "[" ++ prettyL c ++ "]\n norefine : " ++ prettyL b ++ "\n"
 
-getRecId :: Reconcile -> Name
-getRecId (Reconcile _ _ _ id _) = id
-
-isTodo :: Reconcile -> Bool
-isTodo (Reconcile _ _ _ id state) = state == Todo 
-
-setStateAs :: RecState -> Reconcile -> Reconcile
-setStateAs state (Reconcile a b c d _) = Reconcile a b c d state
-
-getEqConstraint :: Type -> (TVar, Type) -> Maybe TVar
-getEqConstraint tp (v, TVar tv) =
-  let (t :+: ts) = unapply tp in
-  let t' = foldr TApp t ts in
-  let tvars = ftv t in
-  if v `Set.member` tvars && tv `Set.member` tvars
-    then Just tv
-    else Nothing
-isEqConstraint _ _ = Nothing
-
 instance Substituable (NonEmpty Type) where
   apply s = fmap $ apply s
   ftv _ = Set.empty
 
 instance Substituable Specialization where
   apply s (Spec cand arg ret) = Spec cand (apply s arg) (apply s ret)
-    where eqs' = Set.fromList $ catMaybes (getEqConstraint cand <$> Map.toList s)
   ftv = const Set.empty
 
 instance Substituable Reconcile where
-  apply s (Reconcile c ts l name state) = Reconcile (apply s c) (apply s <$> ts) l name state
+  apply s (Reconcile c ts l name) = Reconcile (apply s c) (apply s <$> ts) l name
   ftv _ = Set.empty
 
 union :: Location -> (Type, Type) -> Constraints
 union loc (a, b) = ([Union (a, b, loc)], [], [], [], [])
 
+lunion :: Location -> (Type, Type) -> Union
+lunion loc (a, b) = Union (a, b, loc)
+
 predicate :: [Pred] -> Location -> Constraints
 predicate p l = ([], (,l) <$> p, [], [], [])
 
-
 -- reconcile R a -> b with [D a -> b, W c -> d]
 reconcilie :: Type -> Type -> [Specialization] -> Location -> Name -> Constraints
-reconcilie a b (t:tps) l n = ([], [], [Reconcile (ArrowType a b) (t:tps) l n Todo], [], [])
+reconcilie a b (t:tps) l n = ([], [], [Reconcile (ArrowType a b) (t:tps) l n], [], [])
 
 free :: TVar -> Constraints
 free a = ([], [], [], [a], [])
@@ -135,6 +119,8 @@ data TypeErrorV
   | CouldNotGeneralize [Type]
   | CouldNotReconcile ArrowType ArrowType
   | WrongPattern Type Type
+  | CaseDependency Name Name
+  | WrongBranchType Type Type
   | ConstraintsNotMatching [Pred] deriving (Show, Eq);
 
 instance Pretty TypeErrorV where
@@ -158,6 +144,8 @@ instance Pretty TypeErrorV where
     CouldNotReconcile a b-> "Could not reconcile : " ++ pretty (asType a) ++ " and " ++ pretty (asType b)
     ConstraintsNotMatching t -> "Infered constraints not found in definition : " ++ prettyL t
     WrongPattern expected actual -> "Wrong subpattern type : exptected " ++ pretty expected ++ " got " ++ pretty actual
+    WrongBranchType cand final -> "Wrong branch Type, cand : " ++ pretty cand ++ " final : " ++ pretty final 
+    CaseDependency n1 n2 -> "Dependency between " ++ n1 ++ " and " ++ n2
 
 type ExceptLog a = ExceptT TypeError (Writer String) a;
 
@@ -172,7 +160,7 @@ initInfer :: InferState
 initInfer = InferState { count = 0 }
 
 asSolve :: Unifying a -> Solve a
-asSolve a = ReaderT $ const (evalStateT a (Map.empty, 0))
+asSolve a = ReaderT $ const (evalStateT a 0)
 
 runSolve :: ClassEnv -> [(Pred, Location)] -> ExceptLog [Pred]
 runSolve env cs = runReaderT (solver cs) env
@@ -324,9 +312,12 @@ freshName = do
 fresh :: InferCons Type
 fresh = freshType
 
+freshVar :: InferCons TVar
+freshVar = flip TV Star <$> freshName
+
 freshType :: InferCons Type
 freshType = do
-  tv <- flip TV Star <$> freshName
+  tv <- freshVar
   tell $ free tv
   return $ TVar tv
 
@@ -421,28 +412,40 @@ decomposePattern loc (Pattern name vars) = do
     subPats <- traverse (decomposePattern loc) vars
     let (subTypes, varsTypes) = unzip subPats
     tname <- typeOf name
-    argsSubst <- Map.fromList . mconcat <$> traverse getCandSubst (zip (uncurryType tname) subTypes )
+    argsSubst <- Map.fromList . mconcat <$> traverse (getCandSubst loc) (zip (uncurryType tname) subTypes )
     let tret = apply argsSubst $ getReturn tname
     tell (loc `union` (foldr mkArr tret subTypes, tname))
-    inferLog $ "tret is : " ++ pretty tret
+    inferLog $ "substs are : " ++ pretty argsSubst
+    inferLog $ "tret goes from " ++ pretty(getReturn tname) ++ " to " ++ pretty tret
     return (tret, mconcat varsTypes)
 decomposePattern loc (Raw name) = do
     tret <- freshType
     return (tret, [(name, tret)])
 
--- given a the expected arg and the type of the sub pattern, tells what to do with the expected arg.
-getCandSubst :: (Type, Type) -> InferCons [(TVar, Type)]
-getCandSubst (expected, actual) = case (expected, actual) of
-  (TVar e, TVar a) -> return [(e, actual)]
-  (_, TVar _) -> return []
+removeLeft :: Location -> Type -> InferCons Type
+removeLeft loc = \case
+  TApp a b -> (`TApp` b) <$> removeLeft loc a
+  TCon t c ->  do
+    rep <- freshType
+    tell $ union loc (rep, TCon t c)
+    return rep
+  t -> return t
 
-  (TVar e, TApp _ _) -> return [(e, actual)]
-  (TCon _ _, TApp _ _) -> throwError $ CompilerError (WrongPattern expected actual) []
-  (TApp a b, TApp a' b') -> (++) <$> getCandSubst (a, a') <*> getCandSubst (b, b')
-  
-  (TCon c k, TCon d k') -> if c == d then return [] else throwError $ CompilerError (WrongPattern expected actual) []
-  (TApp a b, TCon c k) -> throwError $ CompilerError (WrongPattern expected actual) []
-  (TVar e, TCon c k) -> return [(e, actual)]
+-- given a the expected arg and the type of the sub pattern, tells what to do with the expected arg.
+getCandSubst :: Location -> (Type, Type) -> InferCons [(TVar, Type)]
+getCandSubst loc (expected, actual) = do
+  actual' <- removeLeft loc actual
+  case (expected, actual') of
+    (TVar e, TVar a) -> return [(e, actual')]
+    (_, TVar _) -> return []
+
+    (TVar e, TApp _ _) -> return [(e, actual')]
+    (TCon _ _, TApp _ _) -> throwError $ CompilerError (WrongPattern expected actual') []
+    (TApp a b, TApp a' b') -> (++) <$> getCandSubst loc (a, a') <*> getCandSubst loc (b, b')
+    
+    (TCon c k, TCon d k') -> if c == d then return [] else throwError $ CompilerError (WrongPattern expected actual') []
+    (TApp a b, TCon c k) -> throwError $ CompilerError (WrongPattern expected actual') []
+    (TVar e, TCon c k) -> return [(e, actual')]
 
 
 inferPat :: Location -> PatternT (InferCons TExpr) -> InferCons (Specialization, PatternT TExpr)
@@ -488,7 +491,7 @@ checkPreds found expected =
 
 
 type ReconcilingGraph = Map.Map String (Reconcile, [String]);
-type Unifying a = StateT (ReconcilingGraph, Int) (ExceptT TypeError (Writer String)) a
+type Unifying a = StateT Int (ExceptT TypeError (Writer String)) a
 type Unifier = (Subst, [Union])
 
 instance Pretty (Reconcile, [String]) where
@@ -511,7 +514,7 @@ unifyMany (t1, t1') (t2, t2') = do
   return $ s2 `compose` s1
 
 runUnify :: [Union] -> [Reconcile] -> [FreeVars] -> Type -> ExceptLog Subst
-runUnify u r f t = evalStateT (unifyTop u r t) (Map.empty, 0)
+runUnify u r f t = evalStateT (unifyTop u r t) 0
 
 data DType
   = DVar TVar
@@ -523,8 +526,9 @@ unifyTop :: [Union] -> [Reconcile] -> Type -> Unifying Subst
 unifyTop [] recs base = do
   tell " ========= start reconciling =========\n\n "
   tell $ "after : " ++ prettyL recs ++ "\n"
-  modify (first $ const $ getReconcilingGraph recs)
-  reconcilieTop
+  tell $ "base : " ++ pretty base ++ "\n"
+  checkReconcilingGraph recs
+  reconcilieTop recs base
 unifyTop unions recs t = do
   tell " ========= start solving =========\n\n "
   --tell $ "unify : " ++ prettyL unions ++ "\n"
@@ -533,27 +537,15 @@ unifyTop unions recs t = do
   sub' <- unifyTop [] (apply sub recs) (apply sub t)
   return (sub' `compose` sub)
 
+checkReconcilingGraph :: [Reconcile] -> Unifying ()
+checkReconcilingGraph s = sequence_ (hasCommonTVar <$> s <*> s )
 
-getNextUndone :: Unifying (Maybe Reconcile)
-getNextUndone = do
-  graph <- gets fst
-  return (find isTodo $ fmap fst graph)
-
-setAs :: RecState -> String -> Unifying ()
-setAs state s = modify (first $ Map.adjust (first $ setStateAs state) s)
-
-getReconcilingGraph :: [Reconcile] -> ReconcilingGraph
-getReconcilingGraph s = Map.fromList (getMatchingSpecs s <$> s)
-
-getMatchingSpecs :: [Reconcile] -> Reconcile -> (String, (Reconcile, [String]))
-getMatchingSpecs lst r@(Reconcile arrow spec l name _) = (name, (r, getRecId <$> filter (hasCommonTVar arrow) lst))
-
-hasCommonTVar :: ArrowType -> Reconcile -> Bool
-hasCommonTVar (ArrowType a b) r = 
-  let tvs = ftv (mkArr a b) in any (`appearsInRec` r) tvs
+hasCommonTVar :: Reconcile -> Reconcile -> Unifying ()
+hasCommonTVar (Reconcile (ArrowType a b) _ _ name) r@(Reconcile _ _ _ name2) = 
+  let tvs = ftv (mkArr a b) in when (any (`appearsInRec` r) tvs) (throwError $ CompilerError (CaseDependency name name2) [])
 
 appearsInRec :: TVar -> Reconcile -> Bool
-appearsInRec tv (Reconcile arrow spec l _ _)  = any (appearsInSpec tv) spec
+appearsInRec tv (Reconcile arrow spec l _)  = any (appearsInSpec tv) spec
 
 appearsInSpec :: TVar -> Specialization -> Bool
 appearsInSpec tv (Spec cand arg ret) = appearsInType tv cand || appearsInType tv arg || appearsInType tv ret
@@ -561,45 +553,129 @@ appearsInSpec tv (Spec cand arg ret) = appearsInType tv cand || appearsInType tv
 appearsInType :: TVar -> Type -> Bool
 appearsInType tv tp = tv `Set.member` ftv tp
 
-reconcilieTop :: Unifying Subst
-reconcilieTop = do
-  graph <- gets fst
-  tell $ "graph is : \n" ++ prettyM graph ++ "\n"
-  next <- getNextUndone
-  case next of
-    Just a -> do
-      tell "next undone is "
-      tell $ pretty a ++ "\n"
-      sub <- runReconcile a
-      rest <- reconcilieTop
-      return $ sub `compose` rest
-    Nothing -> return nullSubst
+reconcilieTop :: [Reconcile] -> Type -> Unifying Subst
+reconcilieTop rs t = foldl compose nullSubst <$> traverse (runReconcile t) rs
 
-getTVarTree :: [Type] -> Unifying Type
-getTVarTree = getMaximalType >>> traverse (fmap tvar . const freshRec) >>> fmap treeToType
-
-tryReconcile :: String -> Unifying Subst
-tryReconcile n = do
-  res <- gets (fmap fst . Map.lookup n . fst)
-  case res of 
-    Just (Reconcile _ _ _ _ Done) -> return nullSubst
-    Just r@(Reconcile _ _ _ _ Todo) -> runReconcile r
-
+getTVarTree :: [Type] -> Unifying (BTree TVar)
+getTVarTree = fmap asTree >>> getMaximalStruct >>> traverse (fmap var . const freshRec)
 
 -- TODO renommer les subst un peu partout
-runReconcile :: Reconcile -> Unifying Subst
-runReconcile (Reconcile (ArrowType from to) ts l n Todo) = do
-  --tell $ "merge : " ++ prettyL ts ++ "\n"
-  setAs Doing n
-  depends <- gets (fmap snd . Map.lookup n . fst)
-  case depends of
-    Just rs -> do
-      substs <- traverse tryReconcile rs
-      let sub = foldl compose nullSubst substs
-      structs <- getTVarTree (retType <$> ts)
-      tell $ "tvar tree : " ++ pretty structs ++ "\n"
-      setAs Done n
-      return sub
+runReconcile :: Type -> Reconcile -> Unifying Subst
+runReconcile base (Reconcile (ArrowType from to) ts l n) = do
+  -- structs is the tree of tvars with the same maximum size as the argtypes so it can give a replacement for every leaf.
+  structs <- getTVarTree (argType <$> ts)
+  let candAndArgs = (candidate &&& argType) <$> ts
+  --tell $ "tvar tree : " ++ pretty structs ++ "\n"
+  -- vars that were replaced by types
+  replacements <- join <$> sequence (getReplacements base structs <$> candAndArgs)
+  --tell $ "replacements : " ++ prettyL replacements ++ "\n"
+  -- vars that become equal to other vars.
+  varsreplacements <- replacementsToVars <$> (compareReplacements <$> (join <$> sequence (getVarsReplacements structs <$> candAndArgs)))
+  --tell $ "equalities : " ++ show ((pretty *** pretty) <$> varsreplacements) ++ "\n"
+  sub0 <- unionSolve (nullSubst, lunion l <$> (replacements ++ varsreplacements))
+  --tell $ "sub is : " ++ pretty sub0 ++ "\n"
+  uncollapsables <- getMaximalStruct <$> sequence (getUncollapsableVars <$> candAndArgs)
+  let structs' = apply sub0 $ tvTreeToType structs
+  tell $ "new struct : " ++ pretty structs' ++"\n"
+  tell $ "uncollapsables : " ++ show (pretty uncollapsables) ++ "\n"
+  outTypes <- traverse (localReconcilie structs') ts
+  return nullSubst
+
+localReconcilie :: Type -> Specialization -> Unifying [Type]
+localReconcilie inType (Spec cand arg ret) = do
+  tell $ "cand : " ++  pretty cand ++ "     tp :  " ++ pretty inType ++ "\n"
+  sub <- extractLocalSubst cand inType
+  tell $ "found sub : " ++ show (pretty <$> sub) ++ "\n"
+  let res = applyMany sub ret
+  tell $ "rets are : " ++ show (pretty <$> res) ++ "\n"
+  return []
+
+applyHigherSub :: Bool -> (Type, Type) -> Type -> [Type]
+applyHigherSub isLeft (from, to) source@(TApp _ _) | source == from = [to, from] -- just remove some useless cases where we replace the base type.
+applyHigherSub False (from, to) source | source == from = [to, from] -- just remove some useless cases where we replace the base type.
+applyHigherSub isLeft (from, to) (TApp a b) = TApp <$> applyHigherSub isLeft (from, to) a <*> applyHigherSub False (from, to) b
+applyHigherSub _ _ s = [s]
+
+applyMany :: [(Type, Type)] -> Type -> [Type]
+applyMany [] t = [t]
+applyMany (rep:reps) t = let others = applyMany reps t in (>>= applyHigherSub True rep) others
+
+-- TODO trap in the ``compose` maybe, if incompatibilities in the substs (idk)
+extractLocalSubst :: Type -> Type -> Unifying [(Type, Type)]
+extractLocalSubst cand final = case (cand, final) of
+  (TApp a b, TApp a' b') -> do
+    sa <- extractLocalSubst a a'
+    sb <- extractLocalSubst b b'
+    return (sa ++ sb)
+  -- ici j'ai un TApp qui correspond à une var donc je veux pouvoir transformer ce tapp en var
+  -- /!\ INVERSER LA SUBST
+  (TApp a b, TVar tv) -> return [(cand, final)]
+  -- ici j'ai un tapp en candidat mais le type final est un TCon donc c'est incompatible -> voila
+  (TApp a b, TCon tc k) -> throwErrorV $ WrongBranchType cand final
+
+  (TVar tv, TVar tv') -> return [(cand, final)]
+  -- ici je dis que la tvar dans le candidat peut être remplacée par le tapp (car elle le sera obligatoirement)
+  (TVar tv, TApp a b) -> return [(cand, final)]
+  -- ici j'ai en candidat une tvar du coup pareil que pour le tapp
+  (TVar tv, TCon t k) -> return [(cand, final)]
+
+  (TCon t k, TCon t' k') -> if t /= t' then throwErrorV $ WrongBranchType cand final else return []
+  (TCon t k, TVar tv') -> return [(cand, final)]
+  (TCon t k, TApp a b) -> throwErrorV $ WrongBranchType cand final -- psk c'est logique
+
+compareReplacements :: [(BTree TVar, TVar, TVar)] -> [(BTree TVar, BTree TVar)]
+compareReplacements lst = join (filterReplacements <$> lst <*> lst)
+  where 
+    filterReplacements (orig, cand, actual) (orig', cand', actual') =
+      [(orig, orig') | orig /= orig' && cand /= cand' && actual == actual']
+
+
+replacementsToVars :: [(BTree TVar, BTree TVar)] -> [(Type, Type)]
+replacementsToVars = fmap (TVar *** tvTreeToType) <$> (=<<) replacementsToVars'
+  where replacementsToVars' = \case
+          (Leaf tv, x) -> [(tv, x)]
+          (x, Leaf tv) -> [(tv, x)]
+          (BTree (a, b), BTree (c, d)) -> replacementsToVars' (a, c) ++ replacementsToVars' (b, d)
+
+
+-- detects structure mismatchs (eg : Int, f a is going to produce * * but f a, g b will produce *)
+getUncollapsableVars :: (Type, Type) -> Unifying (BTree ())
+getUncollapsableVars (candidate, actual) = case (candidate, actual) of
+  (TApp a b, TApp a' b') -> do
+    rep <- getUncollapsableVars (a, a')
+    rep' <- getUncollapsableVars (b, b')
+    case (rep, rep') of
+      (Leaf () , Leaf ()) -> return $ Leaf ()
+      _ -> return $ BTree (rep, rep')
+  (t, TApp a b) -> do
+    rep <- getUncollapsableVars (t, a)
+    rep' <- getUncollapsableVars (t, b)
+    return (BTree (rep, rep'))
+  (_, _) -> return $ Leaf ()
+
+getVarsReplacements :: BTree TVar -> (Type, Type) -> Unifying [(BTree TVar, TVar, TVar)]
+getVarsReplacements replacement (candidate, actual) = case (replacement, candidate, actual) of
+  (BTree (a, b), TApp a' b', TApp a'' b'') -> do
+    rep <- getVarsReplacements a (a', a'')
+    rep' <- getVarsReplacements b (b', b'')
+    return (rep ++ rep')
+  (t, TVar tv', TVar tv'') -> return [(t, tv', tv'')]
+  _ -> return []
+
+-- given the value after typing the branch and the base signature, tells if we can generalise
+getReplacements :: Type -> BTree TVar -> (Type, Type) -> Unifying [(Type, Type)]
+getReplacements base replacement (candidate, actual) = case (replacement, candidate, actual) of
+  (BTree (a, b), TApp a' b', TApp a'' b'') -> do
+    rep <- getReplacements base a (a', a'')
+    rep' <- getReplacements base b (b', b'')
+    return (rep ++ rep')
+  (_, TCon t c, _) -> return []
+  (Leaf t, TVar _, TVar t') -> return [(TVar t, TVar t')] -- | t' `appearsInType` base]
+  (Leaf t, TVar _, _) -> return [(TVar t, actual)] 
+  (_, TVar _, _) -> return []
+  (a, b, c) -> do 
+    tell $ "not covered : " ++ pretty a ++ " | " ++ pretty b ++ " | " ++ pretty c ++ "\n"
+    return []
 
 solver :: [(Pred, Location)] -> Solve [Pred]
 solver ps = do
@@ -615,9 +691,9 @@ unionSolve (su, cs) =
   case cs of
     [] -> return su
     Union (t1, t2, loc) : cs1 -> do
-      tell $ "unify : " ++ pretty t1 ++ " and " ++ pretty t2 ++ "\n"
+      --tell $ "unify : " ++ pretty t1 ++ " and " ++ pretty t2 ++ "\n"
       su1 <- unifies t1 t2 `withErrorLoc` loc
-      tell $ "found : " ++ pretty su1 ++ "\n"
+      --tell $ "found : " ++ pretty su1 ++ "\n"
       unionSolve (su1 `compose` su, apply su1 cs1)
 
 data ClassSolver = ClassSolver{found :: [Pred], remain :: [(Pred, Location)]};
@@ -700,8 +776,8 @@ mergeG = foldr (flip Map.union) Map.empty
 
 freshRec :: Unifying String
 freshRec = do
-  s <- gets snd
-  modify (second (+1))
+  s <- get
+  modify (+1)
   return ("'" ++ letters !! s)
 
 type BitVec = [Bool]

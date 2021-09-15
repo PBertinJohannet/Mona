@@ -3845,12 +3845,89 @@ je trouve que a devient Bool et donc je remplace a par Bool dans le retour.
 si au lieu de Prod a b j'avais Prod (f Int) (b) je remplace a par f Int
 mais si au lieu de (f k) j'avais f Int, je... bref t'as compris.
 
+mais j'ai l'autre problème du coup T.T
+si elles sont égales 
+1) de base
+j'avais 2 valeurs égales donc elles sont égales partout, donc la subst sera la même partout donc pas de probs ?
+2) après typage
+Je remplace depuis le type pas candidat de toute façon donc elles seront pareilles ? non du coup je peux pas remplacer 
+OK si j'avais a et b et que j'ai remplacé les deux par c, quand je refine les deux je suis niqué ? psk je dis que mon 
+type en cet endroit peut être deux vals différentes. sauf si je fais ce que j'essaye de faire, d'essayer de remplacer direct.
+genre dire je peux avoir soit c soit le remplacant.
+genre si j'ai remplacé a et b par c, je dis c peut être a ou b ? mais dans ma généralisation je vais pas forcer le même.
+donc faut faire pareil pour les contraintes d'égalité j'imagine.
+ah mais non j'uniformise pas le type du pattern, juste l'actuel !
+et dans celui la elles sont déjà égales les variables.
+
+donc pas de prob : 
+je crée une liste de substitutions.
+a partir de ça je peux avoir un arbre avec une liste de possibilités à chaque fois.
+je garde les possibilités ? ah mais j'ai un vrai problème la du coup.
+psk soit je teste toutes les combinaisons de substitutions possibles (ce qui est galère)
+ah w8, je remplace c par i et c par f j'ai un problème du coup non ?
+psk j'ai dit que f était compatible avec c et que 
+
+nn att.
+
+pour l'instant j'ai une liste de valeurs qui doivent être compatibles pour chaque noeud.
+si elles sont toutes compatibles, je 
+ah non en fait je veux surtout sortir celles qui sont imposées.
+a partir de ça j'ai un nouveau tvar tree, je le réduis autant que possible.
+ensuite a partir de ce tvar tree je sors les possibilités de remplacement pour chaque branche (seulement pour les trucs qui ont été généralisés)
+après je compare les retours de la même façon à peu près. bref on verra après pour ça.
+la l'autre problème c'est de voir si une variable doit être égalisée.
+si c'est le cas alors faut le faire dans le tvar tree aussi. ou alors dans mes substitutions générées, je regarde si j'ai deux fois la
+hmm, je sors plein de valeurs mais faudrait savoir si elles sont au même endroit au final.
+
+donc je peux sortir plein de valeurs et checker après si y en a qui sont pareilles non ?
+
+nan je préfère regarder quelles valeurs sont les mêmes et sortir un arbre qui me dit ou elles sont
+
+OK ça ça a l'air fun au moins.
+je veux faire 2 fonctions : 
+- une qui me dit quelles tvars de mon tree doivent être forcées
+- une qui associe chaque tvar avec son equivalent tvar tree et qui cherche si y en a une pareil et retourne les deux.
+- ne pas oublier dans le candidat d'enlever le type de base des sous patterns à chaque fois.
+pour ça on a dit quoi ? que dans le candidat pour chaque sous pattern j'enlève la valeur la plus a gauche.
+vérifier que ça marche avec tous les cas
+
+Ok donc le collapse du type candidat final ça marche comment ?
+psk la chuis un peu embêté, j'arrive pas a savoir quand tout était prévu.
+faudrait renvoyer des marques pour dire quand une structure n'est pas prévue.
+genre pour tout le tvar tree, à chaque fois que tout est remplacé dessous et que la structure est prévue je marque le truc.
+hmm compliqué, trouve mieux.
+faut juste vérifier que pour chaque tapp qui existe des deux côtés, si j'ai des variables pas remplacables etc...
+donc oui faudrait renvoyer un bool avec chaque truc.
+comme ça je peux dire que tel sous pattern peut être écrasé 
+
+si dans mes remplacements j'ai dit que tel variable était une autre variable et qu'après je dis que c'est un TCon, ça veut dire que 
+je génère une contrainte d'unification en plus, du coup il faut l'appliquer partout.
+partout : 
+  - dans les branches.
+  - dans le type de retour
+  - dans les specialisations
+  - dans 
+
+  je peux ptet gérer ça automatiquement en faisant une unification à chaque fois.
+
+pour les vars identiques on avait dit quoi ? je sors toutes les (tvar : tvar) et je regarde ce qui est pareil a droite mais pas a gauche ?
+ouais j'ai l'impression que c'est le seul choix.
+du coup je prends tous les couples original/remplacement, je les double (cand, act) (cand', act') et je check cand != cand' && act' == act 
+ensuite pour chaque couple je dis que les variables doivent être identiques.
 
 
+ok maintenant j'ai un prob, les double quotes pour forcer le collapse ça marche pas.
+psk si j'ai besoin d'un sous truc dans quelque part t'as compris.
+si j'ai forcé la structure quelque part je suis niqué.
+donc faut trouver les structures pas prévues et quand j'en trouve une j'ajoute les sous variables à ce qui ne peut pas être forcé.
 
+ok donc le uncollapsables c'est si j'ai un 'f 'a -> f a j'ai le droit de le collapser mais pas obligé.
+genre j'ai une structure minimale que j'ai le droit de collapser.
 
-
-
+je dois donc génerer les deux possibilités dans mon remplacement non ?
+oui.
+du coup il me faut déjà une substitution en 2d.
+ensuite pour chaque 
 =================================================================================
 ============================ TENTATIVE D'EXPLICATION ============================
 =================================================================================
@@ -3908,18 +3985,7 @@ CCI (CA Int) -> je force C a
 on voit qu'on applique le type de base du sous pattern (C) comme une TVar de ce sous pattern 
 et les autres types du sous pattern par rapport a lui
 et quand le constructeur demande une contrainte a n-2 c'est pareil que n-1 (je suis passé dans une branche qui me le demande)
-
-On interdit les cases mutuellement recursifs ainsi que les case (case of) of (on remplace par un lambda sinon)
-
-
-le problème avec ceux la c'est que je peux pas savoir 
-ah mais est-ce que je peux avoir le problème dans le retour ?
-oui a priori. si j'ai Int | a, je peux dire que c'est a ? hmm mais j'ai déjà dit que c'était a non ?
-genre c'est dans l'entrée que j'ai dit que c'était a
-
-on dit qu'un seul case par signature mais du coup on reprend les patterns nestés.
-le problème que ça posait c'était de créer un arbrre candidat je crois ?
-genre pour le créer j'arrivais pas a savoir ce qui était attendu.
+en fait je peux juste sortir une liste de collapse ainsi qu'une liste d'égalités.
 
 
 
@@ -3929,6 +3995,7 @@ genre pour le créer j'arrivais pas a savoir ce qui était attendu.
 
 
 plusieurs depth de patterns nestés
+les uncollapsables.
 plusieurs fois le meme pattern (CA (CI i j) et CA (CB k l)) pour la complétion.
 des substitutions qui créent de la structure dans des patterns qui n'en ont pas.
 un test pour chaqu'un de ces cas :
@@ -3942,4 +4009,43 @@ CR (CA Int) -> C (C Int)
 CCI (CI Int) -> C a
 CCI (CA Int) ->  C a
 
+vérifier que je collapse bien le candidat quand je peux (ici si j'ai que des CCI (CI Int) je veux C a en candidat)
+
 Erreur quand mauvais nombre de vars dans pattern.
+très long mais passer dans tous les cases de Infer et vérifier qu'un test passe dedans.
+
+Ou alors je crée une structure minimale avec tout à gauche, et à partir de ça je rajoute des tvars jusqu'à ce que j'ai tout géré.
+watch galère de ouf ça non ? autant faire une liste de bool non ? ou refaire complètement le tvar tree ?
+hmm fck.
+ou alors je crée le tvar tree comme ça de base ?
+chaque branche renvoie l'arbre minimal dont elle a besoin. ensuite je prends le maximal de tout ça ?
+Ok mais est-ce qu'il n'y a pas moyen de renvoyer l'arbre en même temps.
+genre si la branche à besoin de plus que ça.
+hmm renvoyer l'arbre en même temps pour chaque branche ça peut se faire mais faut fold avec l'arbre de base aussi.
+nan en vrai j'ai juste envie de renvoyer plein d'arbres min.
+genre je renvoie une liste de bool ou un Fix(Maybe(Either)) psk c'est plus drole.
+ensuite je combine ces listes ?
+this that both plutôt non ?
+sinon je crée ma structure en plus
+nan un These a 
+
+
+=================================================================================
+===================================== TODO ======================================
+=================================================================================
+
+tester les uncollapsables sur le second paramètre mais enregistrer celui la.
+vérifier les cas ou on peut avoir plusieurs solutions.
+verifier la compatibilité entre le type d'entrée final et les types locaux finaux.
+pour chaque type local final on extrai la spécialisation.
+
+=================================== DONE ========================================
+
+- faire la fonction qui renvoie les tvars de remplacement des variables identiques (juste chercher si elle existe 2 fois quoi)
+- ajouter des logs au parseur si y faut mais le réparer ou le tester.
+- trouver un moyen de dire qu'un pattern est pas forcé (l'ajouter dans les unions en fait.)
+- tester la création des candidats (vérifier que le collapse des (k a) marche bien)
+- réparer les cases qui marchent pas pour le forcage des tvars de l'arbre.
+- ajouter une fonction qui check le collapse (pour chaque variable, voir si elle est forcée nul part (double quote), ensuite parcourir l'arbre pour collapser).
+- ajouter une fonction pour tester que les remplacements sont compatibles (crée la subst en même temps probablement. ptet des problèmes ?)
+- créer le candidat final avec tout ça. 

@@ -41,6 +41,9 @@ instance Pretty a => Pretty (BTree a) where
     BTree (a, b) -> "{" ++ pretty a ++ ", " ++ pretty b ++ "}"
     Leaf a -> pretty a
 
+instance Pretty () where
+  pretty _ = "*"
+
 type Class = ([String], [Inst])
 type Inst = Qual Pred
 
@@ -196,10 +199,13 @@ uncurryType = \case
 reApply :: NonEmpty Type -> Type
 reApply (x :+: xs) = foldr TApp x xs
 
-asTree :: Type -> BTree Type
+asTree :: Type -> BTree ()
 asTree = \case
   TApp a b -> BTree (asTree a, asTree b)
-  t -> Leaf t
+  t -> Leaf ()
+
+tvTreeToType :: BTree TVar -> Type
+tvTreeToType = treeToType . fmap TVar
 
 treeToType :: BTree Type -> Type
 treeToType = \case
@@ -209,21 +215,21 @@ treeToType = \case
 treeToList :: BTree a -> [] a
 treeToList = foldr (:) []
 
-getSubStruct :: ([Maybe (Type, Type)] -> [(Type, Type)]) -> [Type] -> BTree ()
+getSubStruct :: ([Maybe (BTree a, BTree a)] -> [(BTree a, BTree a)]) -> [BTree a] -> BTree ()
 getSubStruct f tps = 
   case f (sep <$> tps) of
     [] -> Leaf () 
-    l -> BTree (getSubStruct f `mapTuple` unzipF l)
+    l -> BTree (getSubStruct f `mapTuple` unzip l)
   where
     sep = \case 
-      TApp a b -> Just (a, b)
+      BTree (a, b) -> Just (a, b)
       _ -> Nothing
 
-getMinimalType :: [Type] -> BTree ()
-getMinimalType = getSubStruct (fromMaybe [] . sequence)
+getMinimalStruct :: [BTree ()] -> BTree ()
+getMinimalStruct = getSubStruct (fromMaybe [] . sequence)
 
-getMaximalType :: [Type] -> BTree ()
-getMaximalType = getSubStruct catMaybes
+getMaximalStruct :: [BTree ()] -> BTree ()
+getMaximalStruct = getSubStruct catMaybes
 
 
 mapTuple :: (a -> b) -> (a, a) -> (b, b)

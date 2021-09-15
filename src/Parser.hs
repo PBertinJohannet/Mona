@@ -363,7 +363,7 @@ consDecl = do
   name <- identifier
   reserved "="
   x <- parseType
-  optional semi
+  semi
   return (name, x)
 
 type NakedBinding = (String, NakedStatement)

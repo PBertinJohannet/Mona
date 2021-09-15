@@ -85,3 +85,41 @@ let correct a = case a of
   (CB b j) -> P b 0;
 
 ```
+
+## Should smh
+
+```
+
+data D a b = 
+  | CI = Int -> Int -> D Int Int;
+  | CB = Bool -> Bool -> D Bool Bool;
+  | CR = k a b -> c -> D (k a b)c;
+  | CA = a -> c -> D a c;
+  | CD = D a b -> c -> D (D a b)c;
+
+sig branch = forall a b . a -> a -> a;
+let branch b c = if True then b else c;
+
+sig useUnder = forall f a b . f a a b -> Bool;
+let useUnder a = True;
+
+sig useUnder1 = forall f b . f b -> Bool;
+let useUnder1 a = True;
+
+```
+
+
+## fail 
+
+let correct f = \a -> case a of
+  (CI i j) -> CA 0 j,
+  (CB i j) -> CA 1 j,
+  (CA k l) -> CI k l;
+
+## fail 
+
+
+let correct f = \a -> case a of
+  (CI i j) -> CA 0 j,
+  (CB i j) -> CA 1 j,
+  (CA k l) -> CI 5 l;
