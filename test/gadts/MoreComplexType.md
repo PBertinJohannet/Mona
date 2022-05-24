@@ -44,9 +44,11 @@ let correct a = case a of
 When the return can be determined from the input, it should compile correctly
 ```
 
+let BToInt b = case b of (True) -> 1, (False) -> 4;
+
 let correct a = case a of
     (RI i) -> 1 + i,
-    (RB b) -> case b of (True) -> 1, (False) -> 4;
+    (RB b) -> BToInt b;
 
 ```
 >>>compiled successfully
@@ -60,23 +62,23 @@ let fail a = case a of
     (RI i) -> True,
     (RB b) -> 1;
 ``` 
->>>TypeError : could not generalize the types : Bool Int at fileName 16:1 at fileName 16:14
+>>>TypeError : Found no matching substitution for 'a -> 'f at fileName 16:1
 
 ## Should refuse
 
 refuse coz subpattern C a b does not cover all type possibles (a != C a b)
 ```
 data Bool =
-  | True = Bool
+  | True = Bool;
   | False = Bool;
 
 data Prod a b = 
   | P = a -> b -> Prod a b;
 
 data D a b = 
-  | CI = Int -> Int -> D Int Int
-  | CB = Bool -> Bool -> D Bool Bool
-  | CA = a -> b -> D a b
+  | CI = Int -> Int -> D Int Int;
+  | CB = Bool -> Bool -> D Bool Bool;
+  | CA = a -> b -> D a b;
 
 let correct a = case a of
   (CI i j) -> P i j,
@@ -85,9 +87,11 @@ let correct a = case a of
   (CB b j) -> P b 0;
 
 ```
+>>>TypeError : Wrong branch Type, cand : Int final : D ''c ''d at fileName 27:1
 
-## Should smh
+### fail 
 
+todo
 ```
 
 data D a b = 
@@ -106,20 +110,30 @@ let useUnder a = True;
 sig useUnder1 = forall f b . f b -> Bool;
 let useUnder1 a = True;
 
-```
-
-
-## fail 
-
 let correct f = \a -> case a of
   (CI i j) -> CA 0 j,
   (CB i j) -> CA 1 j,
   (CA k l) -> CI k l;
+```
+>>>TypeError : Wrong branch Type, cand : Bool final : Int at fileName 32:1
 
-## fail 
 
+## shuffle
 
-let correct f = \a -> case a of
-  (CI i j) -> CA 0 j,
-  (CB i j) -> CA 1 j,
-  (CA k l) -> CI 5 l;
+I have no idea why its here but lets go. maybe the same with composition at some point ?
+
+```
+
+data D a b c d = 
+  | A = a -> b -> c -> d -> D a b c d;
+  | B = b -> c -> d -> a -> D a b c d;
+  | C = c -> d -> a -> b -> D a b c d;
+  | D = d -> a -> b -> c -> D a b c d;
+
+let correct a = case a of 
+  (A a b c d) -> B b c d a,
+  (B b c d a) -> C c d a b,
+  (C c d a b) -> D d a b c,
+  (D d a b c) -> A a b c d;
+```
+>>>compiled successfully

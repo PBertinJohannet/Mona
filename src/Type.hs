@@ -168,6 +168,11 @@ setReturn = \case
   TApp (TApp (TCon "(->)" k) a) b -> TApp (TApp (TCon "(->)" k) a) . setReturn b
   _ -> id
 
+depth :: Type -> Int
+depth = \case
+  TApp a b -> 1 + max (depth a) (depth b)
+  _ -> 1
+
 sepArgs :: Type -> NonEmpty Type
 sepArgs = \case
   TApp (TApp (TCon "(->)" k) a) b -> a :+: asList (sepArgs b)

@@ -4,14 +4,13 @@ When the constructors have different argument counts it should also work.
 This is especially tricky when constructors have zero arguments or when variables are unused.
 Here is a list of examples using these types : 
 ```
-
   
 data Prod a b c = 
   | P = a -> b -> c -> Prod a b c;
 
 data Maybe a =
-  | Both = a -> a -> Maybe a
-  | Just = a -> Maybe a
+  | Both = a -> a -> Maybe a;
+  | Just = a -> Maybe a;
   | Nothing = Maybe a;
   
 let snd a = case a of  
@@ -169,7 +168,7 @@ And the first should be different.
 ```
 let x = (snd (P (1) (Just 2) (Just 1))) + 2;
 ```
->>>TypeError : Cannot unify : Int with Maybe Int at fileName 20:1 at fileName 20:41
+>>>TypeError : Cannot unify : Int with Maybe Int at fileName 19:1 at fileName 19:41
 
 
 ## Unifying by function
@@ -203,7 +202,7 @@ let catchALl x = case x of
 ```
 >>>compiled successfully
 
-## Just to wrap it up.
+## No dependency between multiple branches.
 
 Combination of many of the above.
 
@@ -219,4 +218,4 @@ let secondToFirst x =
       (Just i) -> Just i,
       (Both j i) -> Just j);
 ```
->>>compiled successfully
+>>>TypeError : Dependency between 'ab and 'ad at fileName 19:1

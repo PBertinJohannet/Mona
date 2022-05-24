@@ -53,4 +53,4 @@ let fail a = case a of
     (RA i) -> 2,
     (RB b) -> S;
 ```
->>>TypeError : could not generalize the types : Int Int Int Something at fileName 15:1 at fileName 15:14
+>>>TypeError : Found no matching substitution for 'a -> 'g at fileName 15:1

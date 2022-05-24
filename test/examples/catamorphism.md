@@ -12,7 +12,7 @@ class Functor f = {
 }
 
 data Maybe a =
-  | Just = a -> Maybe a
+  | Just = a -> Maybe a;
   | Nothing = Maybe a;
 data Nat = | Nat = Fix Maybe -> Nat;
 let S = \(Nat i) -> Nat (Fix (Just i));

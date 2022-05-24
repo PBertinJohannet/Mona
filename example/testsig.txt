@@ -3928,9 +3928,33 @@ je dois donc génerer les deux possibilités dans mon remplacement non ?
 oui.
 du coup il me faut déjà une substitution en 2d.
 ensuite pour chaque 
+
+On finira le collapsable en faisant les tests.
+
+pour l'instant je fais le retour ça va être satisfaisant si ça marche ne seraitce qu'a 5%
+il faut que le type final puisse unifier avec tous les sous constructeurs non ?
+non avec au moins un d'entre eux avec la bonne subst plutôt.
+ptn chaud.
+en fait le prob c'est que ceux qui forcent forcent pas assez je crois.
+genre par ex la tvar est pas assez forcée.
+ah mais oui c'est ça
+D Int Bool et D Int Int peuvent pas marcher psk ils unifient pas entre eux.
+donc il m'en faut une qui peut unifier avec tous ?
+mais à quel moment je check ?
+ah mais non juste avec les types de retour non ?
+genre si à un moment j'ai un Int en retour je peux pas dire que c'est un Bool dans le truc final logique.
+
+on peut juste regarder si ça change base aussi non ?
+vu que tout le reste est fait j'imagine que ça marche.
+verifier que les signatures sont equivalentes ? si oui on est bons.
+
 =================================================================================
 ============================ TENTATIVE D'EXPLICATION ============================
 =================================================================================
+
+Important avant de commencer psk c'est très utile pour la suite :
+tout est basé sur le fait qu'il n'y a qu'un seul case comme ça dans chaque fonction et qu'il est résolu a la fin
+donc la substitution faite dedans est la derniere.
 
 j'ai le type d'entrée général TEG.
 j'ai le type du constructeur d'entrée TEC
@@ -4029,10 +4053,16 @@ this that both plutôt non ?
 sinon je crée ma structure en plus
 nan un These a 
 
+tester ptet si dans le ArrowType from to on a plusieurs tvars pareilles ou des Int etc...
+verifier que si on applique une subst a une tvar pas dans base ça se repercutera pas sur base.
 
 =================================================================================
 ===================================== TODO ======================================
 =================================================================================
+
+les outTypes faut checker ceux qui unifient et enregistrer la substitution que ça fait.
+ensuite apliquer la substitution au type de base avant de l'unifier et regarder pour lesquels ça marche.
+ensuite on a tous les (Substitution, Type)
 
 tester les uncollapsables sur le second paramètre mais enregistrer celui la.
 vérifier les cas ou on peut avoir plusieurs solutions.
@@ -4049,3 +4079,49 @@ pour chaque type local final on extrai la spécialisation.
 - ajouter une fonction qui check le collapse (pour chaque variable, voir si elle est forcée nul part (double quote), ensuite parcourir l'arbre pour collapser).
 - ajouter une fonction pour tester que les remplacements sont compatibles (crée la subst en même temps probablement. ptet des problèmes ?)
 - créer le candidat final avec tout ça. 
+
+reflechissons : 
+
+-- qu'est ce qu'on veut vraiment checker : que tout unifie ? qu'ils unifient entre eux ?
+-- si b est un resultat d'unifications de rets alors il unifie avec tous les rets ? non.
+-- est ce que je veux garder les resultats d'unifications autres ?
+-- est ce que ça en crée vraiment de nouveaux surtout ?
+-- vu que j'ai plus ou moins la même structure a priori.
+
+j'ai la même structure de retour et quand je l'ai pas ?
+si j'ai :
+-> D (Maybe Int) Int
+-> D Int [Int]
+
+soit le maybe int vient de 'a', soit de f.
+F (Maybe Int)
+F Maybe Int
+
+-> D (Maybe Int) Int
+-> D Int [Int]
+ici je peux pas parce que ils sont pas pareils et ils peuvent pas venir du même.
+F Maybe (Maybe Int)
+F _ Int
+
+ok donc la question c'est est ce que je peux avoir une profondeur pas matchée a droite mais
+matchée a gauche ? a priori non. tout va être collapsé.
+donc maintenant on revient.
+
+on veut checker quoi 
+tous les types de retour sont obtenus par la substitution cand.
+le type final peut unifier avec tous ces types.
+le type final est le resultat de la branche car quand on applique cand, on revient sur la base.
+et c'est tout non ?
+on cherche juste un set de types qui unifient entre eux.
+sachant qu'ils sont obtenus a partir de la même structure (toujours la même forme a priori)
+alors on peut chercher le plus général de chaque liste ?
+non ça ça va pas marcher par contre. le plus général des fois.
+en fait je veux quoi ?
+tout a l'heure ça marchait parce qu'on retrouvait plusieurs fois le même si ça se trouve
+le result force donc : 
+pourquoi on voulait Bool : ?
+ah non c'est pas ça la question, pourquoi la y a pas des vars qui me permettent de virer les trucs ?
+
+le uncollapsables il me donne une structure entre candidat et argument
+si j'ai f a, g b il collapse
+ok donc si j'ai un tapp de chaque côté 

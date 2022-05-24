@@ -1,0 +1,578 @@
+("Bool",(Loc ("fileName",2,1),TypeDecl [] (("True",TVar (TV {name = "Bool", kind = Star})) :+: [("False",TVar (TV {name = "Bool", kind = Star}))])))
+("Prod",(Loc ("fileName",6,1),TypeDecl ["a","b"] (("P",TApp (TApp (TCon "(->)" (Kfun Star (Kfun Star Star))) (TVar (TV {name = "a", kind = Star}))) (TApp (TApp (TCon "(->)" (Kfun Star (Kfun Star Star))) (TVar (TV {name = "b", kind = Star}))) (TApp (TApp (TVar (TV {name = "Prod", kind = Star})) (TVar (TV {name = "a", kind = Star}))) (TVar (TV {name = "b", kind = Star}))))) :+: [])))
+("D",(Loc ("fileName",9,1),TypeDecl ["a","b","c"] (("CI",TApp (TApp (TCon "(->)" (Kfun Star (Kfun Star Star))) (TVar (TV {name = "Int", kind = Star}))) (TApp (TApp (TCon "(->)" (Kfun Star (Kfun Star Star))) (TVar (TV {name = "Int", kind = Star}))) (TApp (TApp (TCon "(->)" (Kfun Star (Kfun Star Star))) (TVar (TV {name = "Bool", kind = Star}))) (TApp (TApp (TApp (TVar (TV {name = "D", kind = Star})) (TVar (TV {name = "Int", kind = Star}))) (TVar (TV {name = "Int", kind = Star}))) (TVar (TV {name = "Int", kind = Star})))))) :+: [("CB",TApp (TApp (TCon "(->)" (Kfun Star (Kfun Star Star))) (TVar (TV {name = "Bool", kind = Star}))) (TApp (TApp (TCon "(->)" (Kfun Star (Kfun Star Star))) (TVar (TV {name = "Int", kind = Star}))) (TApp (TApp (TCon "(->)" (Kfun Star (Kfun Star Star))) (TVar (TV {name = "Bool", kind = Star}))) (TApp (TApp (TApp (TVar (TV {name = "D", kind = Star})) (TVar (TV {name = "Bool", kind = Star}))) (TVar (TV {name = "Int", kind = Star}))) (TVar (TV {name = "Bool", kind = Star})))))),("CA",TApp (TApp (TCon "(->)" (Kfun Star (Kfun Star Star))) (TVar (TV {name = "a", kind = Star}))) (TApp (TApp (TCon "(->)" (Kfun Star (Kfun Star Star))) (TVar (TV {name = "b", kind = Star}))) (TApp (TApp (TCon "(->)" (Kfun Star (Kfun Star Star))) (TVar (TV {name = "c", kind = Star}))) (TApp (TApp (TApp (TVar (TV {name = "D", kind = Star})) (TVar (TV {name = "a", kind = Star}))) (TVar (TV {name = "b", kind = Star}))) (TVar (TV {name = "c", kind = Star}))))))])))
+("branch",(Loc ("fileName",14,1),Sig (Forall [TV {name = "a", kind = Star},TV {name = "b", kind = Star}] (Qual {preds = [], head = TApp (TApp (TCon "(->)" (Kfun Star (Kfun Star Star))) (TVar (TV {name = "a", kind = Star}))) (TApp (TApp (TCon "(->)" (Kfun Star (Kfun Star Star))) (TVar (TV {name = "a", kind = Star}))) (TVar (TV {name = "a", kind = Star})))}))))
+("branch",(Loc ("fileName",15,1),Expr Loc ("fileName",15,39) :< (Lam PatternT (Raw "b") "Loc (\"fileName\",15,39) :< (Lam PatternT (Raw \"c\") \"Loc (\\\"fileName\\\",15,18) :< (Case Loc (\\\"fileName\\\",15,21) :< (Var True) of [PatternT (Pattern \\\"True\\\" []) \\\"Loc (\\\\\\\"fileName\\\\\\\",15,31) :< (Var b)\\\",PatternT (Pattern \\\"False\\\" []) \\\"Loc (\\\\\\\"fileName\\\\\\\",15,38) :< (Var c)\\\"])\")")))
+("useUnder",(Loc ("fileName",17,1),Sig (Forall [TV {name = "f", kind = Star},TV {name = "a", kind = Star},TV {name = "b", kind = Star}] (Qual {preds = [], head = TApp (TApp (TCon "(->)" (Kfun Star (Kfun Star Star))) (TApp (TApp (TApp (TVar (TV {name = "f", kind = Star})) (TVar (TV {name = "a", kind = Star}))) (TVar (TV {name = "a", kind = Star}))) (TVar (TV {name = "b", kind = Star})))) (TVar (TV {name = "Bool", kind = Star}))}))))
+("useUnder",(Loc ("fileName",18,1),Expr Loc ("fileName",18,22) :< (Lam PatternT (Raw "a") "Loc (\"fileName\",18,18) :< (Var True)")))
+("useUnder1",(Loc ("fileName",20,1),Sig (Forall [TV {name = "f", kind = Star},TV {name = "b", kind = Star}] (Qual {preds = [], head = TApp (TApp (TCon "(->)" (Kfun Star (Kfun Star Star))) (TApp (TVar (TV {name = "f", kind = Star})) (TVar (TV {name = "b", kind = Star})))) (TVar (TV {name = "Bool", kind = Star}))}))))
+("useUnder1",(Loc ("fileName",21,1),Expr Loc ("fileName",21,23) :< (Lam PatternT (Raw "a") "Loc (\"fileName\",21,19) :< (Var True)")))
+("correct",(Loc ("fileName",23,1),Expr Loc ("fileName",26,25) :< (Lam PatternT (Raw "f") "Loc (\"fileName\",26,25) :< (Lam PatternT (Raw \"a\") \"Loc (\\\"fileName\\\",23,23) :< (Case Loc (\\\"fileName\\\",23,28) :< (Var a) of [PatternT (Pattern \\\"CA\\\" [Raw \\\"i\\\",Raw \\\"j\\\",Raw \\\"k\\\"]) \\\"Loc (\\\\\\\"fileName\\\\\\\",24,24) :< (App Loc (\\\\\\\"fileName\\\\\\\",24,22) :< (App Loc (\\\\\\\"fileName\\\\\\\",24,20) :< (App Loc (\\\\\\\"fileName\\\\\\\",24,17) :< (Var CA) Loc (\\\\\\\"fileName\\\\\\\",24,20) :< (Var k)) Loc (\\\\\\\"fileName\\\\\\\",24,22) :< (Var i)) Loc (\\\\\\\"fileName\\\\\\\",24,24) :< (Var k))\\\",PatternT (Pattern \\\"CI\\\" [Raw \\\"i\\\",Raw \\\"j\\\",Raw \\\"k\\\"]) \\\"Loc (\\\\\\\"fileName\\\\\\\",25,24) :< (App Loc (\\\\\\\"fileName\\\\\\\",25,22) :< (App Loc (\\\\\\\"fileName\\\\\\\",25,20) :< (App Loc (\\\\\\\"fileName\\\\\\\",25,17) :< (Var CB) Loc (\\\\\\\"fileName\\\\\\\",25,20) :< (Var k)) Loc (\\\\\\\"fileName\\\\\\\",25,22) :< (Var j)) Loc (\\\\\\\"fileName\\\\\\\",25,24) :< (Var k))\\\",PatternT (Pattern \\\"CB\\\" [Raw \\\"i\\\",Raw \\\"j\\\",Raw \\\"k\\\"]) \\\"Loc (\\\\\\\"fileName\\\\\\\",26,24) :< (App Loc (\\\\\\\"fileName\\\\\\\",26,22) :< (App Loc (\\\\\\\"fileName\\\\\\\",26,20) :< (App Loc (\\\\\\\"fileName\\\\\\\",26,17) :< (Var CB) Loc (\\\\\\\"fileName\\\\\\\",26,20) :< (Var k)) Loc (\\\\\\\"fileName\\\\\\\",26,22) :< (Var j)) Loc (\\\\\\\"fileName\\\\\\\",26,24) :< (Var k))\\\"])\")")))
+("main",(Loc ("fileName",28,1),Expr Loc ("fileName",28,21) :< (App Loc ("fileName",28,12) :< (Var printInt) Loc ("fileName",28,21) :< (Lit 4))))sigs : 
+branch :: forall a b . a -> a -> a,useUnder :: forall f a b . f a a b -> Bool,useUnder1 :: forall f b . f b -> Bool
+datas show : 
+[(Loc ("fileName",2,1),"Bool",[],("True",TVar (TV {name = "Bool", kind = Star})) :+: [("False",TVar (TV {name = "Bool", kind = Star}))]),(Loc ("fileName",6,1),"Prod",["a","b"],("P",TApp (TApp (TCon "(->)" (Kfun Star (Kfun Star Star))) (TVar (TV {name = "a", kind = Star}))) (TApp (TApp (TCon "(->)" (Kfun Star (Kfun Star Star))) (TVar (TV {name = "b", kind = Star}))) (TApp (TApp (TVar (TV {name = "Prod", kind = Star})) (TVar (TV {name = "a", kind = Star}))) (TVar (TV {name = "b", kind = Star}))))) :+: []),(Loc ("fileName",9,1),"D",["a","b","c"],("CI",TApp (TApp (TCon "(->)" (Kfun Star (Kfun Star Star))) (TVar (TV {name = "Int", kind = Star}))) (TApp (TApp (TCon "(->)" (Kfun Star (Kfun Star Star))) (TVar (TV {name = "Int", kind = Star}))) (TApp (TApp (TCon "(->)" (Kfun Star (Kfun Star Star))) (TVar (TV {name = "Bool", kind = Star}))) (TApp (TApp (TApp (TVar (TV {name = "D", kind = Star})) (TVar (TV {name = "Int", kind = Star}))) (TVar (TV {name = "Int", kind = Star}))) (TVar (TV {name = "Int", kind = Star})))))) :+: [("CB",TApp (TApp (TCon "(->)" (Kfun Star (Kfun Star Star))) (TVar (TV {name = "Bool", kind = Star}))) (TApp (TApp (TCon "(->)" (Kfun Star (Kfun Star Star))) (TVar (TV {name = "Int", kind = Star}))) (TApp (TApp (TCon "(->)" (Kfun Star (Kfun Star Star))) (TVar (TV {name = "Bool", kind = Star}))) (TApp (TApp (TApp (TVar (TV {name = "D", kind = Star})) (TVar (TV {name = "Bool", kind = Star}))) (TVar (TV {name = "Int", kind = Star}))) (TVar (TV {name = "Bool", kind = Star})))))),("CA",TApp (TApp (TCon "(->)" (Kfun Star (Kfun Star Star))) (TVar (TV {name = "a", kind = Star}))) (TApp (TApp (TCon "(->)" (Kfun Star (Kfun Star Star))) (TVar (TV {name = "b", kind = Star}))) (TApp (TApp (TCon "(->)" (Kfun Star (Kfun Star Star))) (TVar (TV {name = "c", kind = Star}))) (TApp (TApp (TApp (TVar (TV {name = "D", kind = Star})) (TVar (TV {name = "a", kind = Star}))) (TVar (TV {name = "b", kind = Star}))) (TVar (TV {name = "c", kind = Star}))))))])]exprs : 
+branch :: (\b -> (\c -> (case (True)`fileName 15:21` of ((True ))->(b)`fileName 15:31`((False ))->(c)`fileName 15:38`)`fileName 15:18`)`fileName 15:39`)`fileName 15:39`,useUnder :: (\a -> (True)`fileName 18:18`)`fileName 18:22`,useUnder1 :: (\a -> (True)`fileName 21:19`)`fileName 21:23`,correct :: (\f -> (\a -> (case (a)`fileName 23:28` of ((CA i,j,k))->((((CA)`fileName 24:17` (k)`fileName 24:20`)`fileName 24:20` (i)`fileName 24:22`)`fileName 24:22` (k)`fileName 24:24`)`fileName 24:24`((CI i,j,k))->((((CB)`fileName 25:17` (k)`fileName 25:20`)`fileName 25:20` (j)`fileName 25:22`)`fileName 25:22` (k)`fileName 25:24`)`fileName 25:24`((CB i,j,k))->((((CB)`fileName 26:17` (k)`fileName 26:20`)`fileName 26:20` (j)`fileName 26:22`)`fileName 26:22` (k)`fileName 26:24`)`fileName 26:24`)`fileName 23:23`)`fileName 26:25`)`fileName 26:25`,main :: ((printInt)`fileName 28:12` (4)`fileName 28:21`)`fileName 28:21`datas : 
+Bool () ::
+ ("True",TVar (TV {name = "Bool", kind = Star})) :+: [("False",TVar (TV {name = "Bool", kind = Star}))]
+
+ Prod (a b) ::
+ ("P",TApp (TApp (TCon "(->)" (Kfun Star (Kfun Star Star))) (TVar (TV {name = "a", kind = Star}))) (TApp (TApp (TCon "(->)" (Kfun Star (Kfun Star Star))) (TVar (TV {name = "b", kind = Star}))) (TApp (TApp (TVar (TV {name = "Prod", kind = Star})) (TVar (TV {name = "a", kind = Star}))) (TVar (TV {name = "b", kind = Star}))))) :+: []
+
+ D (a b c) ::
+ ("CI",TApp (TApp (TCon "(->)" (Kfun Star (Kfun Star Star))) (TVar (TV {name = "Int", kind = Star}))) (TApp (TApp (TCon "(->)" (Kfun Star (Kfun Star Star))) (TVar (TV {name = "Int", kind = Star}))) (TApp (TApp (TCon "(->)" (Kfun Star (Kfun Star Star))) (TVar (TV {name = "Bool", kind = Star}))) (TApp (TApp (TApp (TVar (TV {name = "D", kind = Star})) (TVar (TV {name = "Int", kind = Star}))) (TVar (TV {name = "Int", kind = Star}))) (TVar (TV {name = "Int", kind = Star})))))) :+: [("CB",TApp (TApp (TCon "(->)" (Kfun Star (Kfun Star Star))) (TVar (TV {name = "Bool", kind = Star}))) (TApp (TApp (TCon "(->)" (Kfun Star (Kfun Star Star))) (TVar (TV {name = "Int", kind = Star}))) (TApp (TApp (TCon "(->)" (Kfun Star (Kfun Star Star))) (TVar (TV {name = "Bool", kind = Star}))) (TApp (TApp (TApp (TVar (TV {name = "D", kind = Star})) (TVar (TV {name = "Bool", kind = Star}))) (TVar (TV {name = "Int", kind = Star}))) (TVar (TV {name = "Bool", kind = Star})))))),("CA",TApp (TApp (TCon "(->)" (Kfun Star (Kfun Star Star))) (TVar (TV {name = "a", kind = Star}))) (TApp (TApp (TCon "(->)" (Kfun Star (Kfun Star Star))) (TVar (TV {name = "b", kind = Star}))) (TApp (TApp (TCon "(->)" (Kfun Star (Kfun Star Star))) (TVar (TV {name = "c", kind = Star}))) (TApp (TApp (TApp (TVar (TV {name = "D", kind = Star})) (TVar (TV {name = "a", kind = Star}))) (TVar (TV {name = "b", kind = Star}))) (TVar (TV {name = "c", kind = Star}))))))]
+
+
+===============Bool==============
+cons found : ["Bool <=> *"]
+
+===============Bool==============
+cons found : ["Bool <=> *"]
+for Bool cons are : Bool,Bool
+===============Prod==============
+cons found : ["''Prod <=> a -> 'a","'''a <=> b -> 'b","'b <=> *","* -> * -> * <=> a -> 'd","* -> * -> * <=> b -> 'f","Prod <=> a -> 'h","'h <=> b -> 'g","'f <=> 'g -> 'e","'d <=> 'e -> 'c"]
+found a : *
+
+found 'd : * -> *
+
+found b : *
+
+found 'f : * -> *
+
+found 'g : *
+
+found 'e : *
+
+found 
+found 'c : *
+
+for Prod cons are : a -> b -> Prod a b
+===============D==============
+cons found : ["''D <=> a -> 'a","'''a <=> b -> 'b","'''b <=> c -> 'c","'c <=> *","* -> * -> * <=> * -> 'e","* -> * -> * <=> * -> 'g","* -> * -> * <=> * -> 'i","D <=> * -> 'l","'l <=> * -> 'k","'k <=> * -> 'j","'i <=> 'j -> 'h","'g <=> 'h -> 'f","'e <=> 'f -> 'd"]
+found 
+found 'e : * -> *
+
+found 
+found 'g : * -> *
+
+found 
+found 'i : * -> *
+
+found 'j : *
+
+found 'h : *
+
+found 
+found 'f : *
+
+found 
+found 'd : *
+
+
+===============D==============
+cons found : ["''D <=> a -> 'a","'''a <=> b -> 'b","'''b <=> c -> 'c","'c <=> *","* -> * -> * <=> * -> 'n","* -> * -> * <=> * -> 'p","* -> * -> * <=> * -> 'r","D <=> * -> 'u","'u <=> * -> 't","'t <=> * -> 's","'r <=> 's -> 'q","'p <=> 'q -> 'o","'n <=> 'o -> 'm"]
+found 
+found 'n : * -> *
+
+found 
+found 'p : * -> *
+
+found 
+found 'r : * -> *
+
+found 's : *
+
+found 'q : *
+
+found 
+found 'o : *
+
+found 
+found 'm : *
+
+
+===============D==============
+cons found : ["''D <=> a -> 'a","'''a <=> b -> 'b","'''b <=> c -> 'c","'c <=> *","* -> * -> * <=> a -> 'w","* -> * -> * <=> b -> 'y","* -> * -> * <=> c -> 'aa","D <=> a -> 'ad","'ad <=> b -> 'ac","'ac <=> c -> 'ab","'aa <=> 'ab -> 'z","'y <=> 'z -> 'x","'w <=> 'x -> 'v"]
+found a : *
+
+found 'w : * -> *
+
+found b : *
+
+found 'y : * -> *
+
+found c : *
+
+found 'aa : * -> *
+
+found 'ab : *
+
+found 'z : *
+
+found 
+found 'x : *
+
+found 
+found 'v : *
+
+for D cons are : Int -> Int -> Bool -> D Int Int Int,Bool -> Int -> Bool -> D Bool Int Bool,a -> b -> c -> D a b cinst to check before : []
+add classes : 
+before sigs : * : Int -> Int -> Int
++ : Int -> Int -> Int
+- : Int -> Int -> Int
+. : (b -> c) -> (a -> b) -> a -> c
+== : Int -> Int -> Bool
+CA : forall a b c . a -> b -> c -> D a b c
+CB : Bool -> Int -> Bool -> D Bool Int Bool
+CI : Int -> Int -> Bool -> D Int Int Int
+False : Bool
+P : forall a b . a -> b -> Prod a b
+True : Bool
+endl : Char
+printChar : Char -> IO Unit
+printInt : Int -> IO Unit
+~CA : forall ~'patret a b c . (a -> b -> c -> ~'patret) -> D a b c -> ~'patret
+~CB : forall ~'patret . (Bool -> Int -> Bool -> ~'patret) -> D Bool Int Bool -> ~'patret
+~CI : forall ~'patret . (Int -> Int -> Bool -> ~'patret) -> D Int Int Int -> ~'patret
+~False : forall ~'patret . ~'patret -> Bool -> ~'patret
+~P : forall ~'patret a b . (a -> b -> ~'patret) -> Prod a b -> ~'patret
+~True : forall ~'patret . ~'patret -> Bool -> ~'patret
+
+sigs to add : branch :: forall a b . a -> a -> a,useUnder :: forall f a b . f a a b -> Bool,useUnder1 :: forall f b . f b -> Bool
+after sigs : * : Int -> Int -> Int
++ : Int -> Int -> Int
+- : Int -> Int -> Int
+. : (b -> c) -> (a -> b) -> a -> c
+== : Int -> Int -> Bool
+CA : forall a b c . a -> b -> c -> D a b c
+CB : Bool -> Int -> Bool -> D Bool Int Bool
+CI : Int -> Int -> Bool -> D Int Int Int
+False : Bool
+P : forall a b . a -> b -> Prod a b
+True : Bool
+branch : forall a b . a -> a -> a
+endl : Char
+printChar : Char -> IO Unit
+printInt : Int -> IO Unit
+useUnder : forall f a b . f a a b -> Bool
+useUnder1 : forall f b . f b -> Bool
+~CA : forall ~'patret a b c . (a -> b -> c -> ~'patret) -> D a b c -> ~'patret
+~CB : forall ~'patret . (Bool -> Int -> Bool -> ~'patret) -> D Bool Int Bool -> ~'patret
+~CI : forall ~'patret . (Int -> Int -> Bool -> ~'patret) -> D Int Int Int -> ~'patret
+~False : forall ~'patret . ~'patret -> Bool -> ~'patret
+~P : forall ~'patret a b . (a -> b -> ~'patret) -> Prod a b -> ~'patret
+~True : forall ~'patret . ~'patret -> Bool -> ~'patret
+
+Vars : 
+* : Int -> Int -> Int
++ : Int -> Int -> Int
+- : Int -> Int -> Int
+. : (b -> c) -> (a -> b) -> a -> c
+== : Int -> Int -> Bool
+CA : forall a b c . a -> b -> c -> D a b c
+CB : Bool -> Int -> Bool -> D Bool Int Bool
+CI : Int -> Int -> Bool -> D Int Int Int
+False : Bool
+P : forall a b . a -> b -> Prod a b
+True : Bool
+branch : forall a b . a -> a -> a
+endl : Char
+printChar : Char -> IO Unit
+printInt : Int -> IO Unit
+useUnder : forall f a b . f a a b -> Bool
+useUnder1 : forall f b . f b -> Bool
+~CA : forall ~'patret a b c . (a -> b -> c -> ~'patret) -> D a b c -> ~'patret
+~CB : forall ~'patret . (Bool -> Int -> Bool -> ~'patret) -> D Bool Int Bool -> ~'patret
+~CI : forall ~'patret . (Int -> Int -> Bool -> ~'patret) -> D Int Int Int -> ~'patret
+~False : forall ~'patret . ~'patret -> Bool -> ~'patret
+~P : forall ~'patret a b . (a -> b -> ~'patret) -> Prod a b -> ~'patret
+~True : forall ~'patret . ~'patret -> Bool -> ~'patret
+
+Types : 
+(->) : * -> * -> *
+Bool : *
+Char : *
+D : * -> * -> * -> *
+IO : * -> *
+Int : *
+Prod : * -> * -> *
+
+Classes : 
+Ord : (["Eq"],[Qual {preds = [], head = IsIn "Ord" (TCon "Bool" Star)},Qual {preds = [], head = IsIn "Ord" (TCon "Int" Star)},Qual {preds = [IsIn "Ord" (TVar (TV {name = "a", kind = Star}))], head = IsIn "Ord" (TApp (TCon "List" (Kfun Star Star)) (TVar (TV {name = "a", kind = Star})))}])
+Show : ([],[Qual {preds = [], head = IsIn "Show" (TCon "Bool" Star)},Qual {preds = [], head = IsIn "Show" (TCon "Int" Star)},Qual {preds = [IsIn "Show" (TVar (TV {name = "a", kind = Star}))], head = IsIn "Show" (TApp (TCon "List" (Kfun Star Star)) (TVar (TV {name = "a", kind = Star})))}])
+
+sources : 
+
+pat is : b
+decomposed is : 'c
+pat is : c
+decomposed is : 'd
+substs are : 
+tret goes from Bool to Bool
+pat is : (True )
+decomposed is : Bool
+substs are : 
+tret goes from Bool to Bool
+pat is : (False )
+decomposed is : Boolthings : rec('f) : Bool -> 'e with ((Bool @ Bool -> 'c),(Bool @ Bool -> 'd))
+doing : Bool should unify with : Bool
+,Bool should unify with : Bool
+
+ ========= start solving =========
+
+  ========= start reconciling =========
+
+ after : rec('f) : Bool -> 'e with ((Bool @ Bool -> 'c),(Bool @ Bool -> 'd))
+base : 'c -> 'd -> 'e
+replacements : 
+varsreplacements : []
+uncollapsables : "*"
+new struct : ''a
+sub0 : 
+cand : Bool     tp :  ''a  ret : 'c
+found sub : ["(Bool, ''a)"]
+rets are : ["'c"]
+cand : Bool     tp :  ''a  ret : 'd
+found sub : ["(Bool, ''a)"]
+rets are : ["'d"]
+ out types : 'c,'d
+a ('c) with sub () and ('d) gives : 'c is 'd
+
+with t = 'd
+got : 'd'c is 'd
+
+filtered : ("'d","'c is 'd\n")
+final : ("'d","'e is 'd\n")
+final rep : ("'d","a")
+ty with base : 'e
+returning final : ("'d","'e is 'd\n")
+im having : 'e is 'd
+
+found preds : 
+found : 'c -> 'd -> 'd
+expected : 'a -> 'a -> 'a
+tpsub : a is 'a
+ b is 'b
+
+all rep('d : 'a),('d : 'a),('c : 'a)
+subst is : 'e is 'd
+
+checking preds :  vs 
+pat is : a
+decomposed is : 'dthings : 
+doing : 
+ ========= start reconciling =========
+
+ after : 
+base : 'd -> Bool
+im having : 
+found preds : 
+found : 'd -> Bool
+expected : 'a 'b 'b 'c -> Bool
+tpsub : a is 'b
+ b is 'c
+ f is 'a
+
+all rep('d : 'a 'b 'b 'c)
+subst is : 
+checking preds :  vs 
+pat is : a
+decomposed is : 'cthings : 
+doing : 
+ ========= start reconciling =========
+
+ after : 
+base : 'c -> Bool
+im having : 
+found preds : 
+found : 'c -> Bool
+expected : 'a 'b -> Bool
+tpsub : b is 'b
+ f is 'a
+
+all rep('c : 'a 'b)
+subst is : 
+checking preds :  vs 
+pat is : f
+decomposed is : 'a
+pat is : a
+decomposed is : 'b
+substs are : 'f is 'c
+ 'g is 'd
+ 'h is 'e
+
+tret goes from D 'f 'g 'h to D 'c 'd 'e
+pat is : (CA i,j,k)
+decomposed is : D 'c 'd 'e
+substs are : 
+tret goes from D Int Int Int to D Int Int Int
+pat is : (CI i,j,k)
+decomposed is : D Int Int Int
+substs are : 
+tret goes from D Bool Int Bool to D Bool Int Bool
+pat is : (CB i,j,k)
+decomposed is : D Bool Int Boolthings : rec('ab) : 'b -> 'aa with ((D 'c 'd 'e @ D 'c 'd 'e -> 'n),(D Int Int Int @ D Int Int Int -> 't),(D Bool Int Bool @ D Bool Int Bool -> 'z))with type : 'a -> 'b -> 'aa solve => 
+ ========= start solving =========
+
+  ========= start reconciling =========
+
+ after : rec('ab) : 'b -> 'aa with ((D 'c 'd 'e @ D 'f 'g 'h -> D 'h 'f 'h),(D Int Int Int @ D Int Int Int -> D Bool Int Bool),(D Bool Int Bool @ D Bool Int Bool -> D Bool Int Bool))
+base : 'a -> 'b -> 'aa
+replacements : (''b, 'f),(''c, 'g),(''d, 'h)
+varsreplacements : []
+uncollapsables : "*"
+new struct : ''a 'f 'g 'h
+sub0 : ''b is 'f
+ ''c is 'g
+ ''d is 'h
+
+cand : D 'c 'd 'e     tp :  ''a 'f 'g 'h  ret : D 'h 'f 'h
+found sub : ["(D, ''a)","('c, 'f)","('d, 'g)","('e, 'h)"]
+rets are : ["D 'h 'f 'h"]
+cand : D Int Int Int     tp :  ''a 'f 'g 'h  ret : D Bool Int Bool
+found sub : ["(D, ''a)","(Int, 'f)","(Int, 'g)","(Int, 'h)"]
+rets are : ["D Bool 'h Bool","D Bool 'g Bool","D Bool 'f Bool","D Bool Int Bool"]
+cand : D Bool Int Bool     tp :  ''a 'f 'g 'h  ret : D Bool Int Bool
+found sub : ["(D, ''a)","(Bool, 'f)","(Int, 'g)","(Bool, 'h)"]
+rets are : ["D 'h 'g 'h","D 'h Int 'h","D 'h 'g 'f","D 'h 'g Bool","D 'h Int 'f","D 'h Int Bool","D 'f 'g 'h","D Bool 'g 'h","D 'f Int 'h","D Bool Int 'h","D 'f 'g 'f","D 'f 'g Bool","D Bool 'g 'f","D Bool 'g Bool","D 'f Int 'f","D 'f Int Bool","D Bool Int 'f","D Bool Int Bool"]
+ out types : D 'h 'f 'h,D Bool 'h Bool,D Bool 'g Bool,D Bool 'f Bool,D Bool Int Bool,D 'h 'g 'h,D 'h Int 'h,D 'h 'g 'f,D 'h 'g Bool,D 'h Int 'f,D 'h Int Bool,D 'f 'g 'h,D Bool 'g 'h,D 'f Int 'h,D Bool Int 'h,D 'f 'g 'f,D 'f 'g Bool,D Bool 'g 'f,D Bool 'g Bool,D 'f Int 'f,D 'f Int Bool,D Bool Int 'f,D Bool Int Bool
+a (D 'h 'f 'h) with sub () and (D Bool 'h Bool) gives : 'f is Bool
+ 'h is Bool
+
+with t = D Bool Bool Bool
+a (D 'h 'f 'h) with sub () and (D Bool 'g Bool) gives : 'f is 'g
+ 'h is Bool
+
+with t = D Bool 'g Bool
+a (D 'h 'f 'h) with sub () and (D Bool 'f Bool) gives : 'h is Bool
+
+with t = D Bool 'f Bool
+a (D 'h 'f 'h) with sub () and (D Bool Int Bool) gives : 'f is Int
+ 'h is Bool
+
+with t = D Bool Int Bool
+got : D Bool 'g Bool'f is 'g
+ 'h is Bool
+,D Bool 'f Bool'h is Bool
+,D Bool Int Bool'f is Int
+ 'h is Bool
+
+a (D Bool 'g Bool) with sub ('f is 'g
+ 'h is Bool
+) and (D 'h 'g 'h) gives : 
+with t = D Bool 'g Bool
+a (D Bool 'g Bool) with sub ('f is 'g
+ 'h is Bool
+) and (D 'h Int 'h) gives : 'g is Int
+
+with t = D Bool Int Bool
+a (D Bool 'g Bool) with sub ('f is 'g
+ 'h is Bool
+) and (D 'h 'g Bool) gives : 
+with t = D Bool 'g Bool
+a (D Bool 'g Bool) with sub ('f is 'g
+ 'h is Bool
+) and (D 'h Int Bool) gives : 'g is Int
+
+with t = D Bool Int Bool
+a (D Bool 'g Bool) with sub ('f is 'g
+ 'h is Bool
+) and (D Bool 'g 'h) gives : 
+with t = D Bool 'g Bool
+a (D Bool 'g Bool) with sub ('f is 'g
+ 'h is Bool
+) and (D Bool Int 'h) gives : 'g is Int
+
+with t = D Bool Int Bool
+a (D Bool 'g Bool) with sub ('f is 'g
+ 'h is Bool
+) and (D Bool 'g Bool) gives : 
+with t = D Bool 'g Bool
+a (D Bool 'g Bool) with sub ('f is 'g
+ 'h is Bool
+) and (D Bool Int Bool) gives : 'g is Int
+
+with t = D Bool Int Bool
+a (D Bool 'f Bool) with sub ('h is Bool
+) and (D 'h 'g 'h) gives : 'f is 'g
+
+with t = D Bool 'g Bool
+a (D Bool 'f Bool) with sub ('h is Bool
+) and (D 'h Int 'h) gives : 'f is Int
+
+with t = D Bool Int Bool
+a (D Bool 'f Bool) with sub ('h is Bool
+) and (D 'h 'g 'f) gives : 'f is Bool
+ 'g is Bool
+
+with t = D Bool Bool Bool
+a (D Bool 'f Bool) with sub ('h is Bool
+) and (D 'h 'g Bool) gives : 'f is 'g
+
+with t = D Bool 'g Bool
+a (D Bool 'f Bool) with sub ('h is Bool
+) and (D 'h Int Bool) gives : 'f is Int
+
+with t = D Bool Int Bool
+a (D Bool 'f Bool) with sub ('h is Bool
+) and (D 'f 'g 'h) gives : 'f is Bool
+ 'g is Bool
+
+with t = D Bool Bool Bool
+a (D Bool 'f Bool) with sub ('h is Bool
+) and (D Bool 'g 'h) gives : 'f is 'g
+
+with t = D Bool 'g Bool
+a (D Bool 'f Bool) with sub ('h is Bool
+) and (D Bool Int 'h) gives : 'f is Int
+
+with t = D Bool Int Bool
+a (D Bool 'f Bool) with sub ('h is Bool
+) and (D 'f 'g 'f) gives : 'f is Bool
+ 'g is Bool
+
+with t = D Bool Bool Bool
+a (D Bool 'f Bool) with sub ('h is Bool
+) and (D 'f 'g Bool) gives : 'f is Bool
+ 'g is Bool
+
+with t = D Bool Bool Bool
+a (D Bool 'f Bool) with sub ('h is Bool
+) and (D Bool 'g 'f) gives : 'f is Bool
+ 'g is Bool
+
+with t = D Bool Bool Bool
+a (D Bool 'f Bool) with sub ('h is Bool
+) and (D Bool 'g Bool) gives : 'f is 'g
+
+with t = D Bool 'g Bool
+a (D Bool 'f Bool) with sub ('h is Bool
+) and (D Bool Int Bool) gives : 'f is Int
+
+with t = D Bool Int Bool
+a (D Bool Int Bool) with sub ('f is Int
+ 'h is Bool
+) and (D 'h 'g 'h) gives : 'g is Int
+
+with t = D Bool Int Bool
+a (D Bool Int Bool) with sub ('f is Int
+ 'h is Bool
+) and (D 'h Int 'h) gives : 
+with t = D Bool Int Bool
+a (D Bool Int Bool) with sub ('f is Int
+ 'h is Bool
+) and (D 'h 'g Bool) gives : 'g is Int
+
+with t = D Bool Int Bool
+a (D Bool Int Bool) with sub ('f is Int
+ 'h is Bool
+) and (D 'h Int Bool) gives : 
+with t = D Bool Int Bool
+a (D Bool Int Bool) with sub ('f is Int
+ 'h is Bool
+) and (D Bool 'g 'h) gives : 'g is Int
+
+with t = D Bool Int Bool
+a (D Bool Int Bool) with sub ('f is Int
+ 'h is Bool
+) and (D Bool Int 'h) gives : 
+with t = D Bool Int Bool
+a (D Bool Int Bool) with sub ('f is Int
+ 'h is Bool
+) and (D Bool 'g Bool) gives : 'g is Int
+
+with t = D Bool Int Bool
+a (D Bool Int Bool) with sub ('f is Int
+ 'h is Bool
+) and (D Bool Int Bool) gives : 
+with t = D Bool Int Bool
+got : D Bool 'g Bool'f is 'g
+ 'h is Bool
+,D Bool Int Bool'f is 'g
+ 'g is Int
+ 'h is Bool
+,D Bool Int Bool'f is Int
+ 'h is Bool
+,D Bool Int Bool'f is Int
+ 'g is Int
+ 'h is Bool
+
+filtered : ("D Bool 'g Bool","'f is 'g\n 'h is Bool\n"), ("D Bool Int Bool","'f is 'g\n 'g is Int\n 'h is Bool\n"), ("D Bool Int Bool","'f is Int\n 'h is Bool\n"), ("D Bool Int Bool","'f is Int\n 'g is Int\n 'h is Bool\n")
+final : ("D Bool 'g Bool","'aa is D Bool 'g Bool\n"), ("D Bool Int Bool","'aa is D Bool Int Bool\n")
+final rep : ("'g","a"), 
+ty with base : 'aa
+returning final : ("D Bool 'g Bool","'aa is D Bool 'g Bool\n")
+im having : 'aa is D Bool 'g Bool
+
+found preds : 
+things : with type : 'a solve => 
+ ========= start solving =========
+
+  ========= start reconciling =========
+
+ after : 
+base : IO Unit
+im having : 
+found preds : 
+no dispatch for : printInt
+state is now : 
+with reqs : 0
+now run  : 
+
+Vars : 
+* :  => Int (*) -> Int (*) -> Int (*)
++ :  => Int (*) -> Int (*) -> Int (*)
+- :  => Int (*) -> Int (*) -> Int (*)
+. :  => (b{*} -> c{*}) -> (a{*} -> b{*}) -> a{*} -> c{*}
+== :  => Int (*) -> Int (*) -> Bool (*)
+CA : forall a{*} b{*} c{*} .  => a{*} -> b{*} -> c{*} -> D (* -> * -> * -> *) (a{*}) (b{*}) (c{*})
+CB :  => Bool (*) -> Int (*) -> Bool (*) -> D (* -> * -> * -> *) (Bool (*)) (Int (*)) (Bool (*))
+CI :  => Int (*) -> Int (*) -> Bool (*) -> D (* -> * -> * -> *) (Int (*)) (Int (*)) (Int (*))
+False :  => Bool (*)
+P : forall a{*} b{*} .  => a{*} -> b{*} -> Prod (* -> * -> *) (a{*}) (b{*})
+True :  => Bool (*)
+branch : forall a{*} b{*} .  => a{*} -> a{*} -> a{*}
+correct : forall a{*} b{*} c{*} .  => a{*} -> b{*} -> D (* -> * -> * -> *) (Bool (*)) (c{*}) (Bool (*))
+endl :  => Char (*)
+main :  => IO (* -> *) (Unit (*))
+printChar :  => Char (*) -> IO (* -> *) (Unit (*))
+printInt :  => Int (*) -> IO (* -> *) (Unit (*))
+useUnder : forall f{*} a{*} b{*} .  => f{*} (a{*}) (a{*}) (b{*}) -> Bool (*)
+useUnder1 : forall f{*} b{*} .  => f{*} (b{*}) -> Bool (*)
+~CA : forall ~'patret{*} a{*} b{*} c{*} .  => (a{*} -> b{*} -> c{*} -> ~'patret{*}) -> D (* -> * -> * -> *) (a{*}) (b{*}) (c{*}) -> ~'patret{*}
+~CB : forall ~'patret{*} .  => (Bool (*) -> Int (*) -> Bool (*) -> ~'patret{*}) -> D (* -> * -> * -> *) (Bool (*)) (Int (*)) (Bool (*)) -> ~'patret{*}
+~CI : forall ~'patret{*} .  => (Int (*) -> Int (*) -> Bool (*) -> ~'patret{*}) -> D (* -> * -> * -> *) (Int (*)) (Int (*)) (Int (*)) -> ~'patret{*}
+~False : forall ~'patret{*} .  => ~'patret{*} -> Bool (*) -> ~'patret{*}
+~P : forall ~'patret{*} a{*} b{*} .  => (a{*} -> b{*} -> ~'patret{*}) -> Prod (* -> * -> *) (a{*}) (b{*}) -> ~'patret{*}
+~True : forall ~'patret{*} .  => ~'patret{*} -> Bool (*) -> ~'patret{*}
+
+Types : 
+(->) : * -> * -> *
+Bool : *
+Char : *
+D : * -> * -> * -> *
+IO : * -> *
+Int : *
+Prod : * -> * -> *
+
+Classes : 
+Ord : (["Eq"],[Qual {preds = [], head = IsIn "Ord" (TCon "Bool" Star)},Qual {preds = [], head = IsIn "Ord" (TCon "Int" Star)},Qual {preds = [IsIn "Ord" (TVar (TV {name = "a", kind = Star}))], head = IsIn "Ord" (TApp (TCon "List" (Kfun Star Star)) (TVar (TV {name = "a", kind = Star})))}])
+Show : ([],[Qual {preds = [], head = IsIn "Show" (TCon "Bool" Star)},Qual {preds = [], head = IsIn "Show" (TCon "Int" Star)},Qual {preds = [IsIn "Show" (TVar (TV {name = "a", kind = Star}))], head = IsIn "Show" (TApp (TCon "List" (Kfun Star Star)) (TVar (TV {name = "a", kind = Star})))}])
+
+sources : 
+branch : (\b -> (\c -> (case (True)`Bool at fileName 15:21` of ((True ))->(b)`a at fileName 15:31`((False ))->(c)`a at fileName 15:38`)`a at fileName 15:18`)`a -> a at fileName 15:39`)`a -> a -> a at fileName 15:39`
+
+correct : (\f -> (\a -> (case (a)`b at fileName 23:28` of ((CA i,j,k))->((((CA)`'h -> 'f -> 'h -> D 'h 'f 'h at fileName 24:17` (k)`'h at fileName 24:20`)`'f -> 'h -> D 'h 'f 'h at fileName 24:20` (i)`'f at fileName 24:22`)`'h -> D 'h 'f 'h at fileName 24:22` (k)`'h at fileName 24:24`)`D 'h 'f 'h at fileName 24:24`((CI i,j,k))->((((CB)`Bool -> Int -> Bool -> D Bool Int Bool at fileName 25:17` (k)`Bool at fileName 25:20`)`Int -> Bool -> D Bool Int Bool at fileName 25:20` (j)`Int at fileName 25:22`)`Bool -> D Bool Int Bool at fileName 25:22` (k)`Bool at fileName 25:24`)`D Bool Int Bool at fileName 25:24`((CB i,j,k))->((((CB)`Bool -> Int -> Bool -> D Bool Int Bool at fileName 26:17` (k)`Bool at fileName 26:20`)`Int -> Bool -> D Bool Int Bool at fileName 26:20` (j)`Int at fileName 26:22`)`Bool -> D Bool Int Bool at fileName 26:22` (k)`Bool at fileName 26:24`)`D Bool Int Bool at fileName 26:24`)`D Bool c Bool at fileName 23:23`)`b -> D Bool c Bool at fileName 26:25`)`a -> b -> D Bool c Bool at fileName 26:25`
+
+main : ((printInt)`Int -> IO Unit at fileName 28:12` (4)`Int at fileName 28:21`)`IO Unit at fileName 28:21`
+
+useUnder : (\a -> (True)`Bool at fileName 18:18`)`a b b c -> Bool at fileName 18:22`
+
+useUnder1 : (\a -> (True)`Bool at fileName 21:19`)`a b -> Bool at fileName 21:23`
+
+
+
+
+
+
+4

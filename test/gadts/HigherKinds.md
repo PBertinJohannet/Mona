@@ -27,9 +27,8 @@ When the return is the same, it should compile correctly
 
 let correct a = case a of
     (RP (P a b)) -> a,
-    (RS s) -> case s of
-        (Left a) -> a,
-        (Right b) -> b;
+    (RS (Left a)) -> a,
+    (RS (Right b)) -> b;
 
 ```
 >>>compiled successfully
@@ -46,7 +45,7 @@ let correct a = case a of
 ```
 >>>compiled successfully
 
-## Should work with same sum
+## Should not work with same sum
 
 When it has nothing to do with the input it should not
 ```
@@ -55,4 +54,4 @@ let fail a = case a of
     (RS i) -> Left True,
     (RP b) -> Left 1;
 ```
->>>TypeError : could not generalize the types : Bool Int at fileName 21:1 at fileName 21:14
+>>>TypeError : Found no matching substitution for 'a -> 'n at fileName 21:1
