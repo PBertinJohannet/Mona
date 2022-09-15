@@ -58,6 +58,6 @@ let correct f = \a -> case a of
 
 todo
 ```
-todo
+let main = printInt 4;
 ```
->>>Todo
+>>>compiled successfully

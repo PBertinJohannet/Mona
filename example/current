@@ -19,3 +19,15 @@ let correctCC c = case c of
 
 
 let main = printInt 4;
+
+
+let main = printInt 4;
+
+data Bool = 
+    | True = Bool;
+    | False = Bool;
+
+data D a b c = 
+  | CI = Int -> Int -> Bool ->  D Int Int Int;
+  | CB = Bool -> Int -> Bool -> D Bool Int Bool;
+  | CA = a -> b -> c -> D a b c;

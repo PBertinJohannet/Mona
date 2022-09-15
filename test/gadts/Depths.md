@@ -9,6 +9,16 @@ data C a =
   | CR = C (f a) -> C (f a);
   | CCI = C (C Int) -> C (C Int);
 
+data Nil = | Nil = Nil;
+
+let CAintoA c = case c of
+  (CA (CI i)) -> i,
+  (CA (CA i)) -> i;
+
+let CIntintoInt c = case c of
+  (CA (CI i)) -> i,
+  (CA (CA i)) -> i + 1;
+
 ```
 
 ## Correct CA
@@ -16,30 +26,25 @@ data C a =
 Here we just need to check the final signature.
 ```
 
-let correctCA c = case c of
-  (CA (CI i)) -> i,
-  (CA (CA i)) -> i;
+let correct1 a = (CAintoA (CA a)) + 1;
 
-let AlsoCorrectCA c = case c of
-  (CA (CI i)) -> i,
-  (CA (CA i)) -> i + 1;
+let correct2 a = (CIntintoInt (CA (CA a))) + 1;
+
+let main = printInt 4;
+
 
 ```
+>>>compiled successfully
 
 ## Incorrect CA
 
-todo
 
-
-## Impose in depth
-
-Int est imposé car pas prévu par le constructeur CC.
+Here we expect the wrong arg into CA
 ```
-let imposeInt c = case c of
-  (CC (CI i)) -> 1,
-  (CC (CA i)) -> i + 1;
+let incorrect = (CAintoA Nil);
 
-let imposeIntAlso c = case c of
-  (CC (CA a)) -> 1,
-  (CC (CI i)) -> 1;
+let main = printInt 4;
 ```
+>>>TypeError : Cannot unify : 'a (C 'b) with Nil at fileName 21:1 at fileName 21:26
+
+
