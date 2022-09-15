@@ -126,6 +126,7 @@ data TypeErrorV
   | WrongBranchType Type Type
   | NoMatchingFound Type
   | MultipleMatchingFound [Type]
+  | DifferentRoots Type Type
   | ConstraintsNotMatching [Pred] deriving (Show, Eq);
 
 instance Pretty TypeErrorV where
@@ -152,6 +153,7 @@ instance Pretty TypeErrorV where
     WrongBranchType cand final -> "Wrong branch Type, cand : " ++ pretty cand ++ " final : " ++ pretty final 
     CaseDependency n1 n2 -> "Dependency between " ++ n1 ++ " and " ++ n2
     NoMatchingFound t -> "Found no matching substitution for " ++ pretty t
+    DifferentRoots t t' -> "Cannot unify roots of candidate type : " ++ pretty t ++ " and " ++ pretty t'
     MultipleMatchingFound t -> "Found more than one matching substitutions for " ++ prettyL t
     
 
@@ -587,6 +589,7 @@ runReconcile base (Reconcile (ArrowType from to) ts l n) = do
   structs <- getTVarTree (argType <$> ts)
   let candAndArgs = (candidate &&& argType) <$> ts
   tell $ "tvar tree : " ++ pretty structs ++ "\n"
+  rootSubst <- getRootSubst ts structs
   -- vars that were replaced by types
   replacements <- join <$> sequence (getReplacements base structs <$> candAndArgs)
   tell $ "replacements : " ++ prettyL replacements ++ "\n"
@@ -615,8 +618,20 @@ runReconcile base (Reconcile (ArrowType from to) ts l n) = do
       tell $ "final type becomes : " ++ pretty mostGenericSol ++ "\n"
       finalSubst <- unifyAll [mkArr from to, mostGenericSol]
       tell $ "returning final : " ++ show (pretty *** pretty $ finalSubst) ++ "\n"
-      return $ snd finalSubst
+      return (rootSubst `compose`snd finalSubst)
 
+
+getRootSubst :: [Specialization] -> BTree TVar -> Unifying Subst
+getRootSubst specs structs = do 
+  let roots = (leftMostType . candidate) <$> specs
+  checkRoots roots
+  let root = Prelude.head roots 
+  tell $ "root is : " ++ pretty root ++ "\n"
+  return $ Map.singleton (leftMostLeaf structs) root
+
+checkRoots :: [Type] -> Unifying ()
+checkRoots [t] = return ()
+checkRoots (t:t':ts) = if t == t' then return () else throwErrorV $ DifferentRoots t t'
 
 -- try to create the entry type from a possible return+substitution.
 -- then checks that it is compatible with all the branch types.

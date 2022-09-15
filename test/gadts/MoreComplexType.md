@@ -41,7 +41,7 @@ let correct a = case a of
 
 ## More complex example
 
-When the return can be determined from the input, it should compile correctly
+Does not work because the second type parameter would be a wildcard accepting only Bool and Int
 ```
 
 let BToInt b = case b of (True) -> 1, (False) -> 4;

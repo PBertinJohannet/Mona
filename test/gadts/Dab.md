@@ -53,6 +53,7 @@ let correct f = \a -> case a of
   (CB i j k) -> CA j j j;
 ```
 >>>compiled successfully
+*correct:forall a b c d e . b -> D c d e -> D d d d
 
 ## trouver exemple uncollapsables
 

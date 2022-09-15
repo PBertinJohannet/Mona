@@ -209,6 +209,11 @@ asTree = \case
   TApp a b -> BTree (asTree a, asTree b)
   t -> Leaf ()
 
+leftMostLeaf :: BTree a -> a
+leftMostLeaf = \case
+  BTree (a, _) -> leftMostLeaf a
+  Leaf a -> a
+
 tvTreeToType :: BTree TVar -> Type
 tvTreeToType = treeToType . fmap TVar
 

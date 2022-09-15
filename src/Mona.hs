@@ -42,11 +42,11 @@ run = L.pack
   >>> fmap (passes >>> runExceptT >>> runWriter)
   >>> debug --debug . fmap (
 
-compile :: String -> String
+compile :: String -> Either String (Envs)
 compile = id L.pack
   >>> parseModule "fileName"
   >>> fmap (passes >>> runExceptT >>> runWriter)
-  >>> debugPure 
+  >>> recap 
 
 instance Pretty (Scheme, Expr) where
   pretty (s, e) = "check : " ++ pretty s ++ " vs " ++ pretty e ++ "\n"
@@ -59,7 +59,7 @@ forget' (s, st) = do
   tell $ show st
   return (s, fmap forget st)
 -}
-passes :: [(String, Statement)] -> ExceptT PassErr (Writer String) TAst
+passes :: [(String, Statement)] -> ExceptT PassErr (Writer String) Envs
 passes a = do
   tell $ mconcat $ intersperse "\n" (show <$> a)
   let Program exprs datas classes insts sigs = sepDecls a
@@ -79,10 +79,10 @@ passes a = do
   --tell $ "infering : " ++ mconcat (intersperse "\n" (pretty <$> exprs))
   env <- withExceptT TypeError $ Infer.inferTop env exprs
   env <- withExceptT TypeError $ Infer.checkInstances env insts
-  let (Envs _ _ _ TAst{compiled = comp}) = env
+  let (Envs dataEnv var classEnv TAst{compiled = comp}) = env
   (TAst texprs _) <- withExceptT DispatchError $ runDispatch env
   tell $ "now run  : \n\n" ++ showKind env ++ "\n\n\n"
-  return $ TAst texprs comp
+  return $ Envs dataEnv var classEnv (TAst texprs comp)
 
 exec :: TAst -> IO String
 exec (TAst texprs comp) = do
@@ -91,19 +91,16 @@ exec (TAst texprs comp) = do
     Left err -> return $ pretty err
     Right result -> return ""
 
-debug :: Either ParseError (Either PassErr TAst, String) -> IO String
+debug :: Either ParseError (Either PassErr Envs, String) -> IO String
 debug = \case
   Left perr -> return $ "ParseError : " ++ show perr
   Right (r, s) -> do
     putStrLn s
     case r of
       Left terr -> return $ pretty terr
-      Right v -> exec v
+      Right (Envs _ _ _ ast) -> exec ast
 
-debugPure :: Either ParseError (Either PassErr TAst, String) -> String
-debugPure = \case
-  Left perr -> "ParseError : " ++ show perr
-  Right (r, s) ->
-    case r of
-      Left terr -> pretty terr
-      Right v -> "compiled successfully"
+recap :: Either ParseError (Either PassErr Envs, String) -> Either String Envs
+recap = \case
+  Left perr -> Left $ "ParseError : " ++ show perr
+  Right (r, s) -> left pretty r

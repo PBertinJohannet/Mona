@@ -9,7 +9,7 @@ type Name = String
 
 data Test
   = BaseCode Name String [Test]
-  | End String SourcePos SourcePos deriving Show;
+  | End String [(String, String)] SourcePos SourcePos deriving Show;
 
 -- parses a title of level at least i
 parseLevelDecl :: Int -> Parser (Int, String)
@@ -30,8 +30,18 @@ parseExpected = do
   string ">>>"
   res <- many (noneOf "\n")
   char '\n'
+  others <- many parseSchemeConstraint
   pos' <- getPosition
-  return $ End res pos pos'
+  return $ End res others pos pos'
+
+parseSchemeConstraint :: Parser (String, String)
+parseSchemeConstraint = do
+  char '*'
+  left <- many (noneOf ":")
+  char ':'
+  right <- many (noneOf "\n")
+  char '\n'
+  return (left, right)
 
 inBetween :: String -> String -> Parser a -> Parser a
 inBetween begin end p = do

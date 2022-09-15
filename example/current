@@ -1,33 +1,18 @@
-data C a =
-  | CI = Int -> C Int; 
-  | CA = a -> C a;
-  | CC = C a -> C (C a);
-  | CR = f a -> C (f a);
-  | CCI = C Int -> C (C Int);
-
-
-let correctCA c = case c of
-  (CA (CI i)) -> i,
-  (CA (CA i)) -> i;
-
-let correctCC c = case c of
-  (CC (CI i)) -> i,
-  (CC (CA i)) -> i;
-
-
-
-
-
-let main = printInt 4;
-
-
-let main = printInt 4;
 
 data Bool = 
     | True = Bool;
     | False = Bool;
 
-data D a b c = 
-  | CI = Int -> Int -> Bool ->  D Int Int Int;
-  | CB = Bool -> Int -> Bool -> D Bool Int Bool;
-  | CA = a -> b -> c -> D a b c;
+data R a b= 
+    | RI = a -> R Int a;
+    | RB = a -> R Bool a;
+
+
+let BToInt b = case b of (True) -> 1, (False) -> 4;
+
+let correct a = case a of
+    (RI i) -> 1 + i,
+    (RB b) -> BToInt b;
+
+
+let main = printInt 4;
