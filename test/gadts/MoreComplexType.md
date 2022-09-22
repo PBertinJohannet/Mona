@@ -51,7 +51,7 @@ let correct a = case a of
     (RB b) -> BToInt b;
 
 ```
->>>compiled successfully
+>>>TypeError : Cannot unify : Int with Bool at fileName 18:1 at fileName 18:17
 
 ## Should not work
 

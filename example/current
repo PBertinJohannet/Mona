@@ -1,18 +1,11 @@
 
-data Bool = 
-    | True = Bool;
-    | False = Bool;
+data Maybe a =
+  | Both = a -> a -> Maybe a;
+  | Just = a -> Maybe a;
+  | Nothing = Maybe a;
 
-data R a b= 
-    | RI = a -> R Int a;
-    | RB = a -> R Bool a;
-
-
-let BToInt b = case b of (True) -> 1, (False) -> 4;
-
-let correct a = case a of
-    (RI i) -> 1 + i,
-    (RB b) -> BToInt b;
-
+let correct f v = case v of
+  (Just j) -> Just j,
+  (Nothing) -> f;
 
 let main = printInt 4;

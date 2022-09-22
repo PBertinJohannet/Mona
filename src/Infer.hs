@@ -209,10 +209,12 @@ inferExpr cenv env ex = case runInfer env (runWriterT $ infer ex) of
     tell $ "with type : " ++ pretty ty ++ " solve => \n"
     --tell $ "constraints : " ++ pretty preds ++ " go \n"
     subst <- runUnify unions dims norefs ty
-    --tell $ "found subst : " ++ pretty subst
+    tell $ "found subst : " ++ pretty subst
+    tell $ "apply to type : " ++ pretty ty ++ "\n"
     --preds' <- sequence (_vtoT . apply subst <$> preds)
     preds'' <- runSolve cenv (first (apply subst) <$>  preds)
     let ty' = apply subst ty
+    tell $ "gives type : " ++ pretty ty' ++ "\n"
     let tyBefore' = applyAnn (apply subst) tyBefore
     --tell $ "before : " ++ pretty (apply subst ty') ++ "\n" ++ pretty (apply subst ty) ++ "\n"
     --let (b, s) = closeOver (apply subst ty) (apply subst preds) $ apply subst ty'
@@ -450,7 +452,7 @@ removeLeft loc = \case
 -- given a the expected arg and the type of the sub pattern, tells what to do with the expected arg.
 getCandSubst :: Location -> (Type, Type) -> InferCons [(TVar, Type)]
 getCandSubst loc (expected, actual) = do
-  inferLog "holy shit what is this ?\n"
+  inferLog "todo explain ?\n"
   inferLog $ pretty expected ++ " <=> " ++ pretty actual ++ "\n"
   actual' <- removeLeft loc actual
   case (expected, actual') of
@@ -602,24 +604,68 @@ runReconcile base (Reconcile (ArrowType from to) ts l n) = do
   tell $ "uncollapsables : " ++ show (pretty uncollapsables) ++ "\n"
   let structs' = apply sub0 $ tvTreeToType structs
   tell $ "new struct : " ++ pretty structs' ++"\n"
-  tell $ "sub0 : " ++ pretty sub0 ++"\n"
   outTypes <- traverse (localReconcilie structs') ts
   tell $ " out types : " ++ intercalate "," (prettyL <$> outTypes) ++ "\n"
   outTypeFiltered <- findCommon (retType <$> ts) outTypes 
   tell $ "before filter : " ++ intercalate ", " (show . (pretty *** pretty) <$> outTypeFiltered) ++ "\n"
   solutions <- catMaybes <$> traverse (outTypeToSol structs' (argType <$> ts)) outTypeFiltered
-  tell $ "filtered : " ++ intercalate ", " (show . pretty <$> solutions) ++ "\n"
-  tell $ "final : " ++ intercalate ", " (show . pretty <$> solutions) ++ "\n"
-  case solutions of
-    [] -> throwErrorV $ NoMatchingFound (mkArr from to)
-    ty : tys -> do
-      let mostGenericSol = maximumBy compGen solutions
+  tell $ "final : " ++ intercalate ", " (show . (pretty *** pretty) <$> solutions) ++ "\n"
+  if solutions == [] 
+    then throwErrorV $ NoMatchingFound (mkArr from to)
+    else do
+      let mostGenericSol = maximumBy (over compGen fst) solutions
       tell $ "ty with base : " ++ pretty to ++ "\n"
-      tell $ "final type becomes : " ++ pretty mostGenericSol ++ "\n"
-      finalSubst <- unifyAll [mkArr from to, mostGenericSol]
-      tell $ "returning final : " ++ show (pretty *** pretty $ finalSubst) ++ "\n"
-      return (rootSubst `compose`snd finalSubst)
+      tell $ "final type becomes : " ++ pretty (fst mostGenericSol) ++ "\n"
+      finalSubst <- unifyAll [mkArr from to, fst mostGenericSol]
+      subst2 <- rootSubst `mergeSubsts` snd mostGenericSol
+      tell $ "merging : " ++ pretty subst2 ++ "\n"
+      tell $ "with : " ++ pretty sub0 ++ "\n"
+      subst3 <- subst2 `mergeSubsts` sub0
+      tell $ "gives : " ++ pretty subst3 ++ "\n"
+      subst4 <- subst3 `mergeSubsts` snd finalSubst
+      tell $ "added finalSubst : " ++ pretty subst4 ++ "\n"
+      return subst4
 
+
+mergeSubsts :: Subst -> Subst -> Unifying Subst
+mergeSubsts a b = do
+  let lst = Map.toList a ++ Map.toList b
+  foldM mergeSubsts' nullSubst lst
+  where 
+    mergeSubsts' :: Subst -> (TVar, Type) -> Unifying Subst
+    mergeSubsts' sub (tvar, ty) = do
+      case Map.lookup tvar sub of
+        Nothing -> compose sub <$> unifies ((TVar tvar)) (ty)
+        Just double -> do
+          (chain, repWith) <- findEqualSet sub (Set.singleton tvar) double
+          tell $ "chain is " ++ show (pretty <$> Set.toList chain) ++ " tp is " ++ pretty repWith ++ "\n"
+          retSub <- unifies ty repWith
+          tell $ "sub is " ++ pretty retSub ++ "\n"
+          let finalSub = Map.fromList ( (,repWith) <$> Set.toList chain) `compose` retSub `compose` sub
+          tell $ "final sub is " ++ pretty finalSub ++ "\n"
+          return finalSub
+
+
+-- find a set of vars that are equal according to the subst and what type they are equal to
+findEqualSet :: Subst -> Set.Set TVar -> Type -> Unifying (Set.Set TVar, Type)
+findEqualSet sub set = \case
+  TVar t -> if Set.member t set 
+    then do
+      tell $ "there\n"
+      tv <- freshRec
+      return (Set.insert t set, tvar tv) 
+    else case Map.lookup t sub of
+      Just double -> do
+        tell $ "find in" ++ pretty double ++ "\n"
+        findEqualSet sub (Set.insert t set) double
+      Nothing -> do 
+        tell $ "here\n"
+        tv <- freshRec
+        return (Set.insert t set, tvar tv)
+  tp -> return (set, tp)
+
+over :: (a -> a -> c) -> (b -> a) -> b -> b -> c
+over f t a b = f (t a) (t b)
 
 getRootSubst :: [Specialization] -> BTree TVar -> Unifying Subst
 getRootSubst specs structs = do 
@@ -635,14 +681,15 @@ checkRoots (t:t':ts) = if t == t' then return () else throwErrorV $ DifferentRoo
 
 -- try to create the entry type from a possible return+substitution.
 -- then checks that it is compatible with all the branch types.
-outTypeToSol :: Type -> [Type] -> (Type, Subst) -> Unifying (Maybe Type)
+outTypeToSol :: Type -> [Type] -> (Type, Subst) -> Unifying (Maybe (Type, Subst))
 outTypeToSol argStruct argTypes (tp, sub) = do
   let finalArg = apply sub argStruct
-  tell $ "\ncomparing : " ++ pretty finalArg ++ " with \n"
+  tell $ "argStruct was : " ++ pretty argStruct ++ "\n"
+  tell $ "\ncomparing : " ++ pretty finalArg ++ " with \n" 
   tell $ intercalate ", " (pretty <$> argTypes) ++ "\n"
 
   isGood <- checkUnifySeparately argTypes finalArg
-  return $ if isGood then Just (mkArr finalArg tp) else Nothing
+  return $ if isGood then Just (mkArr finalArg tp, sub) else Nothing
 
 compGen :: Type -> Type -> Ordering 
 compGen a b = case (a, b) of
@@ -735,7 +782,7 @@ tryUnify rets (a, sub) b = do
       res <- (Just <$> unifyAll [a, b']) `catchError` const (return Nothing) 
       case res of
         Just (t, s) -> do
-          tell $ "a (" ++ pretty a ++ ") with sub (" ++ pretty sub ++ ") and (" ++ pretty b ++ ") gives : " ++ pretty s ++ "\n"
+          tell $ "a (" ++ pretty a ++ ") with sub (" ++ pretty sub ++ ") applied to (" ++ pretty b ++ ") gives : " ++ pretty s ++ "\n"
           tell $ "with t = " ++ pretty t ++ "\n"
           tIsGood <- checkUnifySeparately rets t
           if tIsGood

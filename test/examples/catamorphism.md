@@ -27,7 +27,6 @@ inst Maybe of Functor = {
 sig cata = forall a f . Functor f => ((f a) -> a) -> (Fix f) -> a
 let cata alg a = alg ((fmap (cata alg)) (unfix a));
 
-sig toInt = Nat -> Int;
 let toInt = \(Nat i) -> cata (\a -> case a of
   (Just k) -> k + 1,
   (Nothing) -> 0 ) i;
@@ -37,3 +36,4 @@ let four = S (S (S (S Z)));
 let main = printInt (toInt four);
 ```
 >>>compiled successfully
+*toInt:Nat -> Int

@@ -7,7 +7,6 @@ data List x y =
   | Nil = List Empty a;
   | Cons = a -> List b a -> List NonEmpty a;
 
-sig safeHead = forall x . (List NonEmpty x) -> x;
 let safeHead = \(Cons a b) -> a;
 ```
 ## noErr
@@ -15,9 +14,10 @@ let safeHead = \(Cons a b) -> a;
 let main = printInt (safeHead (Cons 2 Nil));
 ```
 >>>compiled successfully
+*safeHead:forall a . [NonEmpty] a -> a
 
 ## Err
 ```
 let main = printInt (safeHead Nil);
 ```
->>>TypeError : Cannot unify : NonEmpty with Empty at fileName 13:1 at fileName 13:31
+>>>TypeError : Cannot unify : NonEmpty with Empty at fileName 12:1 at fileName 12:31

@@ -26,26 +26,27 @@ let main = printInt 4;
 infering correct type for the function arguments.
 
 ```
-sig correct = forall a . Maybe a -> Maybe a -> Maybe a;
+
 let correct f v = case v of
   (Both j k) -> f,
   (Just j) -> Just j;
 ```
 >>>compiled successfully
-
+*correct:forall a . Maybe a -> Maybe a -> Maybe a
 
 ## Same type than outside case, twice
 
 infering correct type for the function arguments.
 
 ```
-sig correct = forall a . Maybe a -> Maybe a -> Maybe a;
 let correct f v = case v of
   (Both j k) -> f,
   (Just j) -> Just j,
   (Nothing) -> f;
 ```
 >>>compiled successfully
+*correct:forall a . Maybe a -> Maybe a -> Maybe a
+
 
 ## Same type than outside case, twice but in args
 
@@ -54,13 +55,13 @@ infering correct type for the function arguments.
 ```
 let const a b = a;
 
-sig correct = forall a . Maybe a -> Maybe a -> a;
 let correct f v = case v of
   (Both j k) -> const f j,
   (Just j) -> const j f,
   (Nothing) -> f;
 ```
 >>>compiled successfully
+*correct:forall a b . a -> Maybe b -> a
 
 
 ## Same type than outside case, twice but different
@@ -68,13 +69,14 @@ let correct f v = case v of
 infering correct type for the function arguments.
 
 ```
-sig correct = forall a . Maybe a -> Maybe a -> Maybe a -> Maybe a;
 let correct f g v = case v of
   (Both j k) -> f,
   (Just j) -> Just j,
   (Nothing) -> g;
 ```
 >>>compiled successfully
+*correct:forall a . Maybe a -> Maybe a -> Maybe a -> Maybe a
+
 
 
 ## Identity
@@ -82,13 +84,14 @@ let correct f g v = case v of
 Basic identity.
 
 ```
-sig id = forall a . Maybe a -> Maybe a;
 let id v = case v of
   (Both j k) -> Both j k,
   (Just j) -> Just j,
   (Nothing) -> Nothing;
 ```
 >>>compiled successfully
+*id:forall a . Maybe a -> Maybe a
+
 
 
 ## Unused variable.
@@ -96,24 +99,26 @@ let id v = case v of
 the i variable of the last branch is not used.
 
 ```  
-sig id = forall a . Maybe a -> Maybe a;
 let id v = case v of
   (Nothing) -> Nothing,
   (Just i) -> Just i,
   (Both j i) -> Just j;
 ```
 >>>compiled successfully
+*id:forall a . Maybe a -> Maybe a
+
 
 ## First branch easy 
 
 when starting with the easy branch, we also have a good result (the unification would prefer keeping the type of the last branch.)
 ```
-sig correct = forall a b . (a -> b) -> Maybe a -> Maybe b;
 let fmap f v = case v of
   (Just i) -> Just (f i),
   (Nothing) -> Nothing;
 ```
 >>>compiled successfully
+*correct:forall a b . (a -> b) -> Maybe a -> Maybe b
+
 
 
 ## Only one branch
@@ -175,12 +180,12 @@ let x = (snd (P (1) (Just 2) (Just 1))) + 2;
 
 Here the first type must unify with the result of f applied to the second.
 ```
-sig secondToFirst = forall a b c d . (b -> b) -> Prod a b c -> a;  
 let secondToFirst f x = case x of
   (P a b c) -> f b,
-  (P d e f) -> d;
+  (P a b c) -> a;
 ```
 >>>compiled successfully
+*secondToFirst:forall a b c . (b -> a) -> Prod a b c -> a
 
 ## Unifying by local function
 
@@ -195,12 +200,12 @@ let secondToFirst x = (\f -> case x of
 ## Catch all
 Dont forget this one.
 ```
-let catchALl x = case x of
+let catchAll x = case x of
   (Just i) -> Both i i,
   b -> b;
 
 ```
->>>compiled successfully
+>>>TypeError : Cannot unify roots of candidate type : Maybe and 'g at fileName 19:1
 
 ## No dependency between multiple branches.
 

@@ -45,6 +45,6 @@ let incorrect = (CAintoA Nil);
 
 let main = printInt 4;
 ```
->>>TypeError : Cannot unify : 'a (C 'b) with Nil at fileName 21:1 at fileName 21:26
+>>>TypeError : Cannot unify : C (C 'a) with Nil at fileName 21:1 at fileName 21:26
 
 

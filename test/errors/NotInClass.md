@@ -23,3 +23,4 @@ inst IntWrap of Compare = {
 }
 ```
 >>>compiled successfully
+*getMax:forall a . (Compare a) => a -> a -> Int
