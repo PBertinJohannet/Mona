@@ -49,6 +49,9 @@ newtype Union = Union (Type, Type, Location) deriving Show;
 -- candidate tells what the constructor expected (structure and TCon)
 -- argType tells us what the final arg type was (cand + branch)
 -- retType is the final ret type (cand + branch + transformation)
+-- ex : if we have a constructor that does : C a -> a
+--      and somehow a turns out to be an Int
+--      cand is a and argType is Int 
 data Specialization = Spec{candidate :: Type, argType :: Type, retType :: Type};
 data Reconcile = Reconcile ArrowType [Specialization] Location Name
 type Constraints = ([Union], [(Pred, Location)], [Reconcile], [FreeVars], [String])
@@ -424,19 +427,23 @@ typeOf x = do
 
 decomposePattern :: Location -> Pattern -> InferCons (Type, [(String, Type)])
 decomposePattern loc (Pattern name vars) = do
-    inferLog ">>>> decompose \n"
+    inferLog $ ">>>> decompose " ++ name ++ " (" ++ show (pretty <$> vars) ++ ")\n" 
     subPats <- traverse (decomposePattern loc) vars
     let (subTypes, varsTypes) = unzip subPats
-    tname <- typeOf name
-    inferLog $ "tname  " ++ pretty tname ++ "\n"
-    argsSubst <- Map.fromList . mconcat <$> traverse (getCandSubst loc) (zip (uncurryType tname) subTypes )
-    let tret = apply argsSubst $ getReturn tname
-    tell (loc `union` (foldr mkArr tret subTypes, tname))
+    consType <- typeOf name
+    inferLog $ "consType of " ++ name ++ " is " ++ pretty consType ++ "\n"
+    inferLog $ "subTypes " ++ show (pretty <$> subTypes) ++ "\n"
+    inferLog $ "varsType first " ++ intercalate "," (intercalate ";" <$> fmap (fst) <$> varsTypes) ++ "\n"
+    inferLog $ "varsType snd " ++ intercalate "," (intercalate ";" <$> fmap (snd >>> pretty) <$> varsTypes) ++ "\n"
+    argsSubst <- Map.fromList . mconcat <$> traverse (getCandSubst loc) (zip (uncurryType consType) subTypes )
+    let tret = apply argsSubst $ getReturn consType
+    tell (loc `union` (foldr mkArr tret subTypes, consType))
     inferLog $ "substs are : " ++ pretty argsSubst
-    inferLog $ "tret goes from " ++ pretty(getReturn tname) ++ " to " ++ pretty tret
+    inferLog $ "tret goes from " ++ pretty(getReturn consType) ++ " to " ++ pretty tret
     return (tret, mconcat varsTypes)
 decomposePattern loc (Raw name) = do
     tret <- freshType
+    inferLog $ "returning : " ++ name ++ " is " ++ pretty tret ++ "\n"
     return (tret, [(name, tret)])
 
 -- removes the leftmost TCon in the Expression tree
@@ -449,12 +456,13 @@ removeLeft loc = \case
     return rep
   t -> return t
 
--- given a the expected arg and the type of the sub pattern, tells what to do with the expected arg.
+-- given a the expected arg and the type of the sub pattern, tells what to do with the expected arg to get a candidate.
 getCandSubst :: Location -> (Type, Type) -> InferCons [(TVar, Type)]
-getCandSubst loc (expected, actual) = do
+getCandSubst loc (expected, actual') = do
   inferLog "todo explain ?\n"
-  inferLog $ pretty expected ++ " <=> " ++ pretty actual ++ "\n"
-  actual' <- removeLeft loc actual
+  inferLog $ pretty expected ++ " <=> " ++ pretty actual' ++ "\n"
+  --actual' <- removeLeft loc actual
+  inferLog $ "actual : " ++ pretty actual' ++ "\n"
   case (expected, actual') of
     (TVar e, TVar a) -> return [(e, actual')]
     (_, TVar _) -> return []
@@ -592,18 +600,18 @@ runReconcile base (Reconcile (ArrowType from to) ts l n) = do
   let candAndArgs = (candidate &&& argType) <$> ts
   tell $ "tvar tree : " ++ pretty structs ++ "\n"
   rootSubst <- getRootSubst ts structs
+  uncollapsables <- getMaximalStruct <$> sequence (getUncollapsableVars <$> candAndArgs)
+  tell $ "uncollapsables : " ++ show (pretty uncollapsables) ++ "\n"
   -- vars that were replaced by types
   replacements <- join <$> sequence (getReplacements base structs <$> candAndArgs)
   tell $ "replacements : " ++ prettyL replacements ++ "\n"
   -- vars that become equal to other vars.
   varsreplacements <- replacementsToVars <$> (compareReplacements <$> (join <$> sequence (getVarsReplacements structs <$> candAndArgs)))
   tell $ "varsreplacements : " ++ show ((pretty *** pretty) <$> varsreplacements) ++ "\n"
-  sub0 <- unionSolve (nullSubst, lunion l <$> (replacements ++ varsreplacements))
-  tell $ "sub0 is : " ++ pretty sub0 ++ "\n"
-  uncollapsables <- getMaximalStruct <$> sequence (getUncollapsableVars <$> candAndArgs)
-  tell $ "uncollapsables : " ++ show (pretty uncollapsables) ++ "\n"
-  let structs' = apply sub0 $ tvTreeToType structs
-  tell $ "new struct : " ++ pretty structs' ++"\n"
+  subWithoutUncollapsables <- unionSolve (nullSubst, lunion l <$> (replacements ++ varsreplacements))
+  tell $ "subWithoutUncollapsables is : " ++ pretty subWithoutUncollapsables ++ "\n"
+  let structs' = apply subWithoutUncollapsables $ tvTreeToType structs
+  tell $ "final struct : " ++ pretty structs' ++ "\n"
   outTypes <- traverse (localReconcilie structs') ts
   tell $ " out types : " ++ intercalate "," (prettyL <$> outTypes) ++ "\n"
   outTypeFiltered <- findCommon (retType <$> ts) outTypes 
@@ -619,8 +627,7 @@ runReconcile base (Reconcile (ArrowType from to) ts l n) = do
       finalSubst <- unifyAll [mkArr from to, fst mostGenericSol]
       subst2 <- rootSubst `mergeSubsts` snd mostGenericSol
       tell $ "merging : " ++ pretty subst2 ++ "\n"
-      tell $ "with : " ++ pretty sub0 ++ "\n"
-      subst3 <- subst2 `mergeSubsts` sub0
+      subst3 <- subst2 `mergeSubsts` subWithoutUncollapsables
       tell $ "gives : " ++ pretty subst3 ++ "\n"
       subst4 <- subst3 `mergeSubsts` snd finalSubst
       tell $ "added finalSubst : " ++ pretty subst4 ++ "\n"
@@ -736,7 +743,9 @@ applyMany (rep:reps) t =
   let others = applyMany reps t in
    (>>= applyHigherSub (depth t > 1) rep) others
 
--- TODO trap in the ``compose` maybe, if incompatibilities in the substs (idk)
+{-
+  Extracts a substitution that could go from the branch type to the entry type (I think : TODO)
+-}
 extractLocalSubst :: Type -> Type -> Unifying [(Type, Type)]
 extractLocalSubst cand final = case (cand, final) of
   (TApp a b, TApp a' b') -> do
@@ -811,6 +820,9 @@ replacementsToVars = fmap (TVar *** tvTreeToType) <$> (=<<) replacementsToVars'
           (BTree (a, b), BTree (c, d)) -> replacementsToVars' (a, c) ++ replacementsToVars' (b, d)
 
 
+applyUncollapsables :: BTree () -> Type -> Type
+applyUncollapsables bt tp = tp
+
 -- detects structure mismatchs (eg : Int, f a is going to produce * * but f a, g b will produce *)
 getUncollapsableVars :: (Type, Type) -> Unifying (BTree ())
 getUncollapsableVars (candidate, actual) = case (candidate, actual) of
@@ -845,7 +857,7 @@ getReplacements base replacement (candidate, actual) = case (replacement, candid
   (_, TCon t c, _) -> return []
   (Leaf t, TVar _, TVar t') -> return [(TVar t, TVar t')] -- | t' `appearsInType` base]
   (Leaf t, TVar _, _) -> return [(TVar t, actual)] 
-  (_, TVar _, _) -> return []
+  (_, TVar b, TCon c k) -> return [(tvTreeToType replacement, actual)]
   (a, b, c) -> do 
     tell $ "not covered : " ++ pretty a ++ " | " ++ pretty b ++ " | " ++ pretty c ++ "\n"
     return []

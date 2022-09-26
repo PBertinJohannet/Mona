@@ -61,7 +61,7 @@ let correct f v = case v of
   (Nothing) -> f;
 ```
 >>>compiled successfully
-*correct:forall a b . a -> Maybe b -> a
+*correct:forall a . a -> Maybe a -> a
 
 
 ## Same type than outside case, twice but different
@@ -117,7 +117,7 @@ let fmap f v = case v of
   (Nothing) -> Nothing;
 ```
 >>>compiled successfully
-*correct:forall a b . (a -> b) -> Maybe a -> Maybe b
+*fmap:forall a b . (a -> b) -> Maybe a -> Maybe b
 
 
 
@@ -125,22 +125,22 @@ let fmap f v = case v of
 
 When there is only one branch, we still infer a correct type.
 ```
-sig correct = forall a b . (a -> b) -> Maybe a -> Maybe b;
-let id f v = case v of
+let fmap f v = case v of
   (Just i) -> Just (f i);
 ```
 >>>compiled successfully
+*fmap:forall a b . (a -> b) -> Maybe a -> Maybe b
 
 ## Both variables unused
 
 When both variables are unused and the first variable was modified we still infer correctly (was pretty tricky this one).
 ```
-sig correct = forall a b . (a -> b) -> Maybe a -> Maybe b;
 let id f v = case v of
   (Just i) -> Just (f i),
   (Both i j) -> Nothing;
 ```
 >>>compiled successfully
+*id:forall a b . (a -> b) -> Maybe a -> Maybe b
 
 ## Nested Maybes with hiden unused variable.
 
@@ -149,23 +149,23 @@ The fact that the type variable of the nothing is unused could be hidden by the 
 ```
 let const a b = a;
 
-sig correct = forall a b . (a -> b) -> Maybe a -> Maybe b;
 let id f v = case v of
   (Just i) -> Just (f i),
   (Just i) -> const Nothing (f i);
 ```
 >>>compiled successfully
-
+*id:forall a b . (a -> b) -> Maybe a -> Maybe b
+*const:forall a b . a -> b -> a
 
 ## Generalize correctly
 
 This one should keep the second argument. 
 
 ```
-sig correct = Int;
 let x = (snd (P (Just 1) (2) (Just 1))) + 2;
 ```
 >>>compiled successfully
+*x:Int
 
 ## But not too early
 
@@ -196,6 +196,7 @@ let secondToFirst x = (\f -> case x of
   (P d e f) -> d) (\a b -> b);
 ```
 >>>compiled successfully
+*secondToFirst:forall a b . Prod a a b -> a
 
 ## Catch all
 Dont forget this one.

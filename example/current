@@ -1,11 +1,15 @@
 
-data Maybe a =
-  | Both = a -> a -> Maybe a;
-  | Just = a -> Maybe a;
-  | Nothing = Maybe a;
+data Bool = 
+    | True = Bool;
+    | False = Bool;
 
-let correct f v = case v of
-  (Just j) -> Just j,
-  (Nothing) -> f;
+data D a b c = 
+  | CI = Int -> Int -> Bool ->  D Int Int Int;
+  | CB = Bool -> Int -> Bool -> D Bool Int Bool;
+  | CA = a -> b -> c -> D a b c;
+
+let incorrect f = \a -> case a of
+  (CA i j (False)) -> CA False i True,
+  (CA i j k) -> CA k i k;
 
 let main = printInt 4;

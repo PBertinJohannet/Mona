@@ -33,9 +33,9 @@ let correct f = \a -> case a of
 
 ## plus dur que 2 plus haut
 
-todo
+Here it should fail because the first branch forces a Bool and the third requires an Int as arg param.
 ```
-let correct f = \a -> case a of
+let incorrect f = \a -> case a of
   (CA i j (False)) -> CA False i True,
   (CA i j k) -> CA k i k,
   (CI i j k) -> CB k j k,
@@ -62,3 +62,4 @@ todo
 let main = printInt 4;
 ```
 >>>compiled successfully
+*main:IO Unit
