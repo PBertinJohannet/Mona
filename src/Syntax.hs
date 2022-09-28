@@ -20,57 +20,79 @@ newtype Location = Loc (String, Int, Int) deriving Show;
 data ExprF a
   = Var Name
   | App a a
-  | Lam Name a
+  | Lam (PatternT a)
   | Lit Int
-  | Case a [a]
+  | Case a [PatternT a]
   | Fix a
   deriving (Eq, Ord, Functor, Foldable, Traversable)
 
-type Expr = Cofree ExprF Location; -- expression with position information (after the parsing)
-type Forgot = Term ExprF -- expression without any information
+data Pattern = Pattern String [Pattern] | Raw Name deriving (Show, Eq, Ord)
+data PatternT a = PatternT Pattern a deriving (Show, Eq, Ord, Functor, Foldable, Traversable);
+
+getExp :: PatternT a -> a
+getExp (PatternT p a) = a
+
+lamPat :: Pattern -> a -> ExprF a
+lamPat p = Lam . PatternT p
+
+instance Pretty a => Pretty (PatternT a) where
+  pretty (PatternT pat a) = "(" ++ pretty pat ++ ")" -- ++ "->" ++ pretty a
+
+instance Pretty Pattern where
+  pretty (Pattern a ps) = "(" ++ a ++ " " ++ prettyL ps ++ ")"
+  pretty (Raw n) = n
+
+type Expr = Cofree ExprF Location;
 
 data Field = FieldS String | FieldApp Field Field deriving (Show, Eq, Ord)
 
+
 type Decl = (String, Statement)
-type ExprDecl = (String, Expr)
-type ClassDecl = (String, String, [(String, Scheme)]);
-type DataDecl = (String, [String], [(String, Type)])
-type InstDecl = (String, Type, [(String, Expr)]);
-type InstCheck = (String, Scheme, Expr)
+type ExprDecl = (Location, String, Expr)
+type ClassDecl = (Location, String, String, [(Location, String, Scheme)]);
+type DataDecl = (Location, String, [String], NonEmpty (String, Type))
+type InstDecl = (Location, String, Type, [(String, Expr)]);
+type InstCheck = ([Location], String, Scheme, Expr)
+
+instance Pretty (Location, String, Scheme) where
+  pretty (loc, n, sc) = n ++ " :: " ++ pretty sc
+
+instance Pretty (Location, String, Expr) where
+  pretty (loc, n, ex) = n ++ " :: " ++ pretty ex
 
 instance Pretty InstCheck where
-  pretty (n, sc, ex) = n ++ " :: " ++ pretty sc ++ inParen (pretty ex)
+  pretty (loc, n, sc, ex) = n ++ " :: " ++ pretty sc ++ inParen (pretty ex)
 
 data StatementF a
  = Expr a
- | TypeDecl [String] [(String, Type)]
- | Class String String [(String, Scheme)]
+ | TypeDecl [String] (NonEmpty (String, Type))
+ | Class String String [(Location, String, Scheme)]
  | Inst String Type [(String, a)]
  | Sig Scheme
  deriving (Functor, Foldable, Traversable, Show)
 
-type Statement = StatementF Expr;
+type Statement = (Location, StatementF Expr);
 
 data Program = Program{
   exprs :: [ExprDecl],
   datas :: [DataDecl],
   clasdecls :: [ClassDecl],
   instances :: [InstDecl],
-  signatures :: [(String, Scheme)]}
+  signatures :: [(Location, String, Scheme)]}
 
 prettyDatas :: [DataDecl] -> String
-prettyDatas = unwords . fmap (\(a, b, c) -> a ++ " (" ++ unwords b ++ ") ::\n " ++ prettyL c ++ "\n\n")
+prettyDatas = unwords . fmap (\(loc, a, b, c) -> a ++ " (" ++ unwords b ++ ") ::\n " ++ show c ++ "\n\n")
 
 sepDecls :: [Decl] -> Program
 sepDecls [] = Program [] [] [] [] []
 sepDecls (d:ds) =
   let prog = sepDecls ds in
   case d of
-    (n, Inst s t e) -> prog{instances = (s, t, e) : instances prog}
-    (s, TypeDecl tvars e) -> prog{datas = (s, tvars, e): datas prog}
-    (s, Expr e) -> prog{exprs = (s, e): exprs prog}
-    (s, Class nm vr sigs) -> prog{clasdecls = (nm, vr, sigs): clasdecls prog}
-    (s, Sig e) -> prog{signatures = (s, e): signatures prog}
+    (n, (loc, Inst s t e)) -> prog{instances = (loc, s, t, e) : instances prog}
+    (s, (loc, TypeDecl tvars e)) -> prog{datas = (loc, s, tvars, e): datas prog}
+    (s, (loc, Expr e)) -> prog{exprs = (loc, s, e): exprs prog}
+    (s, (loc, Class nm vr sigs)) -> prog{clasdecls = (loc, nm, vr, sigs): clasdecls prog}
+    (s, (loc, Sig e)) -> prog{signatures = (loc, s, e): signatures prog}
 
 appC :: Expr -> Expr -> Expr
 appC a@(In (l :< _)) b = In $ l :< App a b
@@ -80,9 +102,6 @@ appC' a b@(In (l :< _)) = In $ l :< App (a l) b
 
 varC :: String -> Location -> Expr
 varC s l = In $ l :< Var s
-
-lamC :: String -> Expr -> Expr
-lamC s a@(In (l :< _)) = In $ l :< Lam s a
 
 mapLeft :: (Expr -> Expr) -> Expr -> Expr
 mapLeft f = asTup $ second $ \case
@@ -129,8 +148,8 @@ instance Show (ExprF String) where
   show = inParen <<< \case
     Var n -> "Var " ++ n
     App a b -> "App " ++ a ++ " " ++ b
-    Lam a b -> "Lam " ++ a ++ " " ++ b
-    Case a b -> "Case " ++ a ++ " " ++ show b
+    Lam a -> "Lam " ++ show a
+    Case a b -> "Case " ++ a ++ " of "++ show b
     Lit n -> "Lit " ++ show n
     Fix n -> "Fix " ++ n
 
@@ -141,7 +160,7 @@ prettyShape :: ExprF a -> String
 prettyShape = \case
   Var n -> "Var " ++ n
   App a b -> "App "
-  Lam a b -> "Lam " ++ a
+  Lam a -> "Lam "
   Case a b -> "Case "
   Lit n -> "Lit " ++ show n
   Fix n -> "Fix "
@@ -152,10 +171,13 @@ instance PrettyHisto ExprF where
     App a b -> case matchApp a b of
       (Just ("|", a, b), _) -> a ++ "|" ++ b
       (_, (a, b)) -> unwords [a, b]
-    Lam n e -> "/" ++ n ++ " -> " ++ value e
+    Lam (PatternT n e) -> "\\" ++ pretty n ++ " -> " ++ value e
     Lit l -> show l
     Fix e -> "fix " ++ value e
-    Case e ex -> "case " ++ value e ++ " of " ++ unlines (value <$> ex)
+    Case e ex -> "case " ++ value e ++ " of " ++ mconcat (fmap prettyPat ex)
+      where 
+        prettyPat :: PatternT (AttrExpr String) -> String
+        prettyPat (PatternT s a) = "(" ++ pretty s ++ ")" ++ "->" ++ value a
 
 instance Pretty a => Pretty (String, a) where
   pretty (k, c) = k ++ " = " ++ pretty c ++ "\n"
@@ -166,4 +188,4 @@ instance Pretty Location where
 instance Pretty (ClassDecl, [InstDecl]) where
   pretty (c, i) = prettycls c ++ " \n => \n "++ unwords (show <$> i) ++ "\n"
      where
-       prettycls (a, b, l) = a ++ " : " ++ b  ++ " -> " ++ prettyL l ++ "\n"
+       prettycls (loc, a, b, l) = a ++ " : " ++ b  ++ " -> " ++ prettyL l ++ "\n"

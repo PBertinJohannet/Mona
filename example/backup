@@ -99,3 +99,42 @@ let four = S (S (S (S Z)));
 let main = case (Just 2) of
   (Just a) -> printInt a,
   (Nothing) -> printInt 0;
+
+
+
+----------------
+
+
+
+data Bool =
+  | True = Bool;
+  | False = Bool;
+
+data Prod a b = 
+  | P = a -> b -> Prod a b;
+
+data D a b = 
+  | CI = Int -> Int -> D Int Int;
+  | CB = Bool -> Bool -> D Bool Bool;
+  | CR = k a b -> c -> D (k a b)c;
+  | CA = a -> c -> D a c;
+  | CD = D a b -> c -> D (D a b)c;
+
+data C a = 
+  | CA = a -> C a;
+  | CI = Int -> C Int;
+  | CR = k a -> C (k a);
+  | CC = C a -> C (C a);
+  | CCI = C Int -> C (C Int);
+
+let correct f = \a -> case a of
+  (CA (CI a)) -> 1 + a,
+  (CA (CA a)) -> 1 + a,
+  (CC (CI a)) -> 1 + a,
+  (CC (CA a)) -> 1 + a,
+  (CR (CI a)) -> 1 + a,
+  (CR (CA a)) -> 1 + a,
+  (CCI (CI a)) -> 1 + a,
+  (CCI (CA a)) -> 1 + a;
+
+let main = printInt 4;

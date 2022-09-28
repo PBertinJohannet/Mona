@@ -1,0 +1,4127 @@
+data Prod a b = | P = a -> b -> Prod a b;
+
+data Bool =
+  | True = Bool;
+  | False = Bool;
+
+sig id = forall a .Expr (a -> a);
+let id = Lam (\x -> x);
+
+sig first = forall a b .Expr (a -> b -> a);
+let fist = Lam (\x -> (Lam (\y -> x)));
+
+sig sec = forall a b . Expr (a -> b -> b);
+let sec = Lam (\x -> (Lam (\y -> y)));
+
+data Expr a =
+  | Lift = a -> Expr a;
+  | Tup = Expr a -> Expr b -> Expr (Prod a b);
+  | Lam = (Expr a -> Expr b) -> Expr (a -> b);
+  | App = Expr (a -> b) -> Expr a -> Expr b;
+  | Fix = Expr (a -> a) -> Expr a;
+
+sig evalTyp = forall a . Expr a -> a;
+let evalTyp e = case e of
+  (App a b) -> (evalTyp a) (evalTyp b),
+  (Lam f) -> (\x -> evalTyp (f (Lift x))),
+  (Tup e1 e2) -> P (evalTyp e1) (evalTyp e2),
+  (Lift v) -> v;
+
+sig add = Expr Int -> Expr Int -> Int;
+let add a b = (evalMe a) + (evalMe b);
+
+let main = printInt (add (Lift 2) (Lift 2));
+
+D<(Expr b) -> b, Expr (c -> d) -> c -> d, Expr (Prod e f) -> Prod e f, Expr g -> g> |><| e -> tv
+
+pour extraire :
+
+Expr b <=> Expr (c -> d)
+b : (c -> d)
+Expr b -> b <=> Expr b -> b => OK
+je remplace b par c->d dans celui qui contient b
+ensuite je vérifie que je peux unir les deux.
+si oui alors je renvoie l'original contenant b
+etc...
+
+
+mtn si je commence par
+D<Expr (c -> d) -> c -> d, Expr (Prod e f) -> Prod e f>
+créer b et remplacer aux deux endroits. izi.
+
+
+
+reconcilie :
+donc dans l'ordre :
+Je prends R a -> k et R b -> c
+si a et b sont differents :
+  si a est une tvar
+    si il apparait dans un des constructeurs.
+      on remplace b par a dans le second et si ils unifient
+        on continue avec R a -> k
+  sinon on crée une nouvelle tvar et on remplace a par la tvar dans R a -> k et b par la tvar dans R b -> c
+    si ils unifient on continue avec le remplacement.
+=============== OKKKKKK ============ SHOULD BE ENOUGH (OR NOT, anyway...)
+
+je veux gérer 
+Int -> Int
+Bool -> Int
+et 
+Int -> Int
+Bool -> Bool
+mais pas
+Int -> Bool
+Bool -> Int
+ni 
+Int -> Char
+Bool -> Int
+de toute façon l'objectif c'est de savoir si je peux prédire le retour, donc soit il est constant, soit il dépend de l'entrée
+donc soit on a la même chose des deux côtés en remplacant par la tvar, soit on a un truc constant globalement.
+donc on veut pas unifier on veut avoir un truc identique
+
+
+mergeLeft me renvoie un from,to,source qu'on applique aux deux côtés avant d'essayer d'unifier.
+
+on a besoin de :
+-- done -- dom(D) qui renvoie les variables sur lesquelles on peut refiner
+-- done -- replace(Variational, Variational) qui remplace toutes les occurences de a dans b.
+ -- doing -- UnifyChoice (dom -> Variational -> Variational -> Maybe Variational) qui fait le calcul ci-dessus
+la fonction myUnify qui fait un foldM de UnifyChoice
+
+On part du principe que soit on a
+(R a) b    et     (R a') b'
+soit on a
+A          et     B -> si A et B same on renvoie Just A sinon on renvoie Nothing
+
+on veut pouvoir transformer le truc sachant que :
+R a b => (R a) b
+R a b c => ((R a) b) c
+R (a b) c => (R (a b)) c
+
+
+D<(Expr b) -> b |><| e -> tv, Expr (a -> b) -> b |><| e -> tv, Expr (Prod a b) -> Prod a b |><| e -> tv, Expr a -> a |><| e -> tv>
+D<e -> tv, Expr (a -> b) -> b |><| e -> tv, Expr (Prod a b) -> Prod a b |><| e -> tv, Expr a -> a |><| e -> tv>
+D<e : Expr b, b : tv, Expr (c -> d) -> (c -> d) |><| e -> tv, Expr (Prod f g) -> Prod f g |><| e -> tv, Expr h -> h |><| e -> tv>
+
+RI :: Int
+RB :: Bool
+RF :: Int -> Int
+
+case e of
+  (RI i) -> i + 1
+  (RB b) -> case b of
+    True -> 0
+    False -> 1
+  (RF a) -> a 2
+
+B<Bool -> Int, Bool -> Int> |><| b -> tb
+subs : (b : Bool, tb : Int) (b : Bool, tb : Int)
+b : B<Bool, Bool>, tb : B<Int, Int>
+
+D<R Int -> Int, R Bool -> tb, R (Int -> Int) -> Int>> |><| e -> te
+subs : (e : R Int, te : Int), (e : R Bool, tb : Int), (e : R (Int -> Int), tb : Int) => OK
+e : D<R Int, R Bool, R (Int -> Int)>, te : D<Int, Int, Int>
+
+si je prends tjrs le plus générique ?
+
+case e of
+  (RI i) -> True
+  (RB b) -> 2
+
+D<R Int -> Bool, R Bool -> Int> |><| e -> te
+subs : (e : R Int, te : Bool), (e : R Bool, te : Int)
+e : D<R Int, R Bool>, te : D<Bool, Int>
+
+sur le premier on peut généraliser
+
+case e of
+  (RI i) -> i
+  (RB b) -> b
+
+D<R Int -> Int, R Bool -> Bool> |><| e -> te
+subs : (e : R Int, te : Int), (e : R Bool, te : Bool)
+e : D<R Int, R Bool>, et : D<Int, Bool>
+
+
+RBI :: Bool -> Int -> RF Bool Int
+RBB :: Bool -> Bool -> RF Bool Bool
+RFI  :: a -> (b -> Int) -> RF a b
+
+case e of
+  (RBI b i) -> c
+  (RBB b b') -> c
+  (RF a f) -> if f a == 5 then c else c
+
+D<R Bool Int -> c, R Bool Bool -> c, R b b -> c> /!\
+si a est résultat d'une généralisation alors on peut pas la refiner comme ca
+D<R Bool Bool, R b b> on peut remplacer b par Bool car il existe dans le type.
+D<R Bool Int, R b b> on peut pas remplacer 2 fois b
+
+donc on peut faire: a => Bool ssi a apparait dans un des constructeurs des dimensions de D.
+
+D<R Bool a -> c, R Bool Bool -> c, R b b -> c>   OK
+
+comment le généraliser bien ?
+on avance comme on peut déjà.
+
+et pour
+D<R a, R Bool> on fait quoi ?
+
+
+
+
+
+
+
+D<Int -> Bool, a -> Int, e> |><| E<a -> Bool, Bool>
+by 2)
+D<Int -> Bool |><| E<a -> Bool, Bool>, a -> Int |><| E<a -> Bool, Bool>, e |><| E<a -> Bool, Bool>>
+by 2)
+D<E<Int -> Bool |><| a -> Bool, Int -> Bool |><| Bool>, E< a -> Int |><| a -> Bool,  a -> Int |><| Bool>, E< e |><| a -> Bool,  e |><| Bool>>
+by 1)
+D<E<a : Int    , _>, E<_, _>, E<e :a -> Bool, e : Bool>>
+D<E<Int -> Bool, _>, E<_, _>, E<e           , e       >>
+
+
+
+problème :
+
+on a fmap (\e -> case e of ...) lst
+
+D<(Expr b) -> b, Expr (c -> d) -> c -> d, Expr (Prod e f) -> Prod e f, Expr g -> g> |><| e -> tv
+on fait :
+Expr b -> b |><| Expr (c -> d) -> c -> d ==> Expr h -> h
+Expr h -> h |><| Expr (Prod e f) -> Prod e f ==> Expr h -> h
+... => OK
+
+case e of ... a le type tc :
+e a le type te
+chaque pattern genère un type : Expr .. -> ..
+D<Expr ..., ...> |><| te -> tc
+te : D<Expr ....>
+tc : D<...>
+\e -> case e of : te -> tc
+fmap : (k -> j) -> [Expr (Prod y z)] -> [j]
+
+te |><| Expr (Prod y z)
+subst D<no, no, yes, no>
+tc devient : D<Prod e f>
+
+(te -> tc) -> [te] ->[tj]
+
+on a donc  :
+[D<Prod e f>]
+qui devient : [Prod e f]
+
+
+
+autre exemple :
+Maybe (Expr )
+
+
+case e of
+  (Just (EProd a b)) -> Prod a b
+  (Nothing) -> Prod 0 1
+
+inferé en :
+D<Maybe (Expr (Prod a b)) -> Prod a b, Maybe c -> Prod Int Int>
+reconcilie :
+Maybe (Expr (Prod a b)) -> Prod a b,
+Maybe c                 -> Prod Int Int,
+c est une tvar qui apparait dans un des constructeurs :
+
+on remplace donc (Expr (Prod a b)) par c
+ensuite on unifie :
+Maybe c -> Prod Int Int
+avec
+Maybe c -> Prod a b
+a -> Int, b -> Int etc... ça marche.
+
+On a donc :
+D<Maybe (Expr (Prod a b)), Maybe c> -> D<Prod a b, Prod Int Int>
+avant de reconcilier sur D, il faut toujours rassembler tous les D :
+pour ca on a :
+D<a, b, D<i, j, k>> devient D<a, b, k> forcément
+D<a, b, c> -> Maybe D<i, j, k> devient D<a -> Maybe i, b -> Maybe j, c -> Maybe k>
+etc...
+
+
+autre exemple :
+case e of
+  ExprP a b -> case a of
+    Just k -> (k, b)
+    Nothing -> (b, b)
+  Lift l -> (Just l, Just l)
+
+m :: Prod (Maybe a, b)
+(a, b)
+(b, b)
+unifier Maybe (Prod (Maybe a, b)) et a => impossible. mais pourtant il y arrive...
+
+renvoie :
+d'abord :
+case a of ... est de type ar ou
+R<Maybe k -> (k, b), Maybe l -> (b, b)> |><| a -> ar
+a : R<Maybe k, Maybe l>
+ar : R<(k, b), (b, b)>
+ensuite :
+D<Expr (a, b) -> ar, Expr m -> (Maybe m, Maybe m)>
+on remplace m par (a, b) dans le premier :
+D<Expr m -> ar, Expr m -> (Maybe m, Maybe m)> etc...
+D<Expr (a, b) -> ar, Expr m -> (Maybe m, Maybe m)> |><| e -> er
+e : D<Expr (a, b), Expr m>
+er : D<ar, (Maybe m, Maybe m)>
+
+mtn on calcule :
+ret type de Variational (e -> case e of ....):
+aka : e -> er
+D<Expr (R<Maybe k, Maybe l>, b), Expr m> -> D<R<(k, b), (b, b)>, (Maybe m, Maybe m)>
+
+on fait R en premier.
+D<Expr (R<Maybe k, Maybe l>, b), Expr m>  (aka e) devient :
+R<D<Expr (Maybe k, b), Expr m>, D<Expr (Maybe l, b), Expr m>>
+
+D<R<(k, b), (b, b)>, (Maybe m, Maybe m)> (aka er) devient :
+R<D<(k, b), (Maybe m, Maybe m)>, D<(b, b), (Maybe m, Maybe m)>>
+
+on a donc comme ret type :
+R<D<Expr (Maybe k, b), Expr m>, D<Expr (Maybe l, b), Expr m>> -> R<D<(k, b), (Maybe m, Maybe m)>, D<(b, b), (Maybe m, Maybe m)>>
+donc :
+R<D<Expr (Maybe k, b), Expr m> -> D<(k, b), (Maybe m, Maybe m)>, D<Expr (Maybe l, b), Expr m> ->  D<(b, b), (Maybe m, Maybe m)>>
+
+on reconcilie D dans chaque dimension :
+1)
+D<Expr (Maybe k, b), Expr m> -> D<(k, b), (Maybe m, Maybe m)>
+devient :
+D<Expr (Maybe k, b) -> (k, b), Expr m -> (Maybe m, Maybe m)>
+qui se reconcilie en :
+Expr m -> (Maybe m, Maybe m)
+2)
+D<Expr (Maybe l, b), Expr m> -> D<(b, b), (Maybe m, Maybe m)>
+devient :
+D<Expr (Maybe l, b) -> (b, b), Expr m -> (Maybe m, Maybe m)>
+qui se reconcilie en :
+Expr m -> (Maybe m, Maybe m)
+
+on a donc pour R :
+R<Expr m -> (Maybe m, Maybe m), Expr m -> (Maybe m, Maybe m)>
+et donc comme type :
+Expr m -> (Maybe m, Maybe m)
+
+
+il faudrait generer des contraintes pour pas oublier les liens entre (Expr (Maybe k, b)) et (k, b)
+le probleme c'est que quand j'ai
+a -> R a je peux garder la contrainte.
+mais quand j'ai
+R a -> a je peux pas la garder...
+Un cas qui marche :
+Maybe (Expr (Prod a b)) -> Prod a b, Maybe c -> Prod Int Int
+aaaaah !
+le problème vient du fait que j'ai un double case et que je matche pas dessus je pense.
+comment on fait si on a un zero case d'ailleurs ?
+
+ex :
+case a of
+  Prod a b -> a * b
+  x -> 5
+
+donne
+D<Expr (Int, Int) -> Int, a -> Int>
+je dis que c'est pour tout a ?
+ou je dis que a est de type Expr (Int, Int)
+
+psk si j'ai
+case a of
+  Prod a b -> a * b
+  Lam y -> y 5
+
+ca donne :
+D<Expr (Int, Int) -> Int, Expr (Int -> Int) -> Int>
+ou alors je le refuse ?
+d'un certain côté ca fait sens de refuser psk les types en entrée ont rien a voir.
+la il faudrait plutôt un Expr Int, Expr Int dans ce cas.
+si j'infere a -> Int ça crash des que j'envoie un non Int
+
+
+le truc c'est que le même constructeur peut marcher 2 fois
+genre Expr (Int, Int) et Expr (Char, Char)
+donc je devrais pas pouvoir dire c'est de type Expr a
+
+
+la diff entre
+R (P a) |><| R (C a)
+et
+R k |><| R j
+c'est que a est free dans celui du haut
+R (P a) == R (forall a . P a) on ne sait pas ce que vaut a au final.
+quoi que si le truc c'est uniquement si j'ai ?
+quand j'ai R k avec k plein ?
+
+genre
+data R a =
+  RB :: Bool -> R Bool
+  RI :: Char -> R Char
+  RA :: a -> R a
+  RMA :: Maybe a -> R (Maybe a)
+
+les trois peuvent unifier avec R a
+
+mais comment j'accepte :
+<Expr (a, b) -> (a, b), Expr (a -> b) -> (a -> b)>
+et je refuse
+<Expr (Int, Int) -> Int, Expr (Int -> Int) -> Int>
+
+la c'est psk la réécriture de (Int, Int) en a fait perdre de l'info mais que l'info est pas perdue dans le retour en gros
+alors que
+<Expr (Int, Int) -> (Int, Int), Expr (Int -> Int) -> (Int -> Int)>
+n'admet pas non plus de refinement en fait ?
+ah si ? ah non.
+psk Expr a -> a ne marchera pas avec les autres.
+normal psk en fait quand on ecrit :
+Tup = Expr a -> Expr b -> Expr (Prod a b);
+ca veut dire
+forall a, b . Expr a -> Expr b -> Expr (Prod a b);
+et pas
+exists a, b . Expr a -> Expr b -> Expr (Prod a b);
+donc mtn : ?
+si j'ai R Int -> R a ça marche psk Int est pas remplacé depuis le constructeur !!!!
+c'est ca le truc en fait psk
+RA :: forall a . R a
+ou a = Int
+peut pas unifier en R a
+donc on refuse d'unifier en R a un truc qui vient d'un forall
+en gros on refait pas le truc a l'envers.
+mtn comment on peut le calculer ça ?
+psk on a pas l'info dans le type que c'était refiné ? ou alors avec un forall en plus ?
+genre
+Expr (Int, Int) -> Int, Expr (Int -> Int) -> Int
+peut pas refiner en Expr a -> Int
+alors que si les constructeurs étaient définis :
+finir le raisonnement ici :
+
+si on a :
+EP :: (Int, Int) -> E (Int, Int)
+EL :: (Int -> Int) -> E (Int -> Int)
+on peut généraliser
+case e of
+  EP (a, b) -> a * b
+  EP l -> l 5
+en E a -> Int
+psk tous les cas de E sont utilisés.
+par contre si on a :
+EP :: (a, a) -> E (a, a)
+EL :: (a -> a) -> E (a -> a)
+on peut pas psk on perd l'info du a
+
+could not reconcile constructors (Int, Int) and (Int -> Int)
+
+mais (Int, b) et (Int, a) il peut ?
+
+donc maintenant si on dit qu'on peut unifier
+RA :: a
+et
+RB :: b
+seulement si l'un des deux vient d'un truc c'est psk :
+EP (a, a) -> E (a, a)
+EPI (Int, Int) -> E (Int, Int)
+on peut dire que si ça unifie c'est que
+
+
+
+mtn verifier qu'on a tjrs besoin de l'autre règle.
+a priori l'autre regle crée une tvar.
+la on a dit que si b est un sous-type de a
+et qu'on a les constructeurs
+P :: (a, a) -> R (a, a)
+et
+L :: (a -> a) -> R (a, a)
+on peut pas unifier
+R (b, b) avec R (b -> b)
+en forall a . R a
+car c'est pas forall a.
+that is all !!!
+
+
+l'autre truc c'est qu'on disait que quand on unifiait
+R Int et R Bool
+en R a
+après on pouvait pas unifier ce R a avec R m
+bon en fait c'est un truc a part il semblerait.
+car si elle apparait pas dans les constructeurs y a moyen que ça nous concerne pas.
+
+bref donc on peut générer des trucs du genre
+EP (a, a) -> E (a, a)
+Ep (x, y) -> x + y :: E (Int, Int) -> Int
+
+EPI (Int, Int) -> E (Int, Int)
+EPI (x, y) -> x + y ::E (Int, Int) -> Int
+
+
+pk y avait pas ce problème avec l'autre ?
+psk on pouvait juste pas avoir ca ?
+genre si on avait
+E a = EP (a, a) | EL (a -> a)
+EP (a, a) -> a + a
+EP l -> l 5
+inférait correctement en
+EP Int -> Int
+sauf que la on interdit ça car le type doit représenter ce qui est dedans.
+en l'occurence ca serait comme avoir Ep p a = EP p a
+et unifier EP (Prod) Int et EP (Func) Int, on est direct dans un problème car il n'existe pas de a tel que a = Prod et a = Func
+yep c'est bien tu redécouvres l'unification au final.
+
+je peux pas appliquer une fonction de type E (a, a) -> k a un truc de type E (a -> a) -> k
+je peux pas non plus avec fonction de type E (Int, Int) -> k a un truc de type E (a, a) -> k a
+par contre je peux si E (Int, Int)
+réécrire avec des P et F a la place de (,) et (->)
+
+si j'ai
+EP (P a) -> E (P a)
+EF (F a) -> E (F a)
+EI Int -> E Int
+EB Bool -> E Bool
+je peux pas unir
+EP (P Int) -> Int et EP (F Int) -> Int en EP a -> Int car (P Int) et (F Int) ont rien a voir
+EP (Bool) -> Int et EP (Int) -> Int je peux par contre
+psk forall a . EI Int -> E Int
+alors que forall a EP (P a) -> E (P a)
+
+
+
+dernier exemple j'espere :
+case e of
+  (Just (EProd a b)) -> a + b
+  (Just (ELift a)) -> a
+  (Nothing) -> 0
+
+liste des exemples qu'on peut avoir :
+
+
+reconcilie :
+donc dans l'ordre :
+Je prends R a -> k et R b -> c
+si a et b sont differents :
+  si a est une tvar et qu'il apparait dans un des constructeurs
+    on remplace b par a dans le second et si ils unifient
+      on continue avec R a -> k
+  sinon on crée une nouvelle tvar et on remplace a par la tvar dans R a -> k et b par la tvar dans R b -> c
+    si ils unifient on continue avec le remplacement.
+
+D<Maybe (Expr (Prod a b)) -> Prod a b, Maybe c -> Prod Int Int>
+reconcilie en : Maybe c -> Prod Int Int
+
+D<R Bool Int -> c, R Bool Bool -> c, R b b -> c>
+reconcilie pas car b et a(de Bool/Int) n'unionisent pas
+
+D<R Int -> Int, R Bool -> Bool> |><| e -> te
+reconcilie en R a -> a
+
+D<R Int -> Bool, R Bool -> Int> |><| e -> te
+ne reconcilie pas car impossible d'unifier les types de retour
+
+D<R Int -> Int, R Bool -> tb, R (Int -> Int) -> Int>> |><| e -> te
+unifie en R a -> Int si tb |><| Int
+
+D<Expr (Maybe k, b) -> (k, b), Expr m -> (Maybe m, Maybe m)>
+D<Expr m -> (k, b), Expr m -> (Maybe m, Maybe m)>
+
+
+
+D<Expr m ->
+
+bla
+bla
+bla
+
+Sooooo !!!
+on avance bien côté
+quoi que tkt on va y arriver.
+
+en gros quand on décompose on fait quoi ? 
+
+
+unifier forall b . (b ~ (Int, Int)) => E b -> b    
+
+        avec
+
+unifier forall b . (b ~ (Int -> Int)) => E b -> b
+
+sous forall a . E a -> a
+
+implique que b ~ (Int, Int) unifie avec b ~ (Int -> Int)
+
+ 
+
+unifier forall a b . (b ~ (a, a)) => E b -> b
+
+        avec
+
+unifier forall a b . (b ~ (a -> a)) => E b -> b
+
+sous forall c . E c -> c
+
+implique que b ~ (a, a) unifie avec b ~ (a -> a)
+
+ 
+
+dans les cas :
+
+ 
+
+changer les tvars pour dire si elles sont refinable a l'instanciation du constructeur
+
+d'ailleurs je fais comment ?
+
+quand j'ai
+
+(a -> k)
+
+------- je fais
+
+tin <- fresh
+
+tret <- inEnv a tin k
+
+return (tin -> tret)
+
+ 
+
+quand j'ai
+
+(E) -> k
+
+------- je fais
+
+tin <- fresh
+
+tret <- k
+
+tin |><| typeOf E
+
+return (tin -> tret)
+
+ 
+
+quand j'ai
+
+(E a) -> k
+
+------- je fais
+
+ta <- fresh
+
+tret <- inEnv a ta k
+
+tin <- typeOfRet E
+
+E |><| ta -> tin
+
+return (tin -> tret)
+
+ 
+
+ 
+
+quand j'ai
+
+(E a b) -> k
+
+------- je fais
+
+ta <- fresh
+
+tb <- fresh
+
+tret <- inEnv a ta $ inEnv b tb k
+
+tin <- typeOfRet E
+
+E |><| ta -> tb -> tin
+
+return (tin -> tret)
+
+ 
+
+ 
+
+quand j'ai
+
+(E (F a)) -> k
+
+------- je fais
+
+ta <- fresh
+
+tretF <- typeOfRet F
+
+tretE <- typeOfRet E
+
+tret <- inEnv a ta k
+
+F |><| ta -> tretF
+
+E |><| tretF -> tretE
+
+return (tretE -> tret)
+
+ 
+
+quand j'ai
+
+(E (F (G a))) -> k
+
+------- je fais
+
+ta <- fresh
+
+tretG <- typeOfRet G
+
+tretF <- typeOfRet F
+
+tretE <- typeOfRet E
+
+tret <- inEnv a ta k
+
+G |><| ta -> tretG
+
+F |><| tretG -> tretF
+
+E |><| tretF -> tretE
+
+return (tretE -> tret)
+
+ 
+
+ 
+
+quand j'ai
+
+(E (F a b)) -> k
+
+------- je fais
+
+ta <- fresh
+
+tb <- fresh
+
+tretF <- typeOfRet F
+
+tretE <- typeOfRet E
+
+tret <- inEnv a ta $ inEnv b tb k
+
+F |><| ta -> tb -> tretF
+
+E |><| tretF -> tretE
+
+return (tretE -> tret)
+
+ 
+
+en gros quand j'ai un sous pattern je demande :
+
+les contraintes :
+
+eg F a b => F |><| ta -> tb -> tretF
+
+le type de retour :
+
+eg F a b => tretF
+
+les nouvelles variables
+
+eg F a b => {a, b}
+
+ 
+
+inferPat :: (Pattern, Expr) -> Infer (Type, (Pattern TExpr))
+
+inferPat pat =
+
+    (tin, vars) <- DecomposePattern pat
+
+    tret <- foldl (curry inEnv) k vars
+
+    ... blabla
+
+    return (tin -> tret, cons)
+
+
+
+DecomposePattern :: Pattern -> (Type, [(String, Type)])
+
+DecomposePattern name vars | isPattern Name = do
+
+    (subTypes, cons, varsTypes) <- traverse DecomposePattern vars
+
+    tret <- typeOfRet Name
+
+    tell (foldr TArr tret subTypes `union` typeOf Name)
+
+    return (tret, varsTypes)
+
+DecomposePattern name [] = do
+
+    tret <- fresh
+
+    return (tret, return (name, tret))
+
+DecomposePattern name _ = throw "could not find machin truc"
+
+ 
+
+ 
+
+ 
+
+E where
+
+    P :: (a, a) -> E (a -> a)
+
+    L :: (a -> a) -> E (a, a)
+
+ 
+
+A where
+
+    P :: (a, a) -> A (a, a)
+
+    L :: (a -> a) -> A (a -> a)
+
+ 
+
+I where
+
+    P :: (Int, Int) -> I (Int, Int)
+
+    L :: (Int -> Int) -> I (Int -> Int)
+
+ 
+
+typeof IP = (Int, Int) -> I (Int, Int)
+
+typeof AP = (NR a, NR a) -> I (NR a, NR a)
+
+ 
+
+quand j'unifie
+
+NoRefine a |><| Refine Int     => a : NR Int
+
+NoRefine Int |><| NoRefine Int => OK
+
+NoRefine Int |><| _            => fail
+
+ 
+
+et du coup :
+
+P (NR a) <=> P (_) ===> P (NR a)
+
+ 
+
+nn
+
+mettre NR seulement après avoir refine
+
+ 
+
+genre j'infère
+
+P (R a) -> (R a)
+
+ 
+
+ 
+
+ 
+
+je tombe sur
+
+et NoRefine (NR a) = NR a
+
+ 
+
+ 
+
+flop x = case x of
+
+    P (a, b) -> a + b
+
+    L l -> l 5
+
+ 
+
+pour E : fail
+
+pour A : fail
+
+pour I : P a -> Int
+
+ 
+
+flop2 = case x of
+
+    P (a, b) -> (a, b)
+
+    L l -> l
+
+ 
+
+pour E : fail
+
+pour A : A a -> a
+
+pour I : I a -> a
+
+ 
+
+flop3 = case x of
+
+    P (a, b) -> (+ a)
+
+    L l -> (l 1, l 2)
+
+ 
+
+pour E : E a -> a
+
+pour A : fail
+
+pour I : fail
+
+ 
+
+ 
+
+essayer :
+
+ 
+
+A where
+
+    P :: (a, a) -> A (a, a)
+
+    L :: (a -> a) -> A (a -> a)
+
+ 
+
+I where
+
+    P :: (Int, Int) -> I (Int, Int)
+
+    L :: (Int -> Int) -> I (Int -> Int)
+
+ 
+
+ 
+
+flop = case x of
+
+    IP (a, b) -> a + b
+
+    IL l -> l + 5
+
+ 
+
+flop2 = case x of
+
+    AP (a, b) -> a + b
+
+    AL l -> l + 5
+
+ 
+
+ 
+
+flop2 :
+
+branch 1
+
+    AP (Prod a b) -> a + b
+
+        DecomposePattern (AP (Prod a b))
+
+            DecomposePattern (Prod a b)
+
+            ret [a : ta, b : tb]
+
+            Prod tc tc <= typeOfRet Prod
+
+            tc -> tc -> Prod tc tc |><| ta -> tb -> Prod tc tc
+
+            <= (Prod tc tc, [a : ta, b : tb])
+
+        A (Prod te tf) <= typeOfRet AP
+
+        (Prod te tf) -> A (Prod te tf) |><| (Prod tc tc) -> A (Prod te tf)
+
+        <= (A (Prod te tf), [a : ta, b : tb])
+
+    ...
+
+        inEnv a ta $ inEnv b tb $ (a + b)
+
+        ta -> tb -> Int |><| Int -> Int -> Int
+
+        ret : Int
+
+    <= (A (Prod te tf) -> Int)
+
+ 
+
+branch 2
+
+    AL l -> l 5
+
+        DecomposePattern (AL l)
+
+        [l : tl]
+
+        A (tg -> tg) <= typeOfRet AL
+
+        (tg -> tg) -> A (tg -> tg) |><| tl -> A (tg -> tg)
+
+        <= (A (tg -> tg), [l : tl])
+
+    ...
+
+        inEnv l tl $ (l 5)
+
+        tl |><| Int -> th
+
+        ret : th
+
+    <= (A (tg -> tg) -> th)
+
+ 
+
+donc au final on a :
+
+contraintes :
+
+tc -> tc -> Prod tc tc |><| ta -> tb -> Prod tc tc
+
+(Prod te tf) -> A (Prod te tf) |><| (Prod tc tc) -> A (Prod te tf)
+
+ta -> tb -> Int |><| Int -> Int -> Int
+
+(tg -> tg) -> A (tg -> tg) |><| tl -> A (tg -> tg)
+
+tl |><| Int -> th
+
+ 
+
+type :
+
+D<A (Prod te tf) -> Int, A (tg -> tg) -> th>
+
+donc mtn :
+
+    tc -> tc -> Prod tc tc |><| ta -> tb -> Prod tc tc
+
+    tc = ta
+
+    ta = tb
+
+ 
+
+    (Prod te tf) -> A (Prod te tf) |><| (Prod tc tc) -> A (Prod te tf)
+
+    te = tc
+
+    tf = tc
+
+ 
+
+    ta -> tb -> Int |><| Int -> Int -> Int
+
+    ta = Int
+
+   
+
+    (tg -> tg) -> A (tg -> tg) |><| tl -> A (tg -> tg)
+
+    (tg -> tg) = tl
+
+ 
+
+    tl |><| Int -> th
+
+    tg = Int
+
+    th = tg
+
+ 
+
+ 
+
+    on a donc (tc = ta = tb = te = tf = Int) et (tg = th = Int)
+
+ 
+
+D devient :
+
+D<A (Prod Int Int) -> Int, A (Int -> Int) -> Int>
+
+ 
+si on veut reconcilier maintenant on fait juste : 
+A (Prod Int Int)  -> Int |><| A (Int -> Int) -> Int
+
+on crée tj et on remplace (Prod Int Int) par tj dans Int (g) puis (Int -> Int) par Int dans Int (d)
+on a donc : 
+A tj 
+ou plutôt forall tj . A tj
+ce qui est faux psk on veut pas compiler ça...
+du coup au moment de sortir le pattern (l 930-932) je mets un flag sur la tvar
+si je fais ça j'ai : tc' a la place de tc et tg' a la place de tg.
+on revient donc a la resolution :  
+
+
+type :
+
+D<A (Prod te tf) -> Int, A (tg -> tg) -> th>
+
+donc mtn :
+
+    tc' -> tc' -> Prod tc' tc' |><| ta -> tb -> Prod tc' tc'
+
+    ta = tc'
+
+    tb = tc'
+
+ 
+
+    (Prod te tf) -> A (Prod te tf) |><| (Prod tc' tc') -> A (Prod te tf)
+
+    te = tc'
+
+    tf = tc'
+
+ 
+
+    tc' -> tc' -> Int |><| Int -> Int -> Int
+
+    Error : cannot generalize tc' to Int right ?
+    ah mais la on sait pas quel est la spécialisation appliquée non ? quoi que si en fait ?
+    ou pas psk ptet que j'applique case machin truc à AP (1, 2) auquel cas ça devrait marcher.
+    donc il faut que ce soit après ? ou alors générer une contrainte : 
+    tc' <=> Int d'une autre facon
+
+    (tg' -> tg') -> A (tg' -> tg') |><| tl -> A (tg' -> tg')
+
+    (tg' -> tg') = tl
+
+
+
+
+    tl |><| Int -> th
+
+    tg' <=> Int
+
+    th = tg'
+
+ 
+
+ 
+
+    on a donc (tc = ta = tb = te = tf = Int) et (tg = th = Int)
+    tg' <=> Int
+    tc' <=> Int
+
+>>> Erreur : could not generalize forall tg'. Prod (tg' -> tg') -> ... to Prod (Int -> Int) -> ...  bla bla
+
+alors que si on a case AL (+5) of
+  ...
+
+on continue un peu notre chemin : 
+on rajoute la contrainte : 
+
+D<A (Prod te tf) -> Int, A (tg' -> tg') -> th> |><| A (Int -> Int) -> ti' 
+ 
+ on fait tous les remplacements : 
+D<A (Prod Int Int) -> Int, A (Int -> Int) -> th> |><| A (Int -> Int) -> ti'
+D<bot                    , A (Int -> Int) -> th |><| A (Int -> Int) -> ti'>
+D<bot, A (Int -> Int) -> Int>
+ti' = Int
+
+
+ok maintenant plus compliqué : 
+case (case e of 5 -> AL (+5); 7 -> AP (2, 3)) of ...
+ici on a
+D<A (Prod te tf) -> Int, A (tg' -> tg') -> th> |><| E<A (Int -> Int), A (Int, Int)>
+pour unifier on distribue (type de retour final de l'expression : tj)
+D<A (Prod Int Int) -> Int, A (Int -> Int) -> th> |><| E<A (Int -> Int), A (Int, Int)> -> tj
+
+D<A (Prod Int Int) -> Int |><| E<A (Int -> Int), A (Int, Int)> -> tj, A (Int -> Int) -> th |><| E<A (Int -> Int), A (Int, Int)> -> tj>
+ensuite pareil 
+D<E<A (Prod Int Int) -> Int |><| A (Int -> Int) -> Int, A (Prod Int Int) -> Int |><| A (Int, Int)> -> tj,
+  E<A (Int -> Int) -> Int |><| A (Int -> Int) -> tj   , A (Int -> Int) -> th |><| A (Int, Int)> -> tj>
+on simplifie
+D<E<bot                                              , A (Prod Int Int) -> Int,
+  E< A (Int -> Int) -> Int                           , bot>
+maintenant on demande a reconcilier : 
+
+en bref : 
+j'aime pas tant la solution la, enfin je suis pas sur : 
+au pire pour l'instant osef on fait un truc qui compile correctement
+
+est ce que j'ai besoin de remplacer par des variationels ? 
+je pense que oui mais jsp en réalité...
+quoi que si en fait 
+let a = case ... of ... in 
+a + 5
+la j'ai besoin d'unifier D<...> avec une tvar
+et donc de dire remplace tvar par D<...>
+
+on prend la decision
+
+en gros pour l'instant on a 
+(Scheme, TExpr) 
+on voudrait ptet le remplacer par 
+(Scheme, VExpr) 
+mais est-ce que ça vaut le coup ou est-ce qu'on pourrait pas se débarasser du VExpr ?
+genre a la fin quand on a le type final et qu'on a tout ufinié on sait quels types sont pas possibles non ?
+
+a priori on sait de base mais c'est juste que non en fait ce qu'on fait c'est qu'on rajoute une façon de faire de l'unification
+
+
+bon alors sinon on dit que :
+il faut juste mettre une contrainte qui dit que : 
+toutes les variantes possibles ont été testées entièrement.
+ce qui veut dire que si en type d'entrée j'ai 
+R a -> a
+la sous branche de type : R Int -> Int ne le valide pas complètement.
+mais je dois vérifier au moment de réconcilier...
+après je peux le faire sans trop de difficulté 
+je réconcilie 
+R a -> a , R Int -> Bool
+si j'essaye d'unifier les types d'entrée je trouve a : Int et j'applique des 2 côtés puis j'unifie et ça marche pas car Bool != Int
+pour 
+R a -> Char, R Char -> Char
+j'unifie les types d'entrée => a : Int => Char -> Char |><| Char -> Char => OK !
+pour 
+R (Int, Int) -> (Int, Int), R (Int -> Int) -> (Int, Int)
+j'unifie les types d'entrée, ça marche pas donc je lift en R b et je remplace des deux côtés => R b -> b |><| R b -> b => ok
+pour
+R (Int, Int) -> Int, R (Int -> Int) -> Int
+j'unifie, ça marche pas, je lift et j'unifie : R b -> Int, R b -> Int => OK
+ensuite pour chacun des cas en OK il faut que je vérifie que toutes les branches du type existent ? quoi que pas tout de suite en fait.
+seulement au moment ou je fais mkPlain.
+en fait il y a d'abord l'unification bourrine.
+puis je check que chaque branche couvre son constructeur : 
+eg si R (Int, Int) est associée a forall a -> R (a, a) mais qu'en entrée on a R (Int, Int) c'est bon.
+donc le truc c'est de voir que le type final qui est inféré (eg R (Int, Int)) si on l'applique a l'envers au constructeur :
+(a, a) -> R (a, a)
+mais à ce moment la on sait que le constructeur son type à été refiné non ?
+non on sait pas
+par contre on sait au moment final ou on réconcilie, quand on dit : cette fonction doit marcher pour tout a
+
+en fait c'est ça la diff
+quand on dit je spécialise R (Int, Int) en R a, si ça se trouve derierre je vais lui passer un R (Int, Int) donc je veux juste avoir un type à renvoyer.
+par contre quand je close over je dois réconcilier et je dis que ça marche pour tout a donc la faut vérifier.
+et la pour vérifier je peux prendre le constructeur de chacun qui à généré une contrainte de "couvrance" et vérifier que ça match.
+la on revient sur le truc plus haut, ma contrainte elle dit : 
+aaaaah mais wait : 
+si j'élimine le R (a -> a) c'est bon j'ai juste besoin de pas unifier plus tôt ?
+ou pas sinon c'est juste que à ce moment la je réconcilie en interdisant le refinement sur ces variables la.
+ah mais du coup si j'ai un case qui renvoie E<R a, R b> et un autre qui fait : D<R a -> Int, R b -> Int>
+je l'accepte dans un premier temps et après j'applique mes E
+et je me retrouve avec : 
+D<E<A (Prod Int Int) -> Int |><| A (Int -> Int) -> Int, A (Prod Int Int) -> Int |><| A (Int, Int)> -> tj,
+  E<A (Int -> Int) -> Int |><| A (Int -> Int) -> tj   , A (Int -> Int) -> th |><| A (Int, Int)> -> tj>
+
+ce qui donne : 
+D<E< bot , A (Prod Int Int) -> Int,
+  E<A (Int -> Int) -> Int |><| A (Int -> Int) -> tj   , bot>
+
+la on a donc un autre problème qui est comment on réconcilie ce genre de patterns ?
+psk la limite on peut accepter attends w8
+si on a : 
+case (case a of
+  5 -> RP (5, 6)
+  7 -> RL (+2)) of
+  RP -> ...
+  RL -> ...
+  on sait qu'on couvre toutes les branches possibles
+
+mais comment ça s'exprime dans : 
+D<E<A (Prod Int Int) -> Int |><| A (Int -> Int) -> Int, A (Prod Int Int) -> Int |><| A (Int, Int)> -> tj,
+  E<A (Int -> Int) -> Int |><| A (Int -> Int) -> tj   , A (Int -> Int) -> th |><| A (Int, Int)> -> tj>
+pour chaque possibilité de D il y a une possibilité de E qui rentre dedans ?
+
+en soit D<x, y> veut dire "il est possible d'avoir un x ou un y à ce moment la
+et bot veut juste dire que c'est pas possible.
+donc si on a bot on l'enlève ?
+mais faut l'enlever partout dans la dimension dans laquelle on travaille.
+hmmm c'est chaud quand même :/
+comment on peut s'en sortir simplement ?
+le problème c'est qu'il faut un environnement de typage différent pour chaque partie de la dimension en gros...
+donc comment on fait ?
+genre on trouve la dimension D, on ramène tout en fonction de D et ensuite on essaye de réconcilier pour chaque sous dimension
+eg la on renverrai pour chaque dimension :
+D<A (Prod Int Int) -> Int, A (Int -> Int) -> Int>
+l'autre problème c'est de dire comment on fait pour remplacer le D partout ?
+psk pour le compiler ça va pas être chiant en fait non psk quand ça sera monomorphisé y aura plus de variantes.
+
+d'ailleurs quand j'ai
+D<a, b> |><| Int
+je dis quoi ?
+j'essaye d'unifier a avec Int et b avec Int mais si je trouve des trucs différents ?
+est-ce que je dois avoir une substitution différente pour chaque point de la dimension ? ptet... 
+ok on fait ça alors.
+non mais c'est pas si simple.
+
+
+
+si j'ai 
+Show a => Int
+et a -> D<Int, Bool>
+je veux transformer en : 
+D<Show Int -> Int, Show Bool -> Int>
+en gros l'idée c'est que mes preds sont toujours sur des types.
+mais du coup le pred de retour c'est quoi ?
+si j'ai ça après je fais quoi ? psk la j'ai plusieurs contraintes 
+c'est ptet mieux de dire w8
+ou alors on dit qu'on check tout ça a la fin, on infère un truc commun.
+psk au final je vais d'abord trouver quelles parties de D je vire puis je vais le reconcilier avec une transformation quelconque
+donc je vais remplacer tout ce qui est du Variational par du Type
+OK nickel pour ça !
+mais w8 quand j'unifie mon D ... faut quand même que je 
+hmm du coup je runSolve a la fin après avoir remplacé tous les Variational par des Type
+j'applique la transformation a mes Subst aussi.
+
+le vToT il fait quoi ?
+exemple simple : 
+nn mais je dois pas le renvoyer le vToT c'est nimp,
+je renvoie une subst et après je l'applique mdr.
+hmm, je peux avoir un autre problème pour les preds, il faudrait pouvoir les tester après avoir enlevé les cas impossibles.
+et du coup :
+Show a
+a : D<R Int -> Int, R Bool -> Bool, R Char -> Int>
+on enlève le troisième pour résoudre
+a : D<R Int -> Int, R Bool -> Bool>
+on à comme preds
+Show R Int -> Int
+Show R Bool -> Bool
+ensuite on unifie les deux : 
+R a -> a
+mais j'aimerais bien ne pas avoir a gérer des a : D<...> partout
+ça c'est un problème de quand j'unifie.
+en vrai je peux juste reporter et avoir deux substitutions
+une simple de TVar -> Type qui sert juste à résoudre aaah
+w8 dans la substitution
+plutôt que de renvoyer D<...> comme type je peux juste renvoyer une contrainte : 
+a |><| D<...> que je résoudrai plus tard.
+et comme j'ai les preds à côté je peux facilement les vérifier d'abord.
+yep donc
+- Enlever des Variational partout
+- Créer des contraintes différentes pour Infer
+  telles que 
+  * contraintes d'unification avec des variationels
+  * contraintes d'unifications habituelles
+  * predicates
+
+le variationel peut être réduit uniquement par la valeur qui est en entrée
+
+ensuite je fais : 
+unifier tout 
+
+donc j'ai plus de Variational partout qui font iech
+go c'est ça le premier changmeent
+
+si j'ai 
+Int -> Int
+Bool -> Bool
+je trouve 
+(Int : ''a) (Bool : ''a)
+et de l'autre côté
+(Int : ''b) (Bool : ''b)
+donc on est ok
+
+si j'ai l'inverse : 
+B -> I
+I -> B 
+je trouve 
+(I : ''a) (B : ''a)
+et de l'autre côté
+(B : ''b) (I : ''b)
+rien a voir donc nop
+
+ensuite : 
+I -> I
+B -> I
+je trouve 
+(Int : ''a) (Int : ''a)
+et de l'autre côté
+(Bool : ''b) (Int : ''b)
+
+si il a 2 arguments : 
+B I -> B I 
+I B -> B B
+B B -> B B
+I I -> B I
+je trouve
+(Bool : ''b) (Int : ''a) | (Bool : ''c) (Int : ''d) 
+et de l'autre côté
+(Int : ''h) (Bool : ''g) | (Bool : ''e) (Bool : ''f) 
+
+je trouve que la première se résoud seule
+(Bool : ''b) (Int : ''a) | (Int : ''d) 
+et de l'autre côté
+(Int : ''h) (Bool : ''g) | (Bool : ''f) 
+
+la deuxième se résoud en utilisant la seconde
+
+
+maintenant : 
+est-ce qu'en appliquer une impacte les autres ?
+Ah w8 est ce que c'est possible d'avoir un a a et un b a
+
+ah oui
+
+I a a -> a a
+I a b -> b a
+
+(a : ''a) (a : ''b) | (a : ''c) (a : ''d)
+(a : ''e) (b : ''f) | (b : ''g) (a : ''h)
+a b se résoud avec a b
+
+I ''a ''c -> ''c ''a
+
+ok mtn
+
+I a b -> b a
+I b a -> b b
+
+(a : ''a) (b : ''b) | (b : ''c) (a : ''d)
+(b : ''a) (a : ''b) | (b : ''c) (b : ''d)
+
+a b résoud a b mais rien ne résoud b b
+
+- atomique par type donc n'impacte pas les autres.
+- prend en compte tous les changements.
+
+ok ça a l'air propre
+donc dans l'ordre
+générer des Generalizations de la même façon des deux côtés et 2 par 2 en utilisant la même variable
+  pour chaque généralisation a droite regarder si il y en a une a gauche qui l'annule
+  pour savoir si celle de gauche l'annule je regarde si c'est la même pour l'instant
+  si elle l'annule je l'applique et je l'enlève a droite
+  je répète jusqu'a ce que soit je fail soit c'est bon
+  
+maintenant comment générer la finale ?
+
+I c a -> a
+I a b -> b
+
+(c : ''a) (a : ''b) | (a : ''c)
+(a : ''a) (b : ''b) | (b : ''c)
+a b se résoud avec a b
+
+I c ''b -> ''b
+I a ''b -> ''b
+et ensuite je peux appliquer le reste sans probs
+
+et dans l'autre example : 
+
+I a a -> a a
+I a b -> b a
+
+(a : ''a) (a : ''b) | (a : ''c) (a : ''d)
+(a : ''a) (b : ''b) | (b : ''c) (a : ''d)
+
+a b resoud a b
+I a ''b -> ''b a
+I a ''b -> ''b a
+
+a a resound a a
+I ''a ''b -> ''b ''a
+I ''a ''b -> ''b ''a
+
+
+et si j'avais direct appliqué ici : 
+
+I a b -> b a
+I b a -> b b
+
+(a : ''a) (b : ''b) | (b : ''c) (a : ''d)
+(b : ''a) (a : ''b) | (b : ''c) (b : ''d)
+
+c'est le bordel psk ça dépend de l'ordre d'application etc...
+I ''a ''a -> ''a ''a
+I ''a ''a -> ''a ''a
+la ça passe direct lol...
+...
+mais en fait c'est bon psk ils sont juste pareils du coup.
+
+
+et si ils doivent etre pareils : 
+
+I a b -> b b
+I b a -> b b
+
+(a : ''a) (b : ''b) | (b : ''c) (b : ''d)
+(b : ''a) (a : ''b) | (b : ''c) (b : ''d)
+ici pourtant on pourrait le faire en appliquant tout.
+comme en haut en fait.
+hmm ptet que quand c'est une tvar sur laquelle on peut refiner, 
+
+celui la il est interessant : 
+
+I a a -> a a
+I c d -> d c
+
+(a : ''a) (a : ''b) | (a : ''c) (a : ''d)
+(c : ''a) (d : ''b) | (d : ''c) (c : ''d)
+
+ou alors je dis si je ne peux pas la résoudre avec la gauche j'unifie quand même ?
+
+I a a -> a a
+I c d -> d c
+
+(a : ''a) (a : ''b) | (a : ''c) (a : ''d)
+(c : ''a) (d : ''b) | (d : ''c) (c : ''d)
+
+ça dépend d'ou vient la containte du a a
+si ça vient du constructeur, alors je veux avoir le type : I a b -> b a car pour résoudre l'égalité j'ai juste besoin de savoir que je suis dans cette branche
+si ça vient de l'expression, alors je veux avoir le type : I a a -> a a car j'ai besoin de les unifier pour résoudre l'égalité
+déjà comment je peux savoir ça ?
+si ça vient de l'expression ça veut dire que ça s'est appliqué après
+donc sur mon NoRefine a, NoRefine b, j'ai appliqué a : v puis b : v
+et j'ai NoRefine v, NoRefine v au final
+donc déjà si sur a j'ai qu'un seul NoRefine ça veut dire que tous les a sont égaux
+mais mtn le prob c'est si j'ai a b a => 2 norefines => je sais pas lesquels sont égaux
+ouais en fait il me faut vraiment des contraintes d'égalité ?
+
+ok maintenant quelle stratégie m'amenerait a I a b -> b a ?
+
+I a a -> a a
+I a b -> b a
+
+et si j'essayais de savoir si il y a besoin de généralizer ?
+genre le a a en a pas besoin de base
+w8 si je change : 
+
+I a a -> a a
+I b c -> c b
+
+en 
+I a a -> a a
+I c b -> b c
+
+ça change rien 
+ah ok la confusion venait du fait que je séparais pas les deux lignes
+
+est ce que 
+
+I a a -> a a
+I a b -> b a
+
+est pareil que 
+
+I a a -> a a
+I b a -> a b
+
+oui, si parce que la deuxième colone dépend de la premiere etc... OK
+donc on part du 
+(a : ''a) (a : ''b) | (a : ''c) (a : ''d)
+(c : ''a) (d : ''b) | (d : ''c) (c : ''d)
+
+je prends ac et ac
+a -> ''a
+c -> ''a
+
+I ''a ''a -> ''a ''a
+I ''a d -> d ''a
+
+je prends ad et ad
+
+''a -> ''c
+d -> ''c
+
+I ''c ''c -> ''c ''c
+I ''a ''c -> ''c ''a
+
+hmm c'est ptet la, je réapplique
+appliquer en haut seulement du coup
+
+maintenant : a et b sont des TCon par exemple
+
+I I -> I I
+B I -> I B
+
+j'ai 
+'a I -> I 'a
+la c'est facile en fait
+
+bref on revient sur l'autre : 
+si a a vient de l'expression je dois réduire b a en a a. ptet générer des contraintes malgré tout ? quoi que non c'est des contraintes a l'envers du coup.
+et si b et a doivent être différents comment on fait ? quoi que la en fait nique ça va juste crasher quand on unifiera avec la sig
+
+on revient sur le fait de savoir.
+ah mais w8, et si j'applique pas les... non en fait ça marche pas
+alors la je veux appliquer la transformation suivante :
+R a a -> a a
+R a b -> b a
+==>
+R a b -> b a
+mais en fonction de l'ordre déjà j'ai pas le même résultat.
+
+déjà a quel moment 
+I ''c ''c -> ''c ''c 
+et 
+I ''a ''c -> ''c ''a
+sont pas pareils ?
+ok normal la j'ai juste vérifié que ça pouvait s'unifier.
+fuck aller repense le un peu
+ptet que dans la génération des contraintes tu peux avoir un truc ?
+en gros si j'avais a b et que j'ai a a il faut que je garde a a
+comment je choisis le bon déjà ?
+si j'unifie ça ça donne quoi ?
+I c c -> c c
+I a b -> b a
+je peux chercher la définition qui correspond le plus au constructeur de base ?
+mais si j'ai
+I c c a
+I b d d
+et que je dois avoir 2x le même a chaque fois ?
+imaginons que j'unifie avec le constructeur : 
+
+alors j'ai en cons si ils sont identiques : 
+I c c 
+I a b 
+avec 
+I ''c ''c 
+I ''a ''c
+aui donne 
+c : ''c, a : ''a et b : ''c
+
+
+et ensuite si ils sont différents : 
+I c d 
+I a b 
+avec 
+I ''c ''c 
+I ''a ''c
+qui donne
+c : ''c, d : ''c, a : ''a et b : ''c
+
+pk ça change pas, psk a il est seul
+pourtant ça devrait se transmettre non ?
+ah non psk c'est le même pour l'instant
+retry mais mieux
+
+je veux l'inverse d'une unification un peu, genre 
+c d 
+a b
+-> a a
+et
+c c
+a b
+-> a b
+
+ptet un autre exemple
+b b a
+c d d
+
+si j'ai 
+a b c
+d e f
+je veux 
+a a a
+
+si j'ai
+a b c
+d e e
+je veux
+a a b
+
+si j'ai
+a a b
+d e f
+je veux
+a b b
+
+ok doooooonc, a chaque fois que je remplace une variable une deuxieme fois je change. eg :
+a a b
+d e f
+je sais que a et b sont différents car ils sont pareils dans un des constructeurs ainsi que dans le candidat.
+mais que e et f sont pareils car ils sont différents dans le candidat et pareils dans le constructeur.
+et si on fait a l'envers ? genre pareil dans le candidat et différents dans le constructeur ? alors on les garde pareils
+et si ils sont différents dans les deux cas, on s'en fiche
+
+en gros si ils sont pareils : 
+Cons P, Cand P -> D
+Cons P, Cand D -> NA
+Cons D, Cand P -> P
+Cons D, Cand D -> _
+
+donc en gros je suis intéressé par les cas ou ils sont pareils dans le candidat : 
+Cons P, Cand P -> D
+Cons D, Cand P -> P
+et j'inverse : 
+
+donc la j'ai 
+1 != 2 et c'est tout. mais du coup 3 = 1 ou 2 ?
+ah ouais ok nique
+donc on reessaye :
+
+avec ces constructeurs :
+a a b
+c d d
+
+
+si j'ai 
+a a c
+d e e
+je veux 
+a a a
+
+si j'ai 
+a a a
+d e e
+je veux 
+b a a
+
+si j'ai 
+a a b
+e e e
+je veux 
+b b b
+
+ok donc on reprend : 
+Cons D, Cand P -> P
+
+ok et a partir de ça on calcule tous ceux qui doivent être pareils ?
+eg : 
+avec ces constructeurs :
+a a b
+c d d
+si j'ai 
+a a b
+e e e
+
+je trouve 
+a a Pareils mais aussi dans cons -> rien
+e0 e1 Pareils mais différents dans cons -> Pareils
+e0 e2 Pareils mais différents dans cons -> Pareils
+j'enleve tous ceux qui sont pareils et je repars : 
+e1 seul voila. 
+j'ai donc : 
+e0 = e1 = e2
+
+avec ces constructeurs :
+a a b b
+c d d c
+si j'ai 
+a a b b
+c e e e
+
+je veux : 
+a b b b
+okkkkkkkkk ! 
+je crois que je suis bon la ! 
+
+pour tous les couples j'applique : 
+Cons Différents et Candidat Pareil -> Pareil 
+et la je trouve tous ceux qui doivent être pareil, je sépare les composantes connectées du graphe et je leur mets chacune une variable
+voir les optis a faire en amont aussi.
+
+pour l'autre: 
+j'ai pas besoin d'appliquer, si ? ah wait 
+
+si j'ai 
+Int a
+b b
+
+si Int vient de blabla.
+donc on fait ça pour les deux.
+
+B B -> I I
+I I -> B B
+
+ptet que je peux commencer par trouver la forme commune du truc.
+
+B I -> I 
+I B -> B
+
+ah mais wait je peux ptet faire tout en même temps : 
+si Int est pas dans le constructeur et est dans le candidat. alors je veux avoir Int à cet endroit. sinon n'importe quelle variable 
+
+du coup si j'ai 
+a a
+I B
+
+pour a a et B I on génère B I
+pour I B et I B on génère a b
+hmm
+est ce qu'on peut unifier les templates ? oui ça donne B I et ensuite j'essaye de l'unifier avec les constructeurs séparément pour voir si ça marche ?
+mais si en unifiant je brise une autre contrainte : 
+
+eg j'ai
+
+a a et a b -> on génère a a
+I B et I B -> on génère I B
+ça unifie pas en fait. donc parfait c'est que les contraintes sont respectées par l'unification.
+ce qui est très probable en fait.
+
+donc en unifiant je vérifie que toutes les contraintes sont respectées ? ah mais non psk
+si j'ai
+a a et a a -> a b
+a b et a a -> a a
+ça unifie en a a en fait. oui oui oui, j'y crois de plus en plus
+la je sais quel template garder.
+
+
+ok un autre cas a prendre en compte : 
+le type de retour a des variables en commun. donc les tvars vont unifier seules.
+
+ok donc a partir des contraintes des candidats/constructeurs je peux avoir : 
+Si je veux une tvar fraiche/ si je veux garder le type.
+Si je veux des types identiques/ si je veux des types différents.
+et après ?
+
+si j'ai en constructeur 
+a b
+a b
+et en candidat : 
+I B
+B I
+je les unifie pas
+en constructeur : 
+I B
+a b
+en candidat : 
+I B
+B I
+j'ai I B qui unifie pas donc ça marche pas
+en constructeur 
+I a
+a I
+en candidat 
+I B
+B I
+j'unifie pas
+mais en fait si j'ai B et I au même endroit le seul moyen c'est qu'ils soient forcés par le constructeur
+constructeur : 
+I
+B
+candidat  :
+I
+B
+unifie en a
+ensuite retour ?
+I -> B
+B -> I
+I : a
+B : a
+si ils sont différents après bah dommage.
+I B
+B I
+donnait
+I : a, B : b
+B : a, I : b
+donne b b qui sont égaux.
+cette partie je suis pas sur mais ça devrait le faire.
+Donc dans l'ordre je trouve une série de contraintes, est ce que je peux modéliser ça sous forme d'une substitution ? oui.
+ensuite je l'applique de chaque côté.
+mais wait ! 
+pour les types qui sortent d'un constructeur plus bas ?
+R a b et b vaut c a on fait comment ? on le sort ? ok il en reste un peu quand même.
+bon du coup est ce que je sors les constructeurs ? ou est ce que je les traite séparément ?
+hmm je suis obligé de rassembler par instance du constructeur.
+genre 
+RM (Just i)
+et
+RM (Nothing)
+doivent rentrer dans le même RM
+après je peux donner le template dans lequel rentrent chacune des branches et dire quels types sont associés à ce template ?
+genre pour 
+RM (Just i) :: R i
+RC c :: R Char
+RI i :: R Int
+RM (Nothing) :: R a
+je dis quoi quand j'unifie ?
+j'ai deux unifications a faire en fait.
+d'abord R puis Maybe ? ou plutôt d'abord Maybe puis R oui d'abord Maybe
+donc je commence ? ou alors je m'en fous un peu et je les sors au moment du parsing ?
+ouais mais pas trop chaud ? quoi que ?
+ou alors osef ? la si j'essaye d'unifier les types ?
+j'ai RM :: Maybe a -> R a comme constructeur et les autres sont constants.
+j'ai cons : 
+a
+C
+I
+a
+et cand
+i
+C 
+I
+j
+donc je trouve comme unification : 
+i
+a
+b
+i
+=> i
+donc on est bons.
+le truc c'est si j'ai un R dans un R par exemple
+RI :: I
+RC :: I
+RA :: (a b)
+de toute façon je veux la propriété suivante : 
+R (pat a) => ...
+est pareil que : 
+R a => case a of (par a) => ...
+donc pourquoi pas les transformer ? il "suffit" de mettre des case dans des cases. ou alors au moment de l'inférence ?
+nn je préfère après le parsing.
+comme ça j'ai quoi à gérer ?
+et je commence par le fond en plus.
+ok donc l'algo pour unifier ceux la ?
+je peux même en profiter pour les réordonner ?
+si j'ai
+[]
+e:[]
+es
+c'est case e of
+Nil -> ...
+Cons e (Nil)
+es
+donc j'ai es a la fin forcément.
+et ensuite Nil et Cons mais aaaaaaaah wait !
+Cons e blabla doit rentrer dans es. ce qui change un peu non ?
+la c'est facile psk es == Cons mais sinon ça peut vite devenir le seum.
+donc plutôt je peux le faire a l'inférence.
+Nil -> ...
+Cons e (Nil) -> ...
+j'unifie les Cons etc... ensmbles mais ca fait rien
+si j'ai 
+RM (Just i) 
+RC
+RM (Nothing)
+je rassemble les RM et je dis (réconcilie Just i et Nothing d'abord)
+je fais ça pour tous les patterns en bas.
+au final il va me dire quel type je dois avoir pour RM.
+vérifier ça puis gérer le cas des tvars simples.
+hmm quand j'ai 
+as -> truc
+je fais comme si j'avais
+R a -> .. comme constructeur, et après bah voila quoi, enfin jsp c'est ptet plus compliqué ?
+ouais si je pense que c'est acceptable comme sémantique.
+ok donc on a dit qu'on faisait un pattern avec un id a chaque fois ? et un id * unique ?
+ah plutôt [], Maybe pour le catchall
+ou une Map avec les combinaisons d'id ? nn faut plutôt un arbre.
+mais du coup non on a pas de contraintes suplémentaires quand on est dans le catchall ?
+quoi que faudrait voir psk si j'ai
+RM (Just Int) -> Int
+a -> Bool
+le a -> Bool me dit que de toute façon je dois avoir un Bool constant en sortie donc tant pis pour les autres.
+je suis obligé d'unifier avec tous les autres quand je suis dans un catchall
+ensuite je génère un truc de type : 
+[], Maybe catchall ?
+ok donc une liste de listes de ?
+
+RM (Just i) 
+RC
+RM (Nothing)
+
+devient :
+'b :: 
+  1 : (R a), (R 'a)
+  2 : (R C), (R C)
+'a :: 
+  1 : (Maybe a), (Maybe a)
+  2 : (Maybe a), (Maybe a)
+
+je parcours 'b et je trouve 'a donc je calcule 'a
+je parcours 'a et je trouve : 
+1 : (Maybe a), (Maybe Int)
+2 : (Maybe i), (Maybe i)
+j'infère Maybe Int
+j'ai donc pour 'b :
+'b :: 
+  1 : (R a), (R 'a)
+  2 : (R C), (R C)
+  ça a l'air sloppy et compliqué quand même... je devrais ptet trouver autre chose ?
+  pourquoi pas juste un truc récursif ? c'est quand même le plus expressif. 
+Ok donc dans l'ordre .
+  * Je trie les contraintes et je les mets dans un arbre. (constructeur + soit un type soit une sous réconciliation)
+  * J'infere/unifie etc...
+  * Je réconcilie récursivement (sans doute avec un cata)
+    - J'infère les contraintes d'égalité et de types pour chaque paire.
+    - J'unifie toutes les contraintes si je peux.
+    - Je vérifie que chaque candidat unifie avec le candidat final.
+    - J'applique l'unfication au résultat de chaque côté et je vérifie qu'ils sont pareils.
+    - si oui je renvoie le type et j'applique la substitution.
+
+Hmm si j'ai un template du truc le plus générique possible, bah essaye la.
+B -> I
+I -> B
+template forall a . a
+applique la substitution :=> I et B donc non.
+ok nice.
+I B -> I
+B I -> B
+template forall a b . a b
+applique la substitution : a et a donc OK
+en fait c'est la même chose que l'autre mais en mieux psk ça detecte quand ils sont pareils.
+ok nice donc on veut :
+le type de l'arbre : 
+type Reconcile = CatchAll | [(Int, Reconcile)]
+w8 et quand j'ai le même constructeur plusieurs fois je fais quoi déjà ?
+en gros j'ai pour l'instant 
+RI (Just a) -> ...
+je crée a et j'infère deriere et je dis : 
+reconcile (source -> 'b) [(R (Maybe a)) -> 'c]
+ce qui ne marche pas avec le truc courant ?
+psk en soit ptet que ça marche tout seul ?
+ah mais comment j'ai le constructeur initial ? ah ben oui izi en fait. c'est comme un pattern custom
+genre si j'ai
+RA (RI i) :: 'i   -> R (R 'i)
+et
+RA (RC k) :: Char -> R (R Char)
+et 
+RC x      :: Char -> R Char 
+en fait pas besoin de tout ça ! :D
+faut juste générer un constructeur un peu plus précis j'imagine.
+w8 par contre on veut ptet comparer les trucs a l'intérieur...
+la par ex on a le set de contraintes : 
+ah ?
+comment on modélise les contraintes déjà ?
+1, 2, 3 etc... ?
+ouais en vrai ça va le faire comme ça je pense.
+juste une substitution,
+ou non juste une liste de contraintes.
+en l'occurence ça donne :
+(R Int)
+(R b)
+a
+donc j'unifie tout ça :
+
+a = R Int
+b = Int
+et j'applique de tous les côtés.
+puis j'unifie avec le constructeur original et j'applique la substitution au retour. ensuite je devrais avoir le même retour partout.
+
+est ce que les contraintes d'égalité peuvent être modélisées sous forme d'une substitution ? non car il y a déjà des égalités qu'on veut enlever. en fait si. 
+on oublie les types candidats. on modélise les contraintes sous forme de
+
+donc pour l'inférence on a dit que : 
+pour chaque paire de variables ? pas forcément. ça va se transmettre tout seul.
+ouais mais non quand même faudrait trouver tous ceux identiques etc... pour l'instant on fait un truc bourrin ça ira. (pareil pour les match recursifs)
+si j'ai
+(R a) Int -> b
+(R a) Bool -> b
+Char Bool -> b
+qui devient
+(R Int) Int -> b
+(R c) Bool -> b
+(Char) Bool -> b
+
+pour chacun je parcours et je dis : 
+si j'ai une TVar dans le cons et pas dans le candidat : alors je génère le candidat ? si j'ai le même 
+cons c'est bon, sinon c'est un bug du compilo de toute façon. quoi que en vrai je pourrais memoriser les substitutions appliquées.
+anyway : 
+(R Int) a
+(R c) a
+a b
+ensuite j'unifie : 
+Int : c, a : a etc...
+(R Int) a
+c'est propre et ça marche bien.
+ok comment je génère les contraintes d'égalité par contre ?
+ah avec le ftv ptet ? toutes les variables libres peuvent être identiques. après faut voir si...
+en fait si je cache la substitution, de base j'ai des variables différentes.
+aaaaaah w8 en fait je veux juste la substitution
+si j'avais
+(f a) b c
+b x (g a b)
+
+et que j'ai g : y, b : x
+alors je garde : 
+('f 'a) 'x 'c
+'x 'x ('y 'a 'b)
+
+j'unifie : 
+'x : ('f 'a)
+'c : ('y 'a 'b)
+j'ai : 
+('f 'a) ('f 'a) ('y 'a 'b)
+
+wow chuis entrain de trouver un truc simple de ouf la.
+alors : 
+ah oui c'est ça : 
+quand je recois une substitution : si elle rend deux variables pareilles ou si elle spécifie une variable alors j'enregistre la variable ?
+
+genre si j'ai 
+a a b
+c d I
+
+et que j'ai la subst : 
+a : 'x, c : I
+je garde : 
+'x 'x b
+I d I
+et je retiens que : 
+c == I
+ensuite j'ai : 
+'x : 'v, b : 'v
+je garde : 
+'v 'v 'v
+I d I
+
+en fait c'est quand j'ai 2x le même résultat en retour : 
+ici quand j'ai eu.. en fait non psk il peut déjà exister.
+donc en gros je regarde quoi ? 
+je regarde quand ils deviennent pareils ou quand je crée un qui existe déjà.
+ou alors ballec et je compte : 
+mais w8 comment ça se passe pour les TApp. il me reste encore le stockage des positions je pense ?
+psk si 
+(R i) i je dois quand même dire que i est pareil que i.
+ou alors je le fais juste avant de reconcilier
+hmm...
+est ce qu'il n'y a pas moyen de le faire autrement ?
+alors une subst elle dit ce qui doit être égal et a quoi certains doivent être égaux.
+donc en gros on peut partir comme ça : 
+on inverse tout ce qui est TCon et ce qui ne l'est pas 
+ensuite on rend différent ce qui est égal ? nn la c'est trop galère...
+le truc c'est que je peux pas stocker la non égalité.
+limite je peux donner une tvar a tous. et quand j'ai un truc qui arrive et qui les rend égaux ?
+genre j'ai 
+a a b d d
+je mets
+e e e e e
+j'applique ma première truc ? a -> b  ou alors ptet que je peux comparer les deux trucs en mode avant après
+a a b d d
+b b b d d
+je prends les deux premiers je dis que c'est x
+x x b d d
+x x x d d
+ou alors plus bourrin je leur donne un groupe ?
+genre 
+x x b d d
+1 2 3 4 5
+puis je dis : 3 = 1 = 2 donc on merge
+1 1 1 4 5
+puis c'est bon.
+mais faut detecter quand deux trucs deviennent égaux.
+et pour ça je regarde avant de remplacer si dans les ftv j'ai la bonne variable ?
+genre la dans 
+ a a b d d j'ai a -> b je vois que j'avais des b donc je dis b == b
+ ok donc j'ai juste besoin de stocker les tvars qui doivent être égales.
+ensuite je parcours et je remplace par des fresh toutes celles qui sont pas dans cet ensemble.
+et j'ai généré : 
+R a' a' Int Int -> a' a'
+R Int (f a) Int b -> (f a) (f a)
+ça m'a donné comme candidat :
+R a' a' 'x 'y
+R 'w (f a) 'z b
+j'ai fait mes bails et je trouve 
+R a' a' 'x 'y
+R 'w (f a) 'z a {a}
+j'applique
+R a' b 'x 'y
+R 'w (f a) 'z a
+je trouve : 
+a' : 'w,b : (f a), 'x : 'z, 'y : a
+donc j'unifie séparément : 
+R 'w (f a) 'z a |><| R a a Int Int ==> a' : 'w, a : (f a), 'z : Int, a : Int
+R 'w (f a) 'z a |><| R Int (f a) Int b ==> 'w : Int, 'z : Int, a : b
+j'applique aux résultats : 
+et de toute façon si j'unifie c'est qu'ils peuvent être pareils non ? ah non
+
+on refait : 
+R a' a' Int Int -> a' a'
+R Int (f a) Int b -> (f a) (f a)
+on a en candidats : 
+R a a b' c' 
+R d' (f b) c' c
+je fais les bails et je trouve : 
+R a a b' c'
+R d' (f b) c' b {b}
+j'applique a tous excepté b.
+R 'a 'b 'c 'd
+R 'e ('f b) 'g b
+je trouve comme subst :
+'a : 'e, 'b : ('f b), 'c : 'g, 'd : b
+j'applique 
+R 'e ('f b) 'g b
+R 'e ('f b) 'g b
+ensuite y a 2 checks a faire : 
+on unifie a gauche : 
+'e ('f b) 'g b |><| R a' a' Int Int => 'e : a', a' : ('f b), 'g : Int, b : Int
+'e ('f b) 'g b |><| R Int (f a) Int b => 'e : Int, g : Int
+ça donne : 
+('f Int) ('f Int) Int Int
+Int ('f b) Int b
+mais j'unifie le retour avec le même truc que le candidat. mais il lui faut plusieurs possibilités ?
+
+ensuite j'unifie les types de retour, j'applique la substitution aux types d'entrée ? quoi que non ? ou si en fait ça fait que le réduire ?
+genre : si j'avais les positions 2 et 3 j'ai b : Int ? quoi que non c'est pas possible, ou si ? ptn je sais pas...
+on alors j'applique la subst a l'envers ?
+genre j'étais passé de : 
+nn mais la je devrais remplacer en fait, pas unifier :
+mais du coup le Int : 'g et Int : 'd ils font comment ? psk de l'autre côté c'est ptet l'inverse...
+je peux dire que {'g, 'd} {'g 'd} ? hmm non si ça se trouve faut juste faire la même chose a l'envers.
+en gros dans le retour je veux trouver ? ce qui change ? les égalités ça c'est sur déjà. et les égalités qui sont créées
+je veux quel retour ? le plus général ? celui qui dépend de ce qui est en entrée, enfin du coup c'est dur a faire...
+Alors la on peut déjà commencer par se demander si il est bien le 
+'e ('f b) 'g b 
+spk en soit : la le premier peut marcher avec tout b donc oui. aaaaaaaaaaaaah non en fait.
+parce que : en fait si il a dit qu'il acceptait tous les 'a donc il accepte tous les b. En fait on s'en fiche du reste tant que ça unifie correctement.
+ok ensuite : 
+si j'avais : 
+R a' a' Int Int -> a' a'
+R Int (f a) Int b -> (f a) (f a)
+je passe dedans et je trouve :
+a' : 'e, 'a : ('f b), 'g : b
+Int : 'e, f : 'f, a : b, Int : 'g, b : b
+j'applique aux retours : 
+'e 'e
+('f b) ('f b)
+ah zut. donc il faut utiliser la strat d'en haut ?
+
+
+
+je peux rebalancer le trikcs de tout remplacer. Ah oui mais c'est le truc a l'intérieur qui me dit : je veux un Int ici, tu peux pas m'envoyer nimp
+
+
+Ah la j'ai un problème :
+le problème c'est que je veux appliquer séparément aux résultats mais j'ai pas mon expression comme ça... donc soit je réconcilie direct ? mais non en fait trop dur...
+ah mais pourquoi j'aurais besoin d'appliquer au types a l'intérieur. c'est juste le type de retour dont j'ai besoin non ?
+et oui. et après je le 
+
+
+ok donc pour completer : 
+a a b Int Int
+je génère l'original, mon candidat (en remplacant tous les TCon par des nouvelles variables) ainsi qu'un ensemble vide
+a a b d d * {}
+a chaque transformation, a -> b, si a et b apparaissent, j'ajoute b a l'ensemble.
+b b b d d * {b}
+ensuite je génère ma généralization en remplacant tous ceux qui sont pas dans l'ensemble par des nouvells : 
+b b b 'a 'b
+ensuite j'unifie tous les autres  
+Int Int Int Bool Char
+ensuite j'unifie individuellement
+Int Int Int Bool Char |><| a a b Int Int ==> sub
+ensuite j'applique la substitution 
+ensuite je vérifie que tous les types de retour sont identiques.
+ensuite je renvoie la substitution finale de la reconciliation. (type entrée => type retour)
+
+
+alors la bonne nouvelle c'est qu'a priori je peux le faire pour tous en même temps.
+genre j'ai 
+a a b d d {d}
+c d d f f {f}
+e i h i h {i}
+je peux remplacer par : 
+a' b' c' d d
+d' e' f' f f
+h' i i' i j'
+en unifiant je trouve : 
+a' i c' i i
+et si j'avais un Int a la place de a' :
+Int i c' i i
+ou un Bool a la place de h : 
+a' Bool c' Bool Bool
+ok donc je peux le faire en paralèle sans trop de probs.
+je vérifie qu'ils unifient pour la compatibilité (faudra voir comment monomorphiser plus tard aussi)
+
+ensuite la je prends toutes les colonnes de retour et je regarde si il y a une colonne a gauche qui contient une substitution qui rendrait tout égal
+donc en gros si j'ai
+Int Bool
+je veux trouver une colonne avec Int Bool
+si j'ai
+f Int, [Int]
+je veux trouver f Int, [Int], pas plus compliqué que ça en fait. je veux l'exacte même identique truc.
+ah non c'est pas ça en fait...
+quoi que en fait si c'est juste que je les fait un par uns.
+le truc c'est que je veux trouver de quoi remplacer les tvars quand un truc est exact 
+genre si j'ai 
+f a b
+g c b
+f (g c) b
+
+et 
+R (f a)
+R (g c)
+R (f (g c))
+
+je veux 
+R a -> a b
+
+alors le noeud père ca doit être le même.
+les noeud de droite et de gauche doivent unifier.
+en fait je dois extraire les patterns communs.
+genre dans (wait je change l'exemple psk il marche pas)
+R (f a)
+R (g c)
+R (f (g c))
+
+donc j'ai des arbres et je veux trouver la structure minimale qui les couvre tous puis je
+la par exemple la structure minimale c'est : 
+R x
+aaah je peux générer une suite de substitutions ? ou juste de 
+
+si j'ai
+R (a b) c
+R (f a b) c
+R (g (h k) Int) (h y)
+R (h (k k)) (h y)
+
+la structure minimale c'est : 
+R (x y) z
+avec : 
+x       y     z
+a       b     c
+(f a)   b     c
+g (h k) Int   (h y)
+h       (k k) (h y)
+
+en retour j'ai (z y) y
+(b c) c
+(Int (h y)) (h y)
+((k k) (h y)) (h y)
+
+donc je parcours pareil en trouvant une substitution minimale ?
+(i j) k
+ensuite je génère pour i j k
+i       j       k
+b       c       c
+Int     (h y)   (h y)
+(k k)   (h y)   (h y)
+je parcours : 
+i => pas tous égaux => je trouve une colonne égale (y) => je dis i : y
+j => pas tous égaux => je trouve une colonne égale (z) => je dis j : z
+k => pas tous égaux => je trouve une colonne égale (z) => je dis k : z
+j'applique au retour et j'ai : 
+(y z) z
+
+j'ai donc : 
+R (x y) z -> (y z) z
+
+l'objectif c'est de prendre les entrées et les sorties et de créer deux arbres types. en utilisant un fold ça marche. (trust me)
+ensuite j'ai par exemple
+R (x y) z -> (y z) z
+je sépare en colonnes
+j'ai donc ([a], [[as]]) et [bs] sans efforts, ensuite j'aimerais quand même créer un skelette de base des deux côtés.
+genre j'aurais une fonction : qui prend une liste de types et qui renvoie : ? ([(replacementCols, [actuals])], replacement)
+
+bon on refait.
+j'ai le candidat final tf. je le prend lui ainsi que tous les args tas, je crée un sous arbre a partir de tout ça, ainsi qu'un arbre candidat tc
+j'ai tf, tas -> tass et tfs
+namely Type, [Type] -> [Type, [Type]]
+ensuite avec la liste de types de retours je crée le retour final tr et les types de retours trs
+j'ai rets -> tr, trs
+j'ai donc : tas, tc, tr, trs.
+je zip et je transforme : [as, c] [rs] -> for r in rs, match as.findId(r) of{Just id -> $ a[id]; Nothing -> Error}
+la question c'est l'autre la : le 
+**** ICI ****
+  genre faut que j'ai une struct qui me donne [(a, [bs])] ou a est le type général et bs sont les types de la colonne.
+  et puis je génère petit a petit
+  pour ca je génère [a] et pour chaque candidat [a, b, c, ...] et ensuite je les zippe pour avoir [[a0, a1], [b0, b2], ...]
+**** ICI ****
+
+donc pas trop dur au final non ?
+je regarde soit ils sont tous identiques, soit j'ai une colonne identique.
+si j'ai une colonne, je prend le type général de la colonne et je le garde dans le type de retour.
+si ils étaient égaux je prends le type du résultat.
+donc pour ça j'ai besoin du vrai type d'entrée et de retour.
+ce qui veut dire que pour chaque branche j'ai besoin de : 
+ - type du candidat
+ - type d'entrée
+ - type de sortie
+
+ensuite je génère un type général en unifiant les candidats
+je le compare avec chaque type d'entrée.
+ensuite je génère une structure [(a, [bs])] ou a est le type général et bs sont les types de la colonne.
+puis je génère le type de retour.
+
+
+hmm ça reste compliqué...
+surtout que j'ai oublié un truc.
+mais il faut un dernier cas je crois.
+faut prendre en compte quoi du coup ?
+ah est ce que j'ai la même partout et que j'ai une différente à un autre endroit.
+de la même façon que l'autre ?
+en fait hmmm. compliqué ptet.
+genre si j'ai un cas 
+
+donc le truc : 
+si j'ai plusieurs contraintes.
+aaaah ! faut juste rajouter tous les constructeurs ? mais du coup c'est le bordel faut toutes les combinaisons...
+ça devient un bordel monstre. mais je crois en toi tkss
+donc j'ai des combinaisons de types pour chaque constructeur ?
+et je regarde quels constructeurs manquent ?
+je veux ensuite un type qui marche pour ceux présents et pas pour ceux pas présents.
+mon exemple c'était 
+a a Int
+b b Bool
+c d e     (pas présent)
+les premiers étaient inférés en 
+a b c
+mais c'est possible d'exclure le deuxième en doublant les deux autres.
+il faut une unification a l'envers.
+unifier a b c'est troruver c tel que c > a && c > b, desunifier c'est trouver c tel quel c < a et c < b, en gros generaliser.
+bref quand j'essaye d'unifier (a b) avec (a a) puis (b b) je trouve l'unification suivante : 
+c : a | b
+d : a | b
+en appliquant et en comptant les contraintes je trouve : 
+a a {a}
+et 
+b b {b}
+je trouve que j'ai la même (comment ? de la même façon que pour le type de retour ? hmm non)
+je vois que j'ai une contrainte que j'ai pas dans l'original.
+en fait no npsk si j'ai : 
+a Int
+ouais mais quand même si il me demande ça c'est normal. donc je peux pas demander au type de me dire si j'ai tout complété ?
+ou alors je fais une analyse après monomorphisation. et la je saurai faire des trucs de base je pense. ouais la ca sera pas mal.
+ok donc ça on give up.
+on revient sur le type de retour.
+
+l'objectif c'est de trouver la structure minimale et de la representer en 
+
+reeee ! hello ! je pense qu'on finira avant d'avoir atteint les 3000 lignes non ?
+donc l'objectif c'est pas seulement de trouver une colonne qui remplit tout ?
+c'est aussi de trouver une colonne qui permet 
+
+ok donc pour l'instant je voulais le faire en une colonne
+le truc c'est qu'en utiliser une ça peut en niquer une autre. donc on essaye d'en utiliser le moins possible ?
+hmm non ça en nique pas une autre de toute façon, au pire sinon on fait du bfs ?
+on dit je prends les deux
+ok et comment on unifie ?
+si j'ai 
+a b    b
+c d    c
+je dis que c'est les mêmes, et du coup dans les deux cas j'ai le bon ?
+mais il faut qu'ils puissent être les mêmes par contre...
+ah oui c'est ça le critère, si ils peuvent unifier séparément, alors je dis que c'est les mêmes.
+G a b -> b
+G a a -> a
+et de toute façon ce qui rentrera sera toujours pareil.
+ok et comment je vérifie que ça match ?
+j'essaye de tous les unifier -> je trouve une subst : j'applique a gauche et a droite. je regarde si c'est pareil.
+ouais mais la c'est ultra fat...
+faudrait que j'ai une map de quel colonne unifie quel retour.
+après je regarde quelles combinaisons marchent ? ou juste je prends la première.
+prob : les ambiguités.
+1 2 3
+b b c      b
+f e f      f
+g i i      i
+je peux prendre 1&2 ou 2&3.
+dans un cas j'ai
+1 1 2 -> 1
+dans l'autre 
+1 2 2 -> 2
+hmm faut pousser cet exemple plus loin.
+pas besoin en fait...
+ou alors c'est une matrice :
+1 1 0
+0 1 0
+1 1 1
+et en multipliant par 0 1 0 je trouve 1 1 1
+alors que :
+1 1 0
+0 0 1
+1 1 1
+ok fuck on part sur une exponentielle ? quoi que j'avais un algo qui le faisait.
+quoi que est-ce que c'est pas bcp moins dans le cas amorti ?
+ouais je vais faire au moins cette optim ? ou après ptet.
+l'optim ça sera de prendre que ceux qui rajoutent un truc.
+pour l'instant, j'associe un tableau de bool avec chaque colonne. ensuite je lance un bfs sur toutes les combinaisons
+avec un state en plus pour le nombre de trucs. courant ?
+ou pas en fait j'ai juste une liste.
+j'ai 
+1 1 0
+0 0 1
+1 1 1
+je compte : 3
+je veux juste trouver la premiere solution possible au pire ? ouais pour l'instant ça suffit.
+donc je balance un bfs. je parcours toutes les trucs puis je zip.
+maintenant qu'on peut tout tester il reste plus qu'a ecrire une fonction qui check qu'une combinaison est valide.
+pour ça je peux ptet les transformer en lignes et tester dans ghci aussi
+
+
+si on a un qui prend 
+a a b b
+et un qui prend 
+x a a y
+ils se compensent de tt façon.
+par contre on peut juste pas avoir plus de 8 variables pareilles au pire ? genre on s'arrete a 
+ah j'avais ptet une autre façon d'attaquer.
+zut je l'ai plus, c'est pas un bail de dire, qu'est ce qui est redondant ou un truc comme ça ?
+ouais en soit déjà on peut tout remplacer par des 1 ou 0
+mais après ça nous aide pas du tout... ou alors je peux classer par ceux qui sont utiles ?
+genre 
+0 0 1
+1 0 1
+1 1 0
+
+ah oui c'est ça faut inverser.
+genre au lieu de tester tous les nombres binaires en mode (celui la + celui la etc...)
+je prends le résultat et je dis : 
+      x
+      y
+      z
+0 0 1 z
+1 0 1 z + x
+1 1 0 x + y
+ca fait si on met en binaire :
+4 
+5
+3
+je veux le minimum tel que tout est > 1
+je cherche le minimum de z + x + y tel que z >=1 et z + x >= 1 et x + y >= 1
+ah mais w8
+z >= 1
+z + x >= 1
+x + y >= 1
+
+je soustrais z en dessous. => rien
+0 0 1
+1 0 1
+1 1 0
+j'inverse :
+-1  1  0
+ 1 -1  1
+ 1  0  0
+j'ai
+
+Ax = sol, ou sol est ce qu'il est. et donc A^-1sol = x
+eg ici : 
+
+z >= 1
+x >= 0
+y >= (1 - x)
+(>=0) + y >= 1
+
+alors que si j'avais : 
+0 0 1
+1 0 1
+0 1 0
+
+-1 1 0
+ 0 0 1
+ 1 0 0
+
+en echangeant les 2 premieres lignes j'ai échangé les 2 premiers colones.: 
+1 -1 0
+0  0 1
+0  1 0
+
+en echangeant les 2 premieres colonnes j'ai échangé les 2 premieres lignes.
+on va s'en faire quelques unes après ?
+0 0 1
+1 0 1
+0 1 1
+
+-1 1 0
+-1 0 1
+ 1 0 0
+
+=> 
+
+1 0 1
+1 1 1 
+1 0 1
+
+pas d'inverse.
+
+=>
+
+1 0 1
+0 0 0
+1 1 0
+
+pas d'inverese. donc ok on est bons déjà.
+
+
+=>
+
+ok on s'interesse a ceux ou on gagne en 1 coup :
+0 0 1
+1 0 1
+0 1 1
+
+-1 1 0
+-1 0 1
+ 1 0 0
+
+ =>
+
+1 0 1
+1 0 1
+0 1 1
+
+ =>
+
+0 0 1
+0 1 1
+0 0 1
+
+revoir elim gaussienne et gérer cas ou on peut ajouter/enlever a droite.
+
+a = \case
+  (RF a b c) -> if a then b else c
+  (RS a b c) -> if b then a else c
+  (RT a b c) -> if c then a else b
+
+RF :: Int -> b -> c -> RF Int b c
+RF :: a -> Int -> b -> RF a Int b
+RF :: a -> b -> Int -> RF a b Int
+
+
+
+RF a b b -> b
+RS c d c -> c
+RT e e f -> e
+
+R a b b -> b
+ou
+R a a b -> a
+ou
+R a b a -> a
+
+les trois fonctionnent... en vrai nique du coup je dis juste je sais pas lequel choisir.
+ok ensuite comment on choisi le bon
+je pense que si j'en ai un en une seule étape je suis ok.
+comment je cherche les combinaisons qui marchent ?
+genre
+0 1 0 1
+1 1 0 0
+1 0 1 0
+je peux prendre le deuxieme
+ok alors en fait c'est izi il suffit de savoir si il y a un 1 sur chaque ligne pour savoir qu'il en existe un.
+ensuite je trouve toutes les lignes et j'enlève et je regarde si j'ai une ligne qui répond.
+hmm c'est chiant quand même non ? ou alors je peux compter le nombre pour chacun ?
+ici j'ai 2 2 2, en fait oui déjà si j'ai 2 sur une ligne ou j'ai un zero je peux pas deviner.
+est ce que c'est possible d'avoir qu'une seule possibilité ? oui en fait si y a une autre avec zero.
+
+ok en fait la question c'est de trouver le plus petit aussi.
+avec ça :
+0 1 1
+1 1 0
+1 0 1
+j'ai les trois possibilités.
+n'importe quelle autre combinaison m'en enlève un
+on va faire 2x2
+0 0
+0 0  nn
+
+0 0
+0 1  nn
+
+0 0
+1 0  nn
+
+0 0
+1 1  nn
+--
+
+0 1
+0 1  => en 1
+
+0 1
+1 0  => en 2
+
+0 1
+1 1  => en 1
+--
+1 0
+1 0  => en 1
+
+1 0
+1 1  => en 1
+--
+1 1  => plusieurs en 1
+1 1
+que en 2 et 3 et tous les 2 et 3
+parce que tu peux avoir que en 1 aussi...
+pour 3
+je rajoute 1 en haut ou bas. en haut je rend le truc possible pour certains mais difficile pour d'autres. en vrai c'est compliqué.
+je peux dire que de toute façon si j'ai besoin d'en unifier plusieurs je suis niqué non ?
+genre si j'ai
+0 1 0
+1 0 1
+1 0 0
+j'ai en deux fois psk j'ai pas trouvé direct.
+si je déplace en bas il se passe rien. si je déplace au milieu ça aide pas mais si je déplace en haut ça marche en un, est ce que je peux avoir en 3 ? oui si j'ai 3
+avec 2x3 mtn, en 2 ou 1, de toute facon ca sera jamais plus psk tu prends minimum 1 par colonne.
+0 1 0
+1 0 1
+
+0 0 1
+1 0 0, j'en prend un par colonne, je compte ensuite. si j'ai 2 et 2
+0 1 0 1
+1 0 1 0 si y a 4 avec 2 de profondeur. je peux pas en fait. si y a 2 avec 4 c'est pareil en fait.
+si y a 3 avec 4 je peux pas.
+si j'ai ça c'est comme si j'avais :
+0 0 1
+1 0 0
+0 1 0
+
+j'ai
+a -> c
+b -> a
+c -> b
+j'ai donc une solution ?
+0 0 1
+1 0 1
+0 1 0
+j'ai une sol en 2 ?
+a -> c
+b -> a
+b -> c
+c -> b
+a --> c
+^     ^
+|     |
+b <---
+ok et ensuite :
+0 1 ....
+a -> b
+
+b <--> a
+^
+|
+\/
+c
+ah y a pas de cycle ? nn
+renverse les graphs.
+
+ouais bon ben fuck go bfs.
+mtn la vraie question c'est :
+non c'est pas SAT du tout ! psk j'ai pas de negation
+est ce que je peux transformer ça en xor
+a & b => a xor !b | b xor !a
+att w8
+1 0 1
+0 1 0
+1 1 0
+c'est
+a | c & b & a | b
+j'ai
+a b c
+!a => false
+!b => false
+!c => true
+  ok.
+
+un autre plus dur :
+1 0 1
+1 1 0
+0 1 1
+
+a b c
+!c => true
+!b => true
+!a => true
+ !ca => false
+ !ba => false
+
+ !bc => false
+donc on a : c b a
+complexité ?
+
+un autre :
+1 0 0 1
+0 1 0 1
+1 1 0 0
+0 0 1 1
+
+a b c d
+!a => true
+!b => true
+!c => true
+!d => true
+je peux donc enlever (a, b, c, d)
+!ab => false
+!ac => true
+!ad => false
+je peux donc enlever (a, b, c, d, ac) et pas (ab, ad)
+!bc => true
+!bd => false
+je peux donc enlever (a, b, c, d, ac, bc) et pas (ab, ad, bd)
+!dc => false
+je peux donc enlever (a, b, c, d, ac, bc) et pas (ab, ad, bd, dc)
+nice. mtn un cas dégénéré.
+
+1 1 0 1
+1 1 1 1
+0 1 1 1
+1 1 1 1
+
+a b c d
+je peux enlever (a, b, c d)
+!ab => true
+!ac => true
+!ad => true
+!bc => true
+!cd => true
+
+en fait sans parler de ça, la strat c'est de partir des deux et de voir ce qui coupe le plus vite.
+a savoir du coup que :
+quand j'enlève un cas, je peux que ralentir le truc, psk ça va couper plus vite.
+donc le cas le plus long est un cas a n/2
+et a n/2 c'est compliqué d'avoir masse trucs...
+ouais mais j'aimerais avoir mieux quand même
+
+ici j'ai pas une multiplication c'est ça le prob non ?
+att w8 c'était quoi le problème du truc déjà ?
+a xor b c'est comme a + b % 2
+ouais pour l'instant on part de zero et on teste tout. et après on partira des deux côtés etc...
+pour l'implementation mtn ?
+
+att et : le truc c'est ça aussi, la longueur. est ce que c'est possible d'avoir un 3 avec ça ?
+1 0 1 1 0 1
+0 1 0 0 1 1
+0 0 1 0 0 0
+1 1 0 1 0 0
+breeeeef !
+je les décris comme des Binary
+
+ensuite j'ai une Map Int Binary
+quand j'ai une liste, je la filtre en faisant un & binaire de tout. izi
+je dois aussi splitAt avec mes trucs et demander l'indice jusqu'au truc de pascal samer.
+et c'est tout non ?
+ah oui faut aussi renvoyer la liste des variables associées, donc créer une map Int Type.
+
+ok maintenant les contraintes existentielles.
+le problème ici c'est que j'ai une tvar qui sort de nul part.
+et quand j'essaye de généralizer elle apparait nul part évidement.
+donc, je peux l'unifier avec nimporte quoi en theorie, pourquoi il y arrive pas la ?
+ah oui c'est ça c'est qu'il faut dire qu'une variable comme ça c'est un 1 tout le temps.
+mais comment je fais pour savoir qu'elle est existentielle ?
+les autres elles sont associées a une variable. mais att faut pas fail non plus.
+genre si j'ai Nothing :: Maybe a b et Nothing :: Maybe a a c'est pas la même chose.
+en quoi c'est pas la même. ah oui c'est que dans un cas je dis quand même que voila bref donc faut faire gaffe 
+faudrait que dès que hmm. elle peut venir de n'importe ou après...
+chaud le problème ici c'est que je peux pas dire (ou ptet si en fait)
+lets try : 
+quand j'ai let a = Nothing in (a, a)
+j'infère Maybe a, Maybe a => psk j'ai inféré qu'une fois.
+avant je disais, faut que ça soit les mêmes. mais sauf que la je veux pas les unfier en mode yolo.
+je veux les unifier seulement si ?
+en vrai on teste : 
+ptet qu'il faut appliquer la substitution avant de passer a la prochaine colonne.
+comme ça : 
+Nothing :: Maybe a a
+i j -> a a
+b a -> b a
+alors mon algo candidat c'est :
+quand je génère cette variable, si elle apparait pas dans le truc, je l'enregistre comme existentielle.
+ensuite quand je génère le truc je regarde si toutes les variables sont egales ou je mets des 1 sinon.
+ensuite je dis que je l'ai utilisée ?
+mais si j'avais Maybe a a 
+je sors une contrainte existentielle 
+je sais que 'i 
+si j'ai une contrainte existentielle sur une tvar
+en fait c'est pas un exists. c'est un forall.
+donc pour l'instant je dis que je l'accepte ? nn ça me suffit pas.
+
+ok donc c'est le meme bail.
+en gros quand une variable est pas utilisée faudrait le detecter et lui dire qu'elle peut être refinée autant qu'on veut.
+le problème c'est comment on fait ça ?
+si elle n'apparait pas dans le type de retour ? nn ?
+est ce qu'elle peut apparaitre autre part ?
+si je la refine sur autre chose, oui la ça marche
+ou si je dis qu'elle est égale/différente aussi.
+ok donc comment on sait qu'elle est free ?
+si j'avais 
+(a, b) -> if a == b then 1 else 0
+j'ai unifié a et b
+j'arrive sur l'autre et je vois que a peut unifier avec n'importe quoi donc je l'accepte et c'est niqué.
+aussi pour mettre de côté, si je peux valider plusieurs fois en l'unifiant mais qu'après j'ai un fail ça devrait pas être le cas 
+ou alors, dès qu'elle est dans une contrainte je dis qu'elle vire des variables libres.
+et après je l'enlève des variables.
+bon dans l'ordre.
+je rajoute toutes les variables créées dans un Set.
+quand j'arrive dans unionMachin je sors toutes les variables et je les enlève du Set.
+dans allEq je dis oui si y en a une comme ça.
+dans la génération du BitVec je fais pareil.
+quand je renvoie le allReplace, j'enlève toutes les variables potetielles comme ça.
+alors j'ai un autre problème c'est qu'il est pas dedans en fait.
+psk c'est déjà un autre truc...
+c'est le 's
+
+pour l'instant j'unifie car : 
+j'ai : 
+a -> b -> Maybe a
+je dis unify 
+
+la en gros mon problème c'est que j'ai
+l i
+e c
+je trouve un candidat 
+l i
+ah wait c'est le allEq qui fait chier.
+psk ici je veux pas ce allEq la.
+en fait il me faut un allEq que si c'est pas des tvars ?
+hmm reflechissons.
+si j'ai :
+Int -> Int
+je veux pas avoit a -> Int
+non la c'était pire psk : 
+je pouvais lui passer n'importe quoi.
+ah w8 c'est pas ça le prob.
+c'est que si je peux pas prédire
+ah non c'est que je veux pas prédire avec une contrainte comme ça.
+genre prédire avec des tvars c'est pas ouf. je veux pas prédire un forall a . a
+ou est ce que je peux vouloir.
+forget :: 
+  Just a -> Nothing
+  Just b -> Nothing
+mais la c'est qu'il y a aucun lien avec l'interieur.
+si j'avais
+
+nn j'ai un autre prob.
+quand j'ai 
+Nothing -> Nothing
+Just a -> Just a
+ici je veux un Maybe a mais ça devrait aller ?
+quoi que non je veux que 
+ah w8 j'ai ptet un décalage. vérifie ! 
+ok donc on revient : 
+si j'ai un Nothing a la fin je veux pouvoir l'unifier si j'ai pas eu d'autres choix.
+ah non c'est toujours pas bon. la je veux pas un forall a. a
+je veux dire je remplace le retour par ce que je veux ici.
+
+let id f v = case v of
+  (Just i) -> Just i,
+  (Just i) -> Nothing;
+
+je veux pas qu'ils soient égaux. je veux qu'ils soient prédictibles.
+c'est ça je crois en fait.
+ok et ça fera chier pour le cas ou c'est le retour qui est en Nothing je pense.
+
+ici c'est bien que j'ai un j m -> m
+l'objectif c'est de savoir si m est utilisé ? psk la c'est chaud.
+hmm je pense qu'on peut malgré tout. en remontant les cycles de dépendences.
+en fait y a ptet une histoire de w8
+trouve un cas ou ça marche pas d'accepter nimp.
+quand y a vraiment une variable de type 'm/truc de 'm
+ici c'est pas le cas non ?
+comment je fais la diff entre 
+Just a -> ...
+et 
+Just a -> ..a..
+et surtout 
+Prod m 
+Just m
+quand je crée mon Nothing.
+le problème il vient du fait que quand j'ai 
+Just a b -> a + b
+je peux pas unifier nimporte whaat j'y arrive pas ptn.
+reveille toi cerveau ! 
+si je dis que j'unifie toutes les tvars.
+j'ai 
+a b c -> b
+a b c -> b
+a b c -> b
+qui marche parfaitement et qui dit vous êtes tous des 'a.
+ce qui est ultra relou psk le bon type c'est pas celui la.
+hmmmmmmmmmmmmmmmmmm
+même la en plus a je l'utilise pas O.o
+hmm, en fait a on va le mettre qu'a droite pour l'instant.
+donc a droite j'ai un 'm qui n'est jamais utilisé. et dont le type ne changerait rien au reste surtout.
+et a droite pourquoi je peux pas dire ça ?
+ah oui le truc c'est que si 'm n'apparait pas a droite, je peux pas le deviner.
+ouais sauf si c'est un forall a . a
+mais comment je le reconnais.
+psk si j'accepte n'imp c'est pareil qu'en haut, je dis, ouais ben le type de retour c'est celui de a.
+en fait faudrait que l'un n'apparaisse pas dans l'autre.
+genre si j'ai 
+a b c -> m, et que b n'apparait nulle part dans le truc ça devrait être bon non ?
+quoi que même pas psk si il vient d'une fonction qui dépend de a.
+meh.
+genre 
+a b c -> f b (f :: b -> m)
+d e f -> d
+ça vaut m mais je peux pas l'unifier en disant je renvoie tjrs le premier.
+alors que 
+a b c -> f (f :: forall m . m) 
+d e f -> d
+c'est bon je peux prendre le premier.
+en fait c'est psk le m apparait pas en position negative après un forall ?
+en vrai quand j'avais f:: a -> b -> a, j'avais un b -> a pourtant le a était libre.
+psk il vient pas d'une variable locale.
+mais si m apparait pas dans le type final ?
+
+quoi que je peux créer const/f autrement.
+le f peut etre issu de const. comment je fais la du coup ?
+let f = const(:: a -> b -> a) m
+a b c -> f b (f :: b -> m)
+d e f -> d
+hmm mais en fait même si j'utilise m. ici il dépend pas de b.
+le truc c'est que est-ce que je peux vraiment avoir un b -> m qui est pas un forall m ?
+ah oui si m apparait dans le type final de retour.
+psk sinon j'ai forcément un forall m. psk ici au moment ou je l'utilise j'ai déjà reconcilié l'autre.
+et comment je sais si il apparait dans le type de retour ? AH !
+si il apparait autre part que dans cette reconciliation ?
+genre le cas ou j'ai f :: b -> m qui vient de l'exterieur on l'a géré.
+le cas ou il vient de l'intérieur par contre ?
+je peux créer une forall m . b -> m depuis l'intérieur de la fonction mais je peux pas appeler la fonction sans spécialiser.
+ok le nerf de la guerre la c'est bien la spécialisation.
+quand j'ai f :: b -> m qui vient de l'exterieur ça veut dire que l'user peut m'apporter une fonction qui fonctionne pas pour tous les m.
+comment écrire ça plus simplement.
+
+const m :: (forall b . b -> m)
+f :: (b -> m)
+c'est surtout ça en fait.
+le type en entrée de la fonction c'est pas 
+f :: forall b m . b -> m
+c'est étant donné un b et un m => b -> m
+ok donc la différence réside la.
+psk pareil si j'ai 
+c -> m
+et que je crée un b -> c, je peux créer des m. mais spécifiques.
+par contre si j'ai un :
+forall b . b -> c; c -> m, je peux créer un forall b . b -> m, ce qui est pas gênant.
+a l'envers :
+b -> c; forall c . c -> m, je crée rien psk c'est pas le même c.
+aaaaah w8 en fait déjà 
+nn en fait dommage.
+ici ça donne quoi ? forall c . c -> m, ça veut dire que je crée un m a partir de n'importe quoi.
+hmm, j'ai pas besoin de ça quand même.
+on revient.
+j'ai une fonction forall c . c -> m que je spécialize a b. du coup c'est plus un forall m.
+bon ok je peux pas avoir du rank > 2 oublie pas (enfin je crois)
+la l'objectif c'est de savoir si m est spécialisé quelque part.
+en sachant que je peux le spécialiser qu'une fois non ? en fait non.
+je peux utiliser 2x la même fonction.
+ok on revient.
+dans un cas, le m est spécifié par l'appelant, d'une façon ou d'une autre (typeclass ? ouch.)
+dans un autre cas il est spécifié nulle part.
+en fait de toute façon un forall b . b -> a qui vient pas d'une typeclass ça peut pas utiliser b
+par opposition a un forall b . b -> a
+ouais alors ghc a l'air d'accepter. mais moi je pense pas.
+ok donc confirmation que ghc n'accepte pas ça.
+doooooonc est ce que tu vas vraiment partir sur la strat de dire je regarde si y a un forall d'une variable a l'interieur ?
+nn y a sans doute un autre moyen.
+je sais que si la fonction est créée la c'est que ?
+ok go, on se concentre.
+j'ai un forall b . b -> m ? Non
+j'ai une fonction x -> y -> x
+j'ai eu une unification a un moment pour avoir x : m et y : b
+donc j'ai 
+b -> m. et impossible de savoir d'ou ils viennent.
+ok donc nul.
+d'un autre côté si j'ai pas spécifié m dans le type final c'est que j'en ai pas besoin non ?
+ça c'est risqué mais on peut le tenter ptet.
+de toute façon je vois pas comment je peux construire (ah preuve pas exfalsoquodlibet) un b -> m qui marche pas pour tout m
+ah déjà l'écrire c'est chaud.
+je serai niqué si on pouvait écrire une fonction.
+de b vers m
+sans infos sur m (donc forall m)
+qui est pas forall m.
+ok on peut pas c'est évident.
+maintenant la question c'est comment je sais si m va apparaitre dans le type final ?
+en fait je le sais ptet déjà a ce moment la non ?
+
+ici j'ai
+j o
+j m
+si il apparaissait j'aurais ?
+j o
+j m
+quand même 
+mais j'ai quand même un type final quelque part.
+si j'essaye de le récupérer ça dit quoi ?
+donc la j'ai bel et bien pas le M
+att w8.
+si j'ai pas le m à ce moment la 
+comment je peux avoir le f qui crée le bon truc ?
+
+alors si il n'apparait pas dans le type d'en haut, et une seule fois dans les colonnes
+c'est qu'il n'apparaitra pas dans le type final.
+est ce qu'on peut contredire ça ?
+ =====> oui si il apparait dans les autres reconciliations.
+ok donc ptet que pour chaque type, je compte combien de fois il apparait au total. et si c'est 1, je dis qu'on peut en 
+faire ce qu'on veut. 
+mais si il apparait dans les autres reconciliations ? on verra après.
+quoi. que.
+si il apparait dans une autre reconciliation, c'est soit sous la forme d'un arg, soit dans w8.
+il peut pas apparaitre dans une autre non ?
+ah si en fait.
+si j'ai un 'm dans un case précédent.
+mais si c'était un 'm forall aussi ? ouais mais dans ce cas la il apparait qu'une seule fois quand même.
+en fait c'est surtout compter combien de fois il apparait non ?
+quoi que non en fait psk il peut être copié a deux endroits.
+genre \x -> (x, x) (Nothing) ici j'ai bien le même 'm.
+hmm
+est-ce que ça peut apparaitre ?
+oui même sans parler d'un autre reconcilie. mais il apparait pas dans les types d'entrée.
+ah oui mais si il apparait dans un reconcilie d'un autre type qui peut unifier ?
+genre \x -> case x of blabla
+genre la j'ai 
+a b -> m
+
+========= Preuve que pas regarder dans les autres reconcilie ======
+et m apparait autre part. genre dans un précédent truc ? ouais mais c'est qu'il apparait dans le constructeur.
+quodlibet ?
+si j'ai m qui apparait autre part c'est qu'il y a eu une unification. le seul moyen c'est quand j'applique une fonction.
+et pour ca faut qu'il y ait une variable partagée qui utilise un m. et pour que ça soit un m qui vient pas du constructeur
+faut que ça soit un forall.
+yep c'est bien ça.
+donc si j'ai un m qui apparait autre part, soit c'est un forall, soit il apparait dans le constructeur.
+donc j'ai pas besoin de regarder les autres reconcilie.
+====================================================================
+
+ok donc dans l'ordre.
+je regarde si 'm apparait dans un constructeur ou dans le type de retour final (si c'est pas le cas c'est qu'il est forall.)
+si oui, je peux pas le mettre dedans. sinon je peux le refiner.
+ça c'est pour le retour. pour l'entrée comment on fait ? plus tard ?
+ahah tu peux jamais t'arreter.
+si je l'ai en entrée a un seul endroit c'est pareil non ? si elle est a un autre endroit dans la même ligne ça marche ?
+oui c'est pareil. en fait c'est si elle apparait dans une autre ligne ou dans le type final.
+psk c'est pas possible si elle est dans ces deux cas, et dans le cas contraire c'est forcément ça.
+en vrai coup de chance tu t'en sors bien.
+mais va expliquer ça après mdrrr.
+en vrai faudra repasser dans tous les points expliqués et les documenter bien. rien que pour toi.
+
+donc je veux regarder pour chaque tvar dans le constructeur ou les types de retour.
+ - si elle apparait dans le type de retour.
+ - si elle apparait dans un autre argument (entrée ou sortie.)
+
+unify : 'c -> Maybe 'd should unify with : 'd -> Maybe 'd
+ 'a should unify with : 'c -> 'f
+ 'e -> Maybe 'e should unify with : 'f -> 'g
+ 'i -> Maybe 'j should unify with : 'j -> Maybe 'j
+ 'k -> 'l -> 'k should unify with : Maybe 'm -> 'n
+ 'a should unify with : 'i -> 'o
+ 'n should unify with : 'o -> 'p
+
+alors comment c'est sensé marcher déjà ?
+si je l'unifie avec un autre type c'est bon.
+c'est quoi le bail déjà ? la je peux pas savoir ce qui a été spécialisé...
+comment je vois les tvars spécialisées ?
+j'ai l'impression que c'est le même bail.
+ici je perd de la généralité un peu ?
+ah oui
+faut prouver que le fait d'unifier k |><| r en r casse le principe d'exaustivité.
+en gros quand j'ai
+a b qui devient a Int
+je l'unifie en ayant forcément un Int de chaque côté.
+quand j'ai 
+a b qui unifie en a c
+je l'unifie en ayant forcément un c de chaque côté. et je remplace des c partout.
+psk forcément si j'ai c qui vient du type de début
+ah oui mais w8 comment ça se passe du coup ?
+oui dans les autres branches je devrai marcher avec un c de toute façon.
+le truc c'est est-ce que je dois renvoyer le replace final ? je pense que oui en fait...
+
+ah wait
+
+si j'ai unifié avec k a de toute façon c'est que oui bref.
+je me souviens même plus de l'algo de base.
+
+la j'ai encore un tout nouveau problème.
+si j'ai un truc qui apparait que dans le a demain gros !
+j'ai un truc dans l'entrée. je peux le refiner non ?
+pourquoi je pouvais pas tout a l'heure.
+psk si en fait si ça se trouve je pouvais.
+
+maintenant j'ai un problème psk j'unifie les types a gauche.
+
+quand j'ai unifié
+w8 dabord les types.
+
+bon faut se rendre a l'evidence l'algo est cassé de partout.
+on va réparer dans l'ordre jusqu'a desesperer.
+
+bon la question c'est quand et ce que je veux pouvoir unifier ces trucs
+
+genre si j'ai
+a -> f
+a -> Maybe j
+a -> f
+ici je veux que ça marche non ?
+ah ptet que comme l'autre je veux tester d'abord sans puis après avec ?
+
+en gros quand j'ai
+a b -> b
+a b -> b
+a b -> b
+le b avec le a c'est pas possible.
+par contre le f avec le Maybe ça le serait.
+en fait le problème c'était pas est ce que ça change le type de retour psk je veux pouvoir le changer j'imagine.
+le problème c'est quoi ?
+soit j'unifie trop vite ?
+ici 
+a b -> a
+a b -> b
+a b -> a
+j'ai deux solutions : 
+a a -> a
+a a -> a
+en fait l'unification entre deux elle se fait déjà toute seule normalement.
+c'est ptet juste ça qui marchait pas ?
+ok et la j'ai : 
+f -> b
+i -> i
+je peux les reconcilier en niquant tout le reste.
+en fait c'est ça c'est que je veux tester toutes les 
+substitutions possibles ? non même pas.
+bon je veux avoir le comportement suivant quand j'ai pas de gadts. 
+j'unifie a gauche et a droite.
+quand j'ai pas de gadts. toutes les variables des candidats sont settées
+sauf celles qui sont utilisées nul part ou qui ont pas eu de chance.
+en vrai c'est quoi la diff vraiment.
+
+dans un cas j'unifie, dans l'autre pas déjà.
+la j'aurais tendence à dire j'unifie avec f et d en mode normal.
+pk je voulais pas déjà ? 
+psk si j'ai pas la même structure ?
+ou si j'ai 
+Int a -> b
+a b -> b
+et que le premier était demandé comme Int.
+je veux comme type : a -> a
+et que ça marche pour 
+Int
+a
+Char
+
+ok premiere différence.
+mais celle la elle est résolue non ?
+ensuite c'est quoi le problème ?
+si j'ai
+f -> m
+j -> j
+ok la question maintenant, dans le type de retour, quand est-ce que je veux les unifier.
+oooh wait, dans l'autre sens j'aurais le cancer ! 
+
+aaah attends 
+si j'ai 
+a b -> b
+a c -> a
+a c -> b
+je fais quoi ?
+j'unifie b et a et je renvoie le premier.
+
+bon on l'explique bien pour le relire correctement :
+
+j'ai le type d'entrée général TEG.
+j'ai le type d'entrée de la branche i : TEI
+j'ai le type de sortie de la branche i : TSI
+et j'ai le type de sortie général : TSG
+niveau substitution j'ai : 
+la substitution donnée par le constructeur : h
+la substitution donnée par la branche : f
+la transformation donnée par la branche : u
+la transformation générale : g
+j'ai aussi du coup le type avant f, type d'entrée avant unification. 
+On va dire type du constructeur d'entrée : TEC
+
+ok on a donc : 
+TEG -g-> TSG
+TEG -h-> TEC -f-> TEI -u-> TSI
+on veut que 
+appliquer g a TEC donne TSI
+donc en gros on veut avoir les diagrames : 
+TEG -g-> TSG
+TEC -g-> TSI
+u . f = g en gros (non : lire dessous)
+/!\ le problème (yes) c'est que /!\
+f s'applique sur un sous type de TEG, après qu'il y ait eu h
+du coup u . f s'applique a un sous type de g
+donc c'est pas 
+u . f < g 
+mais 
+u $ f $ TEC < g TEC
+ok et du coup pourquoi la subst inverse ?
+la en l'occurence comment je trouve g ?
+je peux pas unifier u . f entre eux.
+ ==> si y avait qu'une seule branche je pourrais juste unifier u et f et dire que oui ça marche
+ mais la u et f de différentes branches vont pas être compatibles psk ils travaillent pas sur les même types.
+ ok j'ai envie de bien l'écrire.
+donc u et f ils vont de TEC différents vers un TSI différent.
+on veut une fonction i telle que : 
+si u $ f $ TEC =  
+ok stoup
+la base du truc c'est que j'avais spécialisé un truc avec h pour pouvoir l'utiliser.
+et je veux m'assurer que l'unification est bonne.
+en fait je veux qu'en utilisant h sur TSG on trouve TSI non ?
+alors on trouve plus ou moins ?
+si j'ai 
+a -> Maybe a et que h : a -> Int alors c'est bon.
+mais si j'ai a -> Maybe Int et h : a -> Int
+déjà h c'est toujours une spécialisation.
+ok l'objectif de base c'est compiler et trouver le type le plus spécifique 
+nan le plus spécifique c'était parce que il avait une autre propriété.
+je veux un type tel que tout ce qui rentre est ok : 
+je crée des animaux -> je crée un cheval OK
+je crée des chevaux -> je crée un animal NN
+
+je nouris des chevaux -> machine a nourir des animaux OK
+je nouris des animaux -> machine a nourir des chevaux NN
+
+Int -> Cheval peut remplacer Int -> Animal
+Cheval -> Int peut être remplacée par Animal -> Int
+
+ok dans mon cas on est qui.
+TSI remplace TSG.
+et TEI remplace TEG ? oui mais celui la il est garanti je crois non ?
+ah c'est plutôt TEG remplace TSG
+genre si j'ai  '-> [a]' et la branche est '-> [Int]' on est bons ?
+non on est pas bons. et l'inverse non plus.
+ok pour le retour déjà y a un truc qui va pas.
+en vrai normal on veut pas de a qui soit seul non ?
+si j'ai un case avec 
+ -> [0, 2]
+ -> absurd
+ouais deja y a le absurd psk sinon je peux pas sortir un a de mon chapeau
+mais je peux avoir a qui sort d'autre part.
+en tout cas si j'ai un Int qui vient pas du constructeur ça int de partout.
+on peut continuer avec cet ex: 
+|||||||||||||||||||||||||||||||||||WHOU|||||||||||||||||||||||||||||||||||
+TSG = [a]
+TSI = [Int]
+on sait qu'il y a au moins a -> Int dans h
+car on veut g $ h $ TEG = TSI
+
+h apporte la preuve de certaines spécialisations
+si le code est valide pour TSG et que h $ TSG = TSI alors le code est valide pour TSI
+les preuves apportées par h ne peuvent pas invalider les code 
+par invalider on veut dire quoi ? tous les types ont été remplacés donc np non ?
+ptet pour les typeclasses y aura des blèmes ? mais même pas sur ça va se résoudre aussi (plus tard)
+
+Ok mtn je veux trouver quoi ? TSG ou g ?
+en fait pareil vu qu'il y en a qu'un.
+j'ai mon schèma
+
+une unification c'est toujours une spécialisation.
+je veux h' qui me donne tous les TCI (candidats branche i) tels que : 
+h $ TCI = TEI
+ok pour la spécialisation on dit quoi ?
+si j'ai 
+Int a
+et 
+Int Bool
+bah en vrai entre eux ils fonctionnent j'imagine ?
+ah non psk h dit a -> Int. hmmmm
+donc j'applique a et je vérifie que h est toujours bon ? 
+nn psk si Int Bool est valide alors ils est donné par h' et sera bon autre part.
+ok mais du coup h' est fat ?
+psk tous les sous types de a c'est fat.
+ok donc on revoit h'
+si j'ai h : a -> Int
+et TSI = Int Int b
+j'ai a a b, Int a b, a Int b et Int Int b
+je peux unifier avec Bool Bool Bool mais h va pas passer.
+ouais au pire je fais ça et dans la majorité des cas ça marche rapidement psk ça vire masse candidats a chaque fois.
+du coup comment je définis h' ? 
+h' donne pas tous les types qui donnent h en retour.
+tiens pourquoi j'ai besoin du Int au final ?
+si il reste Int a b et Int Int b je choisis quoi ?
+je sens que je comprends plus rien. ça s'en va T.T
+si j'ai CII et CIA j'ai un Int qui vient du constructeur et un qui vient de la fonction.
+du coup comment je fais pour assurer ça ?
+mais osef du Int en fait le prooblème c'est les tvars que j'output avec h, elles doivent être protégées ou Int.
+anyway osef de ça psk elles peuvent se répandre etc et ça devient le bordel.
+
+<========================== fonction pour recup les types possibles ==========================>
+donc je donne pour chaque variable les valeurs qu'elle peut prendre.
+ensuite pour chaque couple de branche je fais le produit et j'unifie (toutes celles qui fonctionnent)
+Ensuite je filtre celles qui unifient avec leur branche.
+et ainsi de suite.
+ensuite je filtre les valeurs pour lesquelles le case serait incomplet 
+ => pour toutes les branches non utilisées, le type est incompatible.
+et la j'ai sorti tous les types 
+</========================== fonction pour recup les types possibles ==========================>
+
+ensuite je poursuis tout jusqu'en haut de la fonction, je dégage toutes les versions (en les ajoutant aux erreurs si y faut)
+ensuite je vérifie si
+ - signature compatible => on la prend
+ - pas de sig mais qu'une possibilité => on la prend
+ - pas de possibilités => erreur
+ - pas de sig compatible => erreur
+
+et ça devrait être bon
+
+Ok maintenant comment je fais quand j'en ai plusieurs.
+est ce que je peux dire que vu que j'ai sortie toutes les valeurs telles que le code est valide, alors je peux juste les fusionner ? oui je pense.
+Ok ensuite est-ce que je sors les possibilités au top-level ? oui c'est bcp plus simple.
+Don ça devrait suffire pour l'instant.
+
+donc si j'ai un sous pattern, pour passer dedans c'est qu'il est forcément valide 
+OK donc 3 types : 
+Le type de retour -> structure commune maximale.
+Le type candidat -> avant h.
+Le pattern -> après h.
+je fais un arbre a tvars avec mon candidat : 
+il faut que l'arbre soit la structure minimale et qu'il ait une option pour couper a chaque fois.
+au passage il faut unifier les types ? jsp jsp
+
+on exp h : 
+
+J'ai un h qui part du type général et me dit : 
+si je passe dans ce constructeur, alors j'ai construit le type suivant : 
+
+cas plus compliqué du sous type :
+si j'ai 
+CA :: a -> C a
+CM :: Maybe a -> C (Maybe a)
+quand j'ai 
+CA (True), je sais que je peux rentrer dans cette branche uniquement si j'ai C Bool
+peut être que dans le cas ou je monomorphise pas.
+genre par ex si j'ai une fonction qui prend Show a => a -> b et qui appelle juste show a
+nan je vois pas de probs. mais est-ce que je peux avoir le même bail ?
+oui a priori, mais c'est dégueu psk du coup j'ai masse types dispo.
+bon on se dit qu'on interdit ça mais sans trop savoir.
+OK donc j'ai trouvé,
+si j'écris : 
+case a of
+  True -> 1
+  1 -> 1
+  "" -> 1
+
+et que j'infère a -> Int, je dis que ça marche pour tous les a et je peux l'appeler sans probs sur des trucs qui vont rien renvoyer
+en fait c'est qu'elle est pas totale !
+CA :: a -> C a
+CI :: Int -> C Int
+si j'ai le pattern CI i, alors je sais que le type de cette branche est forcément CI Int
+si j'ai au contraire CA i, alors i n'est pas forcément un Int.
+
+mais je pourrais compiler cette branche uniquement dans le cas ou c'est un Int.
+sauf que si je monomorphise pas, j'ai aucun moyen de savoir si c'est un int ou autre chose vu que l'info n'est pas
+Aussi si j'ai créé CA True quelque part, il est forcément de type Int, donc je peux l'envoyer dans cette fonction
+mais il whaaat ?!!?!
+
+je peux pas créer un C Bool comme je pourrais créer un Bool
+si j'avais 
+case e of
+  1 -> 1
+  True -> 1
+je peux créer n'imp, genre un "" et le mettre dedans.
+
+Mais si j'ai
+case e of
+  CA i -> Int
+  CA True -> Int
+c'est pareil
+parce que je peux créer un CA "" et le lancer dedans.
+
+alors qu'un
+CI int
+CB Bool
+tout ce que je crée je le remplis. (a condition d'avoir le CA à côté)
+j'autorise CI Int parce que je peux juste regarder le constructeur et dire oui c'est un Int ?
+je peux pas créer CA Bool et CA String psk j'aurais CA a, et je peux mettre autre chose dedans.
+alors que CI Int je sors CA a et si c'est a différent de Int c'est que je l'ai créé via un autre constructeur.
+et cet autre constructeur sera géré par une autre branche.
+Donc on réécrit :
+
+OK pour les sous patterns.
+y a une notion de structure qui se rajoute.
+genre si mon constructeur prévoyait pas de structure et que j'en ai une je suis obligé de la forcer dans le type.
+OK et le trick que j'avais fait c'était supprimer les type imposés par le constructeur pour garder les autres.
+mais ça marche ptet même pas pour les sous types.
+psk CA (True) je suis sur qu'il le comptait en vrai.
+bref on a dit que la structure ajoutée c'est un truc ajouté, évidement.
+mais normal non ? bon on verra après.
+en fait non on voit pas après.
+si je prévoyais pas de structure et que j'en ai une j'en ai pas en fait, enfin si mais via le type que j'ai mis.
+ah oui mais avec un sous pattern c'est ça.
+mais normal jusqu'ici.
+====> je garde que ce qui apparait dans le tout premier pattern.
+ok ensuite c'est quoi le problème
+Par contre si il était prévu, on a plusieurs cas
+nn mais sinon le plus simple c'est parcourir le pattern et montrer ce qui est forcé à chaque fois.
+
+à partir de 
+
+CA (CI Int) -> C (C a) 
+CA (CA Int) -> C (C Int)
+CC (CI Int) -> C a    
+CC (CA Int) -> C (k Int)
+CR (CI Int) -> C (C a)
+CR (CA Int) -> C (C Int)
+
+je dois forcer la structure si elle était pas prévue, et je dois le faire récursivement sur les sous patterns.
+comment je représente ça ?
+si j'avais pas prévu de structure et que j'ai une structure je relance l'algo pour la sous branche
+y a 2 cas, un ou j'ai le pattern, l'autre ou j'ai rien, donc je dois savoir si y avait un pattern.
+si j'avais pas prévu 
+sinon je prends un DType et je rajoute la possibilité d'une tvar si le constructeur en prévoyait une.
+dès que jai un constructeur imbriqué, j'ai une tvar du coup.
+ensuite quand je génère le candidat je peux dire ce qui est imposé c'est quand il y avait une tvar ?
+nan c'est cheum de ouf
+sinon je fais tout en même temps non ?
+en fait je veux savoir ce qui est forcé et ce qui ne l'est pas.
+donc je peux parcourir le pattern et l'autre
+en fait le prob c'est que pour l'instant je mets les types demandés par le pattern et le sous pattern.
+mais ils sont pas forcément forcés.
+donc faudrait juste sortir ce qui est forcé par le constructeur et le comparer.
+Ok on est bons jusqu'ici.
+comment on fait ?
+avec une subst peut être ?
+genre je mets juste le pattern attendu ?
+donc je sors le pattern attendu en tant que liste.
+ensuite je compare la taille des 2 listes, si c'est pas bon je sors une erreur.
+
+donc je parcours : 
+j'ai 
+C forcé, Int pas forcé, a = Int forcé.
+je dois sortir un candidat en mode : 
+bon bref le problème technique la c'est que je dois sortir un sous candidat non ?
+mais osef non du sous candidat c'est juste la var de droite qui nous intéresse.
+a la limite je peux le mettre par defaut en var le truc de gauche et avoir le tuple en retour.
+
+Ok donc je sors le type de retour du pattern mais
+ - je remplace le type de base par une var.
+ - je renvoie la var ainsi que le type de base à côté (renvoyer un Maybe si c'est une var)
+
+une fois que j'ai ça ?
+je prends la valeur de gauche pour chaque sous type et je compare avec l'argument expected.
+si j'attendais un C et que j'ai un C -> je l'ajoute a h
+si j'attendais un C et que j'ai un D -> je sors une erreur
+si j'attendais un a et que j'ai un C -> je laisse le C
+si j'attendais un a et que j'ai un a je fais rien.
+si j'attendais un C et que j'ai un a je dis que a est C et je l'ajoute a h.
+
+ok donc on veut avoir stocké h qui nous dit quelque chose sur les candidats non ?
+la valeur de gauche apparait que dans le candidat en fait.
+si j'avais une valeur de gauche je dis qu'elle apparait dans le candidat.
+on doit comuniquer 2 choses : 
+le type des variables pour la branche : si j'avais une variable et que j'ai un C je l'ajoute.
+le type du candidat pour le case : C a par exemple.
+le type qui est du au pattern : C Int par exemple.
+bon qu'est ce que c'est h maintenant, en fait il me faut pas h, il me faut un truc qui stocke le candidat ?
+genre quand j'attends un C, quoi qu'il arrive derière je dis que je l'attendais. et dans tous les cas ça va être un C deriere.
+donc au final je sors juste mon candidat ? mais je peux pas.
+enfin si mais comment ? psk mon unification elle va me donner un truc 
+psk les valeurs elles sont ?
+hmmm
+si j'ai 
+a -> (C k Int) -> C (C k Int) a
+args : [a, CI i j] 
+targs : [a, C Int Int]
+j'ai lancé des unifications (i : Int, j : Int)
+expectedArgs : [b, C (C k Int)]
+tret : [C (C k Int) b]
+
+
+si je tag avec une * ce qui était attendu
+je lance l'unification (a : b)
+j'ai les args : a, C* Int Int*
+et j'ai le tret : C (C Int Int) a => car le seul truc nouveau est le Int a la fin.
+
+si par contre j'avais eu 
+a -> (j k Int) -> C (j k Int) a
+j'aurais eu un C alors que j'attendais un j et donc j'aurais lancé j : C
+en fait ce qui fait chier c'est de pas pouvoir appliquer direct la subst.
+mais en fait si je le fais j'ai pas de probs.
+
+genre la j'ai
+a, C Int Int <=> b, C k Int
+je trouve direct k = Int, b = a.
+j'applique au retour et j'ai : 
+C (C Int Int) a
+ensuite je compare et je trouve C (j Int l) a mais en fait non psk le type de retour c'était CI l m
+bref !!!
+je l'ai un peu plus la.
+je génère la subst :
+Int -> Int -> C Int Int <=> [i, j] je trouve i : Int, j : Int
+j'applique au retour : C Int Int -> C Int Int
+je fais mon candidat : C i j
+j'arrive plus haut, je génère la subst : 
+a -> (C k l) -> C (C k l) a <=> [b, (C Int Int)] je trouve k : Int, l : Int, a : b
+j'applique au retour : C (C Int Int) b
+je fais mon candidat : C (d ? ?) b 
+
+
+si mon candidat me dit a gauche que c'est un C que j'attendais pas je force le C.
+si il me dit que c'est un a et que j'attendais un a je laisse un a.
+si il me dit que c'est un a et que j'attendais un C. je laisse un a.
+ok donc la diff entre gauche et droite c'est que a gauche j'écoute pas mon candidat alors qu'a droite si.
+genre a droite si le candidat dit que c'est un b et que j'ai un Int je mets un Int
+mais si il me dit que c'est un Int, je laisse un Int.
+par contre si il me dit que c'est un b et que j'ai un b je laisse un b.
+la diff avec la gauche c'est que si il me dit que c'est un Int et que j'ai un Int 
+
+
+au final c'est la même chose que la derniere fois mais je compare en paralèle mes arbres.
+donc on reprend.
+la même chose mais je crée mon candidat à chaque étape.
+Int -> Int -> C Int Int <=> [i, j] je trouve [](i : Int, j : Int).
+j'applique au retour : C Int Int.
+je fais le candidat en comparant le retour et le candidat : C i j
+plus haut je fais les deux substs :
+a -> (C k l) -> C (C k l) <=> [b, C i j] je trouve [i : k, j : l](a : b).
+a -> (C k l) -> C (C k l) <=> [b, C Int Int] je trouve i : Int, a : b, j : Int.
+j'applique au retour : C (C Int Int) b
+j'applique au candidat : C (C k l) b
+je compare ce que j'attendais : C (m k l) b
+si b devient Bool plus tard : C (m k l) Bool.
+
+mainteant si j'avais eu Int a la place de k dans le cons et CA au lieu de CI
+premiere étape : 
+i -> j -> C i j <=> [i, j] je trouve i : Int, j : Int
+j'applique au retour : C i j
+j'applique au candidat : C i j
+plus haut je fais les deux substs : 
+a -> (C Int l) -> C (C Int l) a <=> [c, C i j] je trouve i : Int, j : l, a : b
+a -> (C Int l) -> C (C Int l) a <=> [c, C i j] je trouve i : Int, j : l, a : b
+j'applique au retour : C (C Int j) b
+j'applique au candidat : C (C Int l) b
+je compare : C (m k j) b
+et vu que b et m sont liées à des variables si elles finissenet par devenir Int et Bool: 
+C (m k Int) Bool
+wow ok donc j'ai a peu près ce qu'il me faut.
+
+a chaque étape je renvoie 2 types au lieu d'un.
+je crée deux substs pour les types et je les applique au type de retour pour renvoyer le nouveau type.
+ensuite je compare le type de retour avec le candidat et j'enlève ce qui est attendu par le type de retour.
+ensuite je renvoie les deux types que j'ai eu.
+
+autre option bcp plus simple, séparer les sous patterns en plusieurs cases.
+genre 1000 fois plus simple et équivalent.
+je regarde quand j'ai la même branche et je refais le truc.
+comme ça après j'ai juste un seul constructeur avec une seule branche et j'imagine que le type final respecte les
+mêmes propriétés.
+
+l'avantage si j'ai pas de pat imbriqué c'est que je peux pas créer de variables et forcer un type en même temps.
+genre c'est soit je crée une variable, soit je donne un sous type.
+et si je donne un sous type, les tvars qu'il introduits sont forcéments intouchables oui
+j'ai que celui de gauche de profondeur 1 qui peut pas se valider lui même (et celui de gauche de profondeur 0 aussi)
+
+bon en fait si j'ai une version avant et une version après
+j'ai le constructeur qui demande : 
+a (f a) Int
+si j'ai 
+(f a) (Maybe Int) Int
+je sais que je demande 
+(f a) (Maybe Int) a
+donc en gros si j'ai
+TVar | TCon -> TCon
+TCon | TCon -> TVar
+TCon | TCon -> si c'est les mêmes.
+yep c'est la qu'il y a un bail différent.
+ok mais si j'ai changé une tvar en une tvar je fais quoi ? je dis que j'ai vraiment changé ou pas ?
+psk si c'est une tvar ????
+ptn fck un exemple svp.
+en fait le prob c'est si j'ai changé une tvar dans une sous structure je pense
+ah shit j'ai l'impression de retomber sur le même prob.
+en gros j'ai des variables qui sont données par le constructeur.
+ah oui c'est ça en fait.
+je peux avoir besoin de ces sous variables ?
+en gros c'est quoi le prob ?
+a la base je veux pouvoir dire quelle est la structure la plus spécialisée commune a tous les constructeurs.
+ah att je l'ai ptet
+genre si j'ai
+Int
+(f a)
+je peux pas reposer sur le (f a) qui soit autre que la première valeur.
+mais dès fois je veux pouvoir reposer dessus.
+mais du coup si j'avais pas un Int en haut j'aurais eu mon (f a) sans problèmes.
+donc en gros la je fais quoi ?
+est-ce que juste donner la structure la plus spécialisée ?
+ah w8 je l'ai perdue.
+on le refait.
+ici je veux pouvoir dire a l'autre, quelles variables il peut utiliser.
+en combinant les trucs je veux pouvoir dire
+La structure tu peux l'utiliser en tant que tel.
+ah mais j'ai un problème.
+psk soit je veux utiliser la structure pour prédire la sortie du case, soit je veux utliliser la tvar pour ailleur.
+sauf que si j'utilise la structure ?
+hmm on regarde les exemples 
+ah mais si j'ai spécialisé la tvar, c'est qu'elle est forcément utilisée par quelque chose d'autre non ?
+genre une fonction etc...
+mais est-ce que je vais le voir qu'elle est utilisée ?
+genre si j'appelle const 1 a, mon a il est utilisé. hmm mais est-ce que je peux avoir une fonction qui utilise a
+hmmm, si je l'utilise avec autre chose qu'une 
+la question c'est est-ce que je peux être spécifique de plusieurs façons ?
+oui a priori je peux. mais est-ce que je peux être spécifique de plusieurs façons compatibles ?
+spécifique ça veut dire quoi dans ce cas ?
+en gros je veux pouvoir demander des trucs plus spécifiques, mais peut-il y avoir plusieurs possibilités ?
+genre si j'avais 
+a (f a) et que j'ai besoin du (f a) ?
+ah mais la j'ai le problème d'avant ça y est.
+en gros si j'ai
+a (f a) -> (f a)
+a b     -> b
+je veux a b -> b comme type final.
+et du coup je veux pas avoir gardé un type candidat en mode (f a)
+bon on revient.
+la question c'est de savoir qu'est ce que mon candidat peut être au max ?
+genre la a (f a) et a b j'ai gardé a (f a)
+mais si a (f a) est créé par autre chose que le candidat (fmap par ex) je dois garder a (f a)
+ah je l'ai.
+si j'ai f b dans mon retour et que j'ai (f a) dans mon entrée, je vais pas pouvoir exprimer mon retour sans f.
+et du coup la en disant (f a) bla bla je me suis niqué.
+ok ça va mieux.
+donc ça veut dire qu'on va pas pouvoir cheese avec une seule entrée.
+par contre j'ai bien un h en entrée, qui me dit ce qui était demandé par le constructeur.
+mais ce qui peut être demandé c'est
+- égalité de tvars
+- TCon
+- structure.
+donc il me faudrait un moyen
+si j'ai
+a (Maybe Int) (f Int) Bool
+et
+b (Maybe Int) ((Prod Int) Int) Bool
+h c'est :
+Int : k
+Maybe : l
+Maybe Int : m
+Int : n
+Bool : p
+((Prod Int) Int) : q
+
+Ok je génère ça, mais pour ça il me faut un arbre a TVar assez grand.
+et pour ça je dois savoir quelle est la structure la plus grande.
+et la j'ai déjà créé mon tvar tree avec la structure la plus grande possible.
+ensuite le case est simple.
+si j'avais un TCon et que je l'ai toujours : je le met dans h.
+si j'avais une structure et que je l'ai toujours à l'identique, je relance en dessous et je mets dans h.
+
+ah j'ai le problème de la structure à l'identique.
+si j'ai changé le f en g c'est que je l'ai utilisé ? ptet pas psk c'est ptet juste pour faire un fmap
+mais si j'ai fait un fmap il faut conditionner sur le f.
+ou si je l'ai utilisé pour faire un const, ou dans une liste. ouais mais j'ai jamais utilisé le f en question non ?
+genre si j'ai une tvar mais qu'elle est utilisée en dehors par contre, genre j'ai créé une fonction qui utilise 
+un autre case.
+si j'ai créé cette fonction qui utilise un autre case et que je lance a dessus, je vais avoir une substitution.
+et je veux pas qu'il disparaisse, ou pas forcément.
+au pire je le garde non ? je dis je garde la possibilité de remplacer la structure si je veux.
+donc je génère une tvar pour la structure et pareil pour en dessous.
+faut juste pas générer des trucs pas possibles.
+ah mais si j'ai
+(f a) et que j'utilise a quelque part je veux pas que ça valide un (h : f a) pour tout (f a).
+sauf que j'ai dit que je voulais que h soit compatible avec (f a) plus tard.
+pour que h soit compatible avec f, il faut quoi ?
+la par ex j'ai gardé la variable h.
+elle vaut b | (f a)
+j'arrive sur le reste et je dis que (f a) apparait dans la sig, ou juste que f est Maybe.
+alors je trouve que (Maybe a) est b.
+du coup la c'est pas de problèmes.
+ok faut juste retenir ce qu'ils étaient a la base.
+genre faut pouvoir le requeter des deux côtés.
+donc il me faut une HashMap avec toutes les variables du tvarTree en mode 0 remplacements.
+si j'avais une structure et que je l'ai toujours, je lance en dessous et je l'ajoute a h.
+si j'avais une TCon et que je l'ai toujorus, je l'ajoute a h.
+si j'avais une TVar et que j'en ai une, je l'ajoute.
+si j'avais une TVar et que j'ai une structure, je l'ajoute pas.
+si j'avais une TVar et que j'ai un TCon je l'ajoute pas.
+
+Ok cas de j'avais une tvar et j'en ai une autre ? ça veut dire que soit :
+elle est utilisée en mode const ou pour mettre dans un Maybe etc...
+soit elle est utilisée ailleurs dans un autre case ou dans la sig.
+si c'est le cas que se passe t'il ?
+
+autre ex :
+j'ai (f a) qui devient (f Int), 
+si je remplace par h en disant : compatible avec (f Int) et que j'ai un remplacement de Int ailleurs ?
+je peux les combiner pour un truc potable ? ah shit y a bien une différence entre sortie et entrée.
+mais elle est simple c'est juste que pour l'entrée le remplacement peut être fait qu'à un seul endroit.
+ouch on reviendra dessus !!!
+
+pour la tvar :
+si elle est utilisée ailleurs, je vais la remplacer ?
+si c'est dans la sig : ptn va falloir refaire le même bail ?
+
+ouais sinon gros bourrin je le fais pour tout, j'enlève ce qui est pas compatible.
+genre toutes les h qui fail ?
+ouais mais comment je sais 
+le truc c'est que les contraintes c'est compliqué en vrai...
+
+pour la signature c'est simple c'est du pour tout A à priori. pareil pour utiliser fmap etc...
+le problème c'est si c'est une autre fonction.
+ultimement si ça sort juste une tvar c'est du pour tout A donc pg, mais si ça sort autre chose ?
+enfin le pour tout A caché dans une sous structure c'est embêtant.
+pas pareil que pour la struct. et surtout que si mon pour tout a il me rend des variables égales ?
+nah faut un autre moyen je pense.
+donc avant si j'utilisais un type pour quelque chose il apparaissait forcément
+soit dans le constructeur soit dans le type.
+la le problème que j'ai c'est que si j'ai utilisé 
+aaaaaaaaaaaaah
+ptet que je peux différencier les forall des non forall ?
+genre si j'ai une autre fonction qui utilise ma tvar quelque part, elle va finir par prendre une valeur.
+et quand elle la prend il faut juste compter les tvars de la signature comme des TCon c'est ça ?
+donc on va tout a la fin et on regarde les compatibilités comme ça.
+à priori y a que la signature on est d'accord ? si y a une autre fonction elle est définie soit en forall soit 
+en TCon soit en fonction de la signature.
+
+ok donc on dit qu'a la fin on veut juste vérifier certains trucs :
+quand je rentre dans la branche 
+
+en fait je veux que quand j'ai dit que ça passait dans la branche ça marche pour tout a.
+si dans la branche j'ai dit que j'avais besoin d'un Int, je peux pas dire ça marche pour tout a.
+si j'ai dit que j'avais besoin d'un a pour faire un maybe a, alors ça marche pour tout a.
+si j'ai besoin d'une contrainte qui apparait dans la signature par contre 
+ça veut dire que :
+||||| 1) |||||
+je dis que je peux tout remplacer sauf le cas ou j'ai une structure avec des sous morceaux irremplacables.
+ou le cas ou j'ai une tvar qui est devenue une TCon.
+sinon j'ai tout le reste remplacable.
+ensuite quand j'ai deux substitutions, je regarde ce qui est incompatible : 
+si j'avais Int ou Bool en dessous je peux pas en gros.
+je peux filtrer les incompatibilités grace au candidat.
+genre je peux forcer des variables à certains endroits.
+si j'avais dit Bool : a, et que j'ai Bool puis Int, je sais que c'est forcément a.
+mais ça m'aide pas trop pour le retour non ?
+par contre je peux faire pareil pour le retour non ?
+||||| 2) |||||
+pour créer l'arbre de retour.
+pour chaque noeud de l'arbre j'ai
+les valeurs de la branche, les valeurs proposées par les deux branches.
+je prends les valeurs en commun a droite qui sont compatibles avec celles de gauche.
+
+une fois que j'ai ça je fais quoi ? psk je sais toujours pas pour les autres cases.
+bon y a deux pistes :
+1 - soit je dis que j'ai une spécialisation maximale et que les autres possibilités sont juste "plus générales"
+    auquel cas je peux ptet garder le squelette de la plus/moins spécialisée pour les autres cases.
+
+oui c'est le cas ?
+si j'ai b et (f a) je peux garder b : (f a) de toute façon je vais les réunir après.
+donc la j'ai quoi ?
+au final j'ai déjà mes variables a, b, c, d etc... c'est dans le candidat/type de retour.
+en fait je peux juste générer toutes mes contraintes direct non ? et générer les combinaisons.
+donc au final je sors des contraintes et des combinaisons en masse.
+les contraintes c'est quoi du coup ?
+c'est des contraintes pour le départ et le retour.
+pour le départ je veux juste que tout soit compatible :
+eg : toutes les variables qui sont remplacées par la substitution étaient remplacées par le constructeur.
+pour le retour c'est pareil, une structure ? ah non pour le retour je veux la structure maximale du candidat.
+ah en fait pour chaque candidat qui marche, je veux tester tous les retours possibles a partir de h.
+si j'en trouve un bon, je remplace dans le prochain case et je reconcilie encore.
+
+donc prochain coup on fait quoi ?
+on génère toutes les possibilités de candidats de manière un minimum opti.
+je passe donc dans la subst et je génère ? non c'est trop long.
+ptn mais ce qui fait chier c'est le a qui peut apparaitre autre part.
+ah mais attends !
+dans le case si je renvoie un f, je le renvoie partout. donc les autres case qui l'utilisent 
+
+le prob que je veux résoudre c'est quand j'ai un case qui spécialise en f.
+eg 
+CA a -> f a.
+et que f est un autre case :
+f = case i of 
+  ...
+si j'ai f qui demande que a soit dans la signature je dois dire que le retour c'est a.
+par contre si j'ai f qui 
+ah ouais mais attends, si j'ai f qui renvoie b je suis juste niqué pour unifier les retours.
+en fait je peux de toute façon pas unifier séparément.
+donc je peux faire quoi ?
+je peux dire si f va apparaitre ou pas ? est-ce que ça peut dépendre d'autre chose ?
+ah mais je suis niqué quand même.
+en vrai non je peux ptet me débrouiller a faire toutes les unifications avec des DTypes 
+OK DONC 
+on reprend du début du coup.
+je génère une série de variables possibles pour chaque entrée (tout ce qui n'a pas changé,
+    ou n'a changé que dans la branche et n'apparait pas dans la signature.)
+ah mais non sinon j'interdis juste les cases mutuellement récursifs.
+par contre j'ai toujours le cas des cases récursifs.
+si j'ai un truc récursif c'est quoi le prob ? je vais avoir ?
+att mais non j'ai dis que la récursion c'est soit avec fix, soit avec une sig.
+donc fix il fait quoi ? au final rien, il donne juste une structure de retour à mon candidat je crois.
+
+OKK donc je fais les structures dans l'ordre d'utilisation, et pas de cycles authorisés.
+pour savoir quelle structure à besoin de quelle autre je fais comment ?
+je regarde si une des variables de retour de ma réconciliation apparait dans les spécialisations de l'autre.
+
+donc il me faut : 
+ - un ID par réconciliation
+ - une hashmap pour chaque réconciliation qui dit si on est dedans/fini/a-faire.
+ - une fonction pour dire si je dépend d'une réconciliation.
+pour chacune je parcours toutes les autres jusqu'a ce que j'en trouve une qui dépend d'aucune autre.
+OK on code, on teste, on ajoute aux tests.
+
+la le problème que j'ai c'est que je peux pas deviner le type candidat car faudrait remplacer les types.
+en soit ça devrait pouvoir se faire non ? je crée une subst simple à chaque fois en plus.
+c'est forcément des tvars.
+genre si j'ai ma liste de valeurs attendues et ma liste d'autres je peux les mettres en paralèlles.
+
+en gros j'ai mon type de retour et je veux remplacer les variables dans le type par autre chose.
+eg si j'ai 
+a -> b -> Prod a b -> C a b
+et que dans a j'ai True
+je trouve que a devient Bool et donc je remplace a par Bool dans le retour.
+si au lieu de Prod a b j'avais Prod (f Int) (b) je remplace a par f Int
+mais si au lieu de (f k) j'avais f Int, je... bref t'as compris.
+
+mais j'ai l'autre problème du coup T.T
+si elles sont égales 
+1) de base
+j'avais 2 valeurs égales donc elles sont égales partout, donc la subst sera la même partout donc pas de probs ?
+2) après typage
+Je remplace depuis le type pas candidat de toute façon donc elles seront pareilles ? non du coup je peux pas remplacer 
+OK si j'avais a et b et que j'ai remplacé les deux par c, quand je refine les deux je suis niqué ? psk je dis que mon 
+type en cet endroit peut être deux vals différentes. sauf si je fais ce que j'essaye de faire, d'essayer de remplacer direct.
+genre dire je peux avoir soit c soit le remplacant.
+genre si j'ai remplacé a et b par c, je dis c peut être a ou b ? mais dans ma généralisation je vais pas forcer le même.
+donc faut faire pareil pour les contraintes d'égalité j'imagine.
+ah mais non j'uniformise pas le type du pattern, juste l'actuel !
+et dans celui la elles sont déjà égales les variables.
+
+donc pas de prob : 
+je crée une liste de substitutions.
+a partir de ça je peux avoir un arbre avec une liste de possibilités à chaque fois.
+je garde les possibilités ? ah mais j'ai un vrai problème la du coup.
+psk soit je teste toutes les combinaisons de substitutions possibles (ce qui est galère)
+ah w8, je remplace c par i et c par f j'ai un problème du coup non ?
+psk j'ai dit que f était compatible avec c et que 
+
+nn att.
+
+pour l'instant j'ai une liste de valeurs qui doivent être compatibles pour chaque noeud.
+si elles sont toutes compatibles, je 
+ah non en fait je veux surtout sortir celles qui sont imposées.
+a partir de ça j'ai un nouveau tvar tree, je le réduis autant que possible.
+ensuite a partir de ce tvar tree je sors les possibilités de remplacement pour chaque branche (seulement pour les trucs qui ont été généralisés)
+après je compare les retours de la même façon à peu près. bref on verra après pour ça.
+la l'autre problème c'est de voir si une variable doit être égalisée.
+si c'est le cas alors faut le faire dans le tvar tree aussi. ou alors dans mes substitutions générées, je regarde si j'ai deux fois la
+hmm, je sors plein de valeurs mais faudrait savoir si elles sont au même endroit au final.
+
+donc je peux sortir plein de valeurs et checker après si y en a qui sont pareilles non ?
+
+nan je préfère regarder quelles valeurs sont les mêmes et sortir un arbre qui me dit ou elles sont
+
+OK ça ça a l'air fun au moins.
+je veux faire 2 fonctions : 
+- une qui me dit quelles tvars de mon tree doivent être forcées
+- une qui associe chaque tvar avec son equivalent tvar tree et qui cherche si y en a une pareil et retourne les deux.
+- ne pas oublier dans le candidat d'enlever le type de base des sous patterns à chaque fois.
+pour ça on a dit quoi ? que dans le candidat pour chaque sous pattern j'enlève la valeur la plus a gauche.
+vérifier que ça marche avec tous les cas
+
+Ok donc le collapse du type candidat final ça marche comment ?
+psk la chuis un peu embêté, j'arrive pas a savoir quand tout était prévu.
+faudrait renvoyer des marques pour dire quand une structure n'est pas prévue.
+genre pour tout le tvar tree, à chaque fois que tout est remplacé dessous et que la structure est prévue je marque le truc.
+hmm compliqué, trouve mieux.
+faut juste vérifier que pour chaque tapp qui existe des deux côtés, si j'ai des variables pas remplacables etc...
+donc oui faudrait renvoyer un bool avec chaque truc.
+comme ça je peux dire que tel sous pattern peut être écrasé 
+
+si dans mes remplacements j'ai dit que tel variable était une autre variable et qu'après je dis que c'est un TCon, ça veut dire que 
+je génère une contrainte d'unification en plus, du coup il faut l'appliquer partout.
+partout : 
+  - dans les branches.
+  - dans le type de retour
+  - dans les specialisations
+  - dans 
+
+  je peux ptet gérer ça automatiquement en faisant une unification à chaque fois.
+
+pour les vars identiques on avait dit quoi ? je sors toutes les (tvar : tvar) et je regarde ce qui est pareil a droite mais pas a gauche ?
+ouais j'ai l'impression que c'est le seul choix.
+du coup je prends tous les couples original/remplacement, je les double (cand, act) (cand', act') et je check cand != cand' && act' == act 
+ensuite pour chaque couple je dis que les variables doivent être identiques.
+
+
+ok maintenant j'ai un prob, les double quotes pour forcer le collapse ça marche pas.
+psk si j'ai besoin d'un sous truc dans quelque part t'as compris.
+si j'ai forcé la structure quelque part je suis niqué.
+donc faut trouver les structures pas prévues et quand j'en trouve une j'ajoute les sous variables à ce qui ne peut pas être forcé.
+
+ok donc le uncollapsables c'est si j'ai un 'f 'a -> f a j'ai le droit de le collapser mais pas obligé.
+genre j'ai une structure minimale que j'ai le droit de collapser.
+
+je dois donc génerer les deux possibilités dans mon remplacement non ?
+oui.
+du coup il me faut déjà une substitution en 2d.
+ensuite pour chaque 
+
+On finira le collapsable en faisant les tests.
+
+pour l'instant je fais le retour ça va être satisfaisant si ça marche ne seraitce qu'a 5%
+il faut que le type final puisse unifier avec tous les sous constructeurs non ?
+non avec au moins un d'entre eux avec la bonne subst plutôt.
+ptn chaud.
+en fait le prob c'est que ceux qui forcent forcent pas assez je crois.
+genre par ex la tvar est pas assez forcée.
+ah mais oui c'est ça
+D Int Bool et D Int Int peuvent pas marcher psk ils unifient pas entre eux.
+donc il m'en faut une qui peut unifier avec tous ?
+mais à quel moment je check ?
+ah mais non juste avec les types de retour non ?
+genre si à un moment j'ai un Int en retour je peux pas dire que c'est un Bool dans le truc final logique.
+
+on peut juste regarder si ça change base aussi non ?
+vu que tout le reste est fait j'imagine que ça marche.
+verifier que les signatures sont equivalentes ? si oui on est bons.
+
+=================================================================================
+============================ TENTATIVE D'EXPLICATION ============================
+=================================================================================
+
+Important avant de commencer psk c'est très utile pour la suite :
+tout est basé sur le fait qu'il n'y a qu'un seul case comme ça dans chaque fonction et qu'il est résolu a la fin
+donc la substitution faite dedans est la derniere.
+
+j'ai le type d'entrée général TEG.
+j'ai le type du constructeur d'entrée TEC
+j'ai le type d'entrée de la branche i : TEI
+j'ai le type de sortie de la branche i : TSI
+et j'ai le type de sortie général : TSG
+niveau substitution j'ai : 
+la substitution donnée par le constructeur : h
+la substitution donnée par la branche : f
+la transformation donnée par la branche : u
+la transformation générale : g
+
+on a donc : 
+TEG -g-> TSG
+TEG -h-> TEC -f-> TEI -u-> TSI
+h apporte la preuve de certaines spécialisations
+on a aussi
+TEG -g-> TSG -h-> TSI
+car si le code est valide pour TSG et que h $ TSG = TSI alors le code est valide pour TSI
+car h n'est pas au même niveau que les autres flèches, c'est une preuve pas un code de l'user.
+
+Maintenant pour déterminer TEG on veut savoir quelles contraintes il doit imposer aux branches
+exemple simple pour l'instant : 
+j'ai deux facons de construire C
+CA :: a -> C a
+CI :: Int -> C Int
+si j'ai le pattern CI i, alors je sais que le type de cette branche est forcément CI Int
+si j'ai au contraire CA i, alors i n'est pas forcément un Int.
+si i s'avère être un Int dans le deuxième cas, il faut que la contrainte apparaisse dans TEG 
+En gros je veux que les contraintes mises par autre chose que le constructeur s'appliquent sur TEG.
+
+Rappel important avant les constructeurs imbriqués : 
+Lorsque je pattern match, je veux pouvoir assurer la totalité : 
+Pour chaque type unifiant avec TEG, touts les constructeurs compatibles doivent être couvers par une branche.
+je peux pas transformer CA Bool en CA a car je pourrais mettre autre chose dans le a et passer dans cette branche.
+ça pose problème psk on a dit qu'on gérait les CA pour tout a et c'est ptet pas le cas 
+(psk ce constructeur accepte les String et Int etc... aussi)
+
+Pour un constructeur imbriqué c'est pareil, le type est forcé si il n'était pas 
+prévu par le sous constructeur.
+exemple dans 6 cas (on rajoute CC :: C (C a), CCI :: C (C Int) et CR :: C (k a))
+
+CA (CI Int) -> je force C (C a) car tout ce qui rentre dans C (C a) et dans la branche est forcément C (C Int)
+CA (CA Int) -> je force C (C Int)
+CC (CI Int) -> je force t a     car tout ce qui rentre dans CC est forcément C (C a) et pareil pour C (C Int)
+CC (CA Int) -> je force t (k Int)
+CR (CI Int) -> je force C (C a)
+CR (CA Int) -> je force C (C Int)
+CCI (CI Int) -> je force C a
+CCI (CA Int) -> je force C a
+
+on voit qu'on applique le type de base du sous pattern (C) comme une TVar de ce sous pattern 
+et les autres types du sous pattern par rapport a lui
+et quand le constructeur demande une contrainte a n-2 c'est pareil que n-1 (je suis passé dans une branche qui me le demande)
+en fait je peux juste sortir une liste de collapse ainsi qu'une liste d'égalités.
+
+
+
+=================================================================================
+=================================== A tester ====================================
+=================================================================================
+
+
+plusieurs depth de patterns nestés
+les uncollapsables.
+plusieurs fois le meme pattern (CA (CI i j) et CA (CB k l)) pour la complétion.
+des substitutions qui créent de la structure dans des patterns qui n'en ont pas.
+un test pour chaqu'un de ces cas :
+
+CA (CI Int) -> C (C a) 
+CA (CA Int) -> C (C Int)
+CC (CI Int) -> C a    
+CC (CA Int) -> C (k Int)
+CR (CI Int) -> C (C a)
+CR (CA Int) -> C (C Int)
+CCI (CI Int) -> C a
+CCI (CA Int) ->  C a
+
+vérifier que je collapse bien le candidat quand je peux (ici si j'ai que des CCI (CI Int) je veux C a en candidat)
+
+Erreur quand mauvais nombre de vars dans pattern.
+très long mais passer dans tous les cases de Infer et vérifier qu'un test passe dedans.
+
+Ou alors je crée une structure minimale avec tout à gauche, et à partir de ça je rajoute des tvars jusqu'à ce que j'ai tout géré.
+watch galère de ouf ça non ? autant faire une liste de bool non ? ou refaire complètement le tvar tree ?
+hmm fck.
+ou alors je crée le tvar tree comme ça de base ?
+chaque branche renvoie l'arbre minimal dont elle a besoin. ensuite je prends le maximal de tout ça ?
+Ok mais est-ce qu'il n'y a pas moyen de renvoyer l'arbre en même temps.
+genre si la branche à besoin de plus que ça.
+hmm renvoyer l'arbre en même temps pour chaque branche ça peut se faire mais faut fold avec l'arbre de base aussi.
+nan en vrai j'ai juste envie de renvoyer plein d'arbres min.
+genre je renvoie une liste de bool ou un Fix(Maybe(Either)) psk c'est plus drole.
+ensuite je combine ces listes ?
+this that both plutôt non ?
+sinon je crée ma structure en plus
+nan un These a 
+
+tester ptet si dans le ArrowType from to on a plusieurs tvars pareilles ou des Int etc...
+verifier que si on applique une subst a une tvar pas dans base ça se repercutera pas sur base.
+
+=================================================================================
+===================================== TODO ======================================
+=================================================================================
+
+les outTypes faut checker ceux qui unifient et enregistrer la substitution que ça fait.
+ensuite apliquer la substitution au type de base avant de l'unifier et regarder pour lesquels ça marche.
+ensuite on a tous les (Substitution, Type)
+
+tester les uncollapsables sur le second paramètre mais enregistrer celui la.
+vérifier les cas ou on peut avoir plusieurs solutions.
+verifier la compatibilité entre le type d'entrée final et les types locaux finaux.
+pour chaque type local final on extrai la spécialisation.
+
+=================================== DONE ========================================
+
+- faire la fonction qui renvoie les tvars de remplacement des variables identiques (juste chercher si elle existe 2 fois quoi)
+- ajouter des logs au parseur si y faut mais le réparer ou le tester.
+- trouver un moyen de dire qu'un pattern est pas forcé (l'ajouter dans les unions en fait.)
+- tester la création des candidats (vérifier que le collapse des (k a) marche bien)
+- réparer les cases qui marchent pas pour le forcage des tvars de l'arbre.
+- ajouter une fonction qui check le collapse (pour chaque variable, voir si elle est forcée nul part (double quote), ensuite parcourir l'arbre pour collapser).
+- ajouter une fonction pour tester que les remplacements sont compatibles (crée la subst en même temps probablement. ptet des problèmes ?)
+- créer le candidat final avec tout ça. 
+
+reflechissons : 
+
+-- qu'est ce qu'on veut vraiment checker : que tout unifie ? qu'ils unifient entre eux ?
+-- si b est un resultat d'unifications de rets alors il unifie avec tous les rets ? non.
+-- est ce que je veux garder les resultats d'unifications autres ?
+-- est ce que ça en crée vraiment de nouveaux surtout ?
+-- vu que j'ai plus ou moins la même structure a priori.
+
+j'ai la même structure de retour et quand je l'ai pas ?
+si j'ai :
+-> D (Maybe Int) Int
+-> D Int [Int]
+
+soit le maybe int vient de 'a', soit de f.
+F (Maybe Int)
+F Maybe Int
+
+-> D (Maybe Int) Int
+-> D Int [Int]
+ici je peux pas parce que ils sont pas pareils et ils peuvent pas venir du même.
+F Maybe (Maybe Int)
+F _ Int
+
+ok donc la question c'est est ce que je peux avoir une profondeur pas matchée a droite mais
+matchée a gauche ? a priori non. tout va être collapsé.
+donc maintenant on revient.
+
+on veut checker quoi 
+tous les types de retour sont obtenus par la substitution cand.
+le type final peut unifier avec tous ces types.
+le type final est le resultat de la branche car quand on applique cand, on revient sur la base.
+et c'est tout non ?
+on cherche juste un set de types qui unifient entre eux.
+sachant qu'ils sont obtenus a partir de la même structure (toujours la même forme a priori)
+alors on peut chercher le plus général de chaque liste ?
+non ça ça va pas marcher par contre. le plus général des fois.
+en fait je veux quoi ?
+tout a l'heure ça marchait parce qu'on retrouvait plusieurs fois le même si ça se trouve
+le result force donc : 
+pourquoi on voulait Bool : ?
+ah non c'est pas ça la question, pourquoi la y a pas des vars qui me permettent de virer les trucs ?
+
+le uncollapsables il me donne une structure entre candidat et argument
+si j'ai f a, g b il collapse
+ok donc si j'ai un tapp de chaque côté 

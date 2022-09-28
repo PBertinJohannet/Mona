@@ -1,0 +1,108 @@
+probleme du
+
+a -> b
+b -> c
+
+
+a b c
+si je fais b -> c  puis a -> b
+a c c >>> b c c 
+si je fais a -> b puis b -> c
+b b c >>> c c c
+
+alors je peux essayer de faire un graph de dépendance mais ça peut tourner non ? non ptet pas
+
+
+a -> b
+b -> c
+c -> Maybe a
+pas possible car type infini.
+donc donner un nombre a chacun avant de l'appliquer ?
+
+genre ici on prend
+a -> b = 2
+b -> c, on voit que la gauche depend de la droite de l'autre donc il est au dessus
+
+ok donc on implemente ça après si jamais on en a besoin.
+mais en vrai c'est n'imp de ouf cette histoire
+hmm je pense que ça va venir plus tard l'explication.
+
+ouais en vrai je suis pas ok avec ça du coup.
+soit on applique vraiment la sub partout comme ça on reste dans le bon ordre.
+mais y a forcement un moyen rapide de trouver le sens dans lequel on doit faire le truc non ?
+
+
+ah mais attends dans mon exemple ils sont tous pareils
+
+
+a -> Maybe b
+b -> Int
+
+a b Int
+
+
+si j'applique b -> Int en premier.
+a Int Int
+Maybe b, Int Int
+si l'autre sens : 
+Maybe b b Int
+Maybe Int, Int, Int
+
+ah sinon un autre truc je peux appliquer jusqu'a ce que ça change plus non ?
+
+ah autre solution sinon.
+Je regarde les tvars que j'ai modifiées à chaque fois et je les applique si elles sont à gauche.
+hmm pas mal ça.
+Ok on fait ça juste après.
+
+hmm on est ou donc.
+soit on crée un sort ?
+ah mais j'ai un sort dans un poset.
+ooooOOoOOOoooOh
+
+hmm c'est complexe cette histoire.
+
+
+hmmm
+
+
+
+a b c d avec
+
+b > d et c > a
+
+je prend d je le met a gauche de b
+a d b c
+et c'est bon.
+
+
+si j'ai a > c et b > a 
+je prend c je met a gauche
+c a b d
+ok donc pas dur la : 
+
+j'ai pas de 'g a gauche donc ballec.
+
+
+en gros c'est un espece de bubble sort, tant que c'est pas trié je continue.
+
+donc je génère des inégalités et je change ma liste tant qu'elles sont pas finies ?
+non c'est moche.
+
+ou en insertion ?
+
+je prend b : 1
+je recois a > b
+donc a : 2
+
+je recois c > b 
+donc c : 3
+je recois c > a
+
+sinon mode fun je le fais modifiées
+
+posetsort : [(String, String)] -> [String]
+
+ah mais du coup comment je fais ?
+je les met dans des Set et je fusione ?
+nan en vrai on va utiliser data graph lol

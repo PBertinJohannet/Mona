@@ -1,0 +1,28 @@
+
+decomposed is : C (C 'h)
+things : rec('k) : 'a -> 'j with 
+((C (C 'c) @ C (C 'c) -> Int),
+(C (C 'h) @ C (C 'h) -> Int))
+with type : 'a -> 'j solve =>
+ ========= start solving =========
+
+ unify : 'b -> C Int should unify with : Int -> C Int
+,'d should unify with : C
+,'e should unify with : Int
+,C Int -> C (C 'c) should unify with : C (C 'c) -> C (C 'c)
+,'f -> C 'f should unify with : 'g -> C 'g
+,'i should unify with : C
+,C 'f -> C (C 'h) should unify with : C (C 'h) -> C (C 'h)
+
+unify : 'b -> C Int and Int -> C Int
+found : 'b is Int
+
+unify : 'd and C
+found : 'd is C
+
+unify : 'e and Int
+found : 'e is Int
+
+unify : C Int -> C (C 'c) and C (C 'c) -> C (C 'c)
+
+TypeError : Cannot unify : Int with C 'c at fileName 10:1 at fileName 10:19

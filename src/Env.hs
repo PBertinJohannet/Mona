@@ -1,4 +1,6 @@
 {-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleInstances #-}
 
 module Env (
   TAst(..),
@@ -170,11 +172,14 @@ fromList xs = TypeEnv (Map.fromList xs)
 toList :: Env -> [(Name, Scheme)]
 toList (TypeEnv env) = Map.toList env
 
+instance Semigroup (EnvF a) where
+  (<>) = merge
+
 instance Monoid (EnvF a) where
   mempty = empty
   mappend = merge
 
-instance Substituable a => Substituable (EnvF a) where
+instance (Substituable a) => Substituable (EnvF a) where
   apply s (TypeEnv env) = TypeEnv (Map.map (apply s) env)
   ftv (TypeEnv env) = ftv (Map.elems env)
 

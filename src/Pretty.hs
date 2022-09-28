@@ -6,6 +6,7 @@ module Pretty where
 import Control.Arrow
 import RecursionSchemes
 import qualified Data.Map as Map
+import Data.List (intercalate)
 
 class Pretty a where
   pretty :: a -> String
@@ -20,7 +21,7 @@ instance (PrettyHisto f, Pretty a) => Pretty (Cofree f a) where
     where pretty' (a, b) = b ++ "`" ++ pretty a++"`"
 
 prettyL :: Pretty a => [a] -> String
-prettyL a = unwords (pretty <$> a)
+prettyL a = intercalate "," (pretty <$> a)
 
 prettyM :: Pretty a => Map.Map String a -> String
 prettyM a = unwords (showAssoc <$> Map.toList a)

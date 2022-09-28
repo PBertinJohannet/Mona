@@ -17,6 +17,8 @@ import Data.Maybe
 import qualified Data.Map as Map
 import Env
 import Subst
+import Error
+import Data.List
 
 type DispatchReq = (String, TExpr, Subst)
 
@@ -61,14 +63,13 @@ next = do
   dispatch nxt
   _ok
 -}
+
 data DispatchError
-  = ShouldNotHappen String
-  | MainNotFound
+  = MainNotFound
 
 instance Pretty DispatchError where
   pretty = \case
-    ShouldNotHappen s -> "Should not happen : " ++ s ++ "\n"
-    MainNotFound -> "Main not found \n"
+    MainNotFound -> "Main not found"
 
 type Dispatch a = ExceptT DispatchError (RWS Envs String DispatchState) a
 
@@ -86,7 +87,9 @@ class Dispatchable a where
 instance Dispatchable TAst where
   dispatch (TAst env cmp) = do
     case Map.lookup "main" env of
-      Nothing -> throwError MainNotFound
+      Nothing -> do
+        tell $ "did not found main in : " ++ mconcat (intersperse "\n" (pretty <$> Map.toList env))
+        throwError MainNotFound
       Just ex -> do
         ex <- dispatch ex
         modify $ register "main" ex

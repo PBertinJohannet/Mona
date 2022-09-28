@@ -1,9 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module Parser (
   parseModule,
-  toSyntax
 ) where
 
 import Text.Parsec
@@ -14,62 +14,89 @@ import qualified Text.Parsec.Token as Tok
 
 import qualified Data.Text.Lazy as L
 import RecursionSchemes
-import qualified Syntax as S
+import Syntax
 
 import Lexer
 import Type
 
 import Control.Arrow
 
-data Expr
-  = Var String
-  | App Expr Expr
-  | Lam String Expr
-  | Lit Int
-  | Case Expr [Expr]
-  | Fix Expr
-  | Position SourcePos Expr
-  deriving (Eq, Ord)
 
-type Statement = S.StatementF Expr
-type StatementAnn = S.StatementF S.Expr
+type NakedStatement = StatementF Expr
 
-toLoc :: SourcePos -> S.Location
-toLoc s = S.Loc (sourceName s, sourceLine s, sourceColumn s)
+toLoc :: SourcePos -> Location
+toLoc s = Loc (sourceName s, sourceLine s, sourceColumn s)
 
-toSyntax :: SourcePos -> [Binding] -> [BindingAnn]
-toSyntax s = fmap $ second (fmap $ annotate (toLoc s))
+--toSyntax :: SourcePos -> [Binding] -> [BindingAnn]
+--toSyntax s = fmap $ second $ second $ fmap (annotate (toLoc s))
 
-annotate :: S.Location -> Expr -> S.Expr
-annotate = anaCF myAlg
-
-myAlg :: Expr -> Either (S.ExprF Expr) (S.Location, Expr)
-myAlg = \case
-  Position s e -> Right (toLoc s, e)
-  e -> Left $ case e of
-    Var n -> S.Var n
-    App a b -> S.App a b
-    Lam a b -> S.Lam a b
-    Lit i -> S.Lit i
-    Case a b -> S.Case a b
-    Fix a -> S.Fix a
-
-withPos :: Parser Expr -> Parser Expr
+{-withPos :: Parser Expr -> Parser Expr
 withPos p = do
   pos <- getPosition
   e <- p
-  return $ Position pos e
+  return $ Position pos e -}
+
+class WithPos a where
+  withPosIn :: Location -> a -> CofreeF ExprF Location (Expr)
+
+instance WithPos Expr where
+  withPosIn l (In e) = e
+
+instance WithPos a => WithPos (ExprF a) where
+  withPosIn l e' = let e = withPosIn l <$> e' in (l :< fmap In e)
+
+withPos :: WithPos a => Location -> a -> Expr
+withPos l a = In $ withPosIn l a
+
+withPosE :: Location -> ExprF Expr -> Expr
+withPosE = withPos
+
+mapLoc :: (Location -> a -> b) -> Parser a -> Parser b
+mapLoc f p = do
+  pos <- toLoc <$> getPosition
+  res <- p
+  return (f pos res)
+
+mkCF :: WithPos a => Parser a -> Parser Expr
+mkCF = mapLoc withPos
+
+mkCFE :: Parser (ExprF Expr) -> Parser Expr
+mkCFE = mapLoc withPos
+
+mkCFfst :: WithPos a => Parser (a, b) -> Parser (Expr, b)
+mkCFfst = mapLoc $ \loc (a, b) -> (withPos loc a, b)
+
+mkCFsnd :: WithPos b => Parser (a, b) -> Parser (a, Expr)
+mkCFsnd = mapLoc $ \loc (b, a) -> (b, withPos loc a)
+
+mkCFunc :: WithPos a => Parser (b -> a) -> Parser (b -> Expr)
+mkCFunc = mapLoc $ \loc f -> ((withPos loc .) f)
+
+
+posInTuple :: Parser (a, b) -> Parser (Location, a, b)
+posInTuple p = do
+  pos <- getPosition
+  (x, y) <- p
+  return (toLoc pos, x, y)
+
+manyOne :: Parser a -> Parser (NonEmpty a)
+manyOne p = do
+  a <- p
+  others <- many p
+  return $ a :+: others
 
 -- returns the transformed function.
-pat :: Parser (Expr -> Expr)
-pat = patternId <|> patternParen
+pat :: Parser Pattern
+pat = patternParen <|> patternId
 
-patternId :: Parser (Expr -> Expr)
+patternId :: Parser Pattern
 patternId = do
+  spaces
   ident <- identifier
-  return $ \e -> Lam ident e
+  spaces
+  return $ Raw ident
 
-patternParen :: Parser (Expr -> Expr)
+patternParen :: Parser Pattern
 patternParen = do
   spaces
   char '('
@@ -77,82 +104,93 @@ patternParen = do
   patterns <- many pat
   char ')'
   spaces
-  return (App (Var $ "~" ++ patName) . foldr (.) id patterns)
+  return $ Pattern patName patterns
 
 integer :: Parser Integer
 integer = Tok.integer lexer
 
 variable :: Parser Expr
-variable = do
-  x <- identifier
-  return (Var x)
+variable = mkCF variable'
+  where
+    variable' :: Parser (ExprF Expr)
+    variable' = Var <$> identifier
 
 number :: Parser Expr
-number = do
+number = mkCFE $ do
   n <- integer
   return (Lit (fromIntegral n))
 
 lst :: Parser Expr
 lst = do
+  loc <- toLoc <$> getPosition
   char '['
-  e <- mychainlfirst expr putIn inList
+  e <- mychainlfirst expr (putIn loc) inList
   char ']'
   return e
-  where putIn a = App (App (Var "Cons") a) $ Var "End"
+  where
+    putIn :: Location -> Expr -> Expr
+    putIn loc a = withPos loc ((In (loc :< Var "Cons") `App` a) `App` Var "End")
 
 emptylst :: Parser Expr
-emptylst = do
+emptylst = mkCFE $ do
   char '['
   char ']'
   return $ Var "End"
 
 inList :: Parser (Expr -> Expr -> Expr)
-inList =
-  do spaces
-     string ","
-     spaces
-     return $ \a b -> App (App (App (Var "flip") (Var "Cons")) a) b
+inList = do
+  loca <- toLoc <$> getPosition
+  let appL a b = withPos loca $ App a b
+  spaces
+  string ","
+  spaces
+  return $ \a b -> appL (appL (appL (Var "flip" :: ExprF Expr) (Var "Cons")) a) b
 
 fix :: Parser Expr
-fix = do
+fix = mkCF $ do
   reservedOp "fix"
   x <- expr
   return (Fix x)
 
 lambda :: Parser Expr
-lambda = do
+lambda = mkCF $ do
   reservedOp "\\"
-  inLambda
-
-inLambda :: Parser Expr
-inLambda = do
   args <- many pat
   reservedOp "->"
   body <- expr
-  return $ foldr (.) id args body
+  simplifyLam body args
+
+simplifyLam :: Expr -> [Pattern] -> Parser Expr
+simplifyLam body args = do
+  loc <- toLoc <$> getPosition
+  return $ foldr ((withPos loc .) . lamPat) body args
 
 letin :: Parser Expr
-letin = do
+letin = mkCF $ do
+  loc <- toLoc <$> getPosition
   reserved "let"
-  a <- identifier
+  a <- pat
   reservedOp "="
   b <- expr
   reserved "in"
   c <- expr
-  return $ App (Lam a c) b
+  return $ App (withPos loc $ lamPat a c) b
 
 ifthen :: Parser Expr
-ifthen = do
+ifthen = mkCF $ do
+  loc <- toLoc <$> getPosition
   reserved "if"
   cond <- expr
   reservedOp "then"
   tr <- expr
   reserved "else"
   fl <- expr
-  return $ Case cond [App (Var "~True") tr, App (Var "~False") fl]
+  return $ Case cond
+    [PatternT (Pattern "True" []) tr,
+     PatternT (Pattern "False" []) fl]
 
 aexp :: Parser Expr
-aexp = withPos $
+aexp =
    parens expr
   <|> number
   <|> ifthen
@@ -165,13 +203,21 @@ aexp = withPos $
   <|> caseof
 
 caseof :: Parser Expr
-caseof = do
+caseof = mkCF $ do
   reserved "case"
   e1 <- aexp
   reserved "of"
-  cases <- sepBy inLambda $ char ','
+  cases <- sepBy caseline $ char ','
   return $ Case e1 cases
 
+caseline :: Parser (PatternT Expr)
+caseline = do
+  spaces
+  p <- pat
+  spaces
+  reservedOp "->"
+  body <- expr
+  return $ PatternT p body
 
 fromOp :: [Expr] -> Expr
 fromOp (e:es) = e
@@ -190,20 +236,20 @@ mychainlfirst p f op = do {a <- f <$> p; rest a}
 mychainr :: Parser a -> Parser (a -> a -> a) -> Parser a
 mychainr p op = do {a <- p; rest a}
   where rest a = (do  f <- op
-                      b <- p
-                      res <- rest b
+                      k <- p
+                      res <- rest k
                       return $ f a res)
                     <|> return a
 
 mychainl :: Parser a -> Parser (a -> a -> a) -> Parser a
 mychainl p = mychainlfirst p id
 
-
+-- type arr app
 mychainrl :: Parser a -> Parser (a -> a -> a) -> Parser (a -> a -> a) -> Parser a
 mychainrl p opr opl = do {a <- p; rest a}
   where
     rest a = more a <|> return a
-    more a = left a <|> right a
+    more a = right a <|> left a
     left a = do
       f <- opl
       b <- p
@@ -214,25 +260,26 @@ mychainrl p opr opl = do {a <- p; rest a}
       res <- rest b
       return $ f a res
 
-parseOperation =
-  do spaces
-     symbol <- string "+"
-           <|> string "-"
-           <|> string "=="
-           <|> string "*"
-           <|> string "|"
-           <|> string "."
-           <|> string ""
-     spaces
-     return $ case symbol of
-       "" -> App
-       s -> \a b -> App (App (Var s) a) b
+parseOperation :: Parser (Expr -> Expr -> Expr)
+parseOperation = do
+  loc <- toLoc <$> getPosition
+  let appL a b = withPos loc $ App a b
+  let varL a = withPosE loc $ Var a
+  spaces
+  symbol <- string "+"
+       <|> string "-"
+       <|> string "=="
+       <|> string "*"
+       <|> string "|"
+       <|> string "."
+       <|> string ""
+  spaces
+  return $ case symbol of
+   "" -> appL
+   s -> \a b ->  appL (appL (varL s) a) b
 
 infixOp :: String -> (a -> a -> a) -> Ex.Assoc -> Op a
 infixOp x f = Ex.Infix (reservedOp x >> return f)
-
-makeOp :: String -> Expr -> Expr -> Expr
-makeOp o a = App (App (Var o) a)
 
 expr :: Parser Expr
 expr = inExpr
@@ -247,8 +294,7 @@ inSpaces a = do
 parsePred :: Parser Pred
 parsePred = do
   cls <- identifier
-  tp <- parseType
-  return $ IsIn cls tp
+  IsIn cls <$> parseType
 
 parseType :: Parser Type
 parseType = mychainrl ((tvar <$> identifier) <|> inParen parseType) parseArrow parseApp
@@ -261,7 +307,9 @@ inParen p = do
   return r
 
 parseApp :: Parser (Type -> Type -> Type)
-parseApp = return TApp
+parseApp = do
+  spaces
+  return TApp
 
 parseArrow :: Parser (Type -> Type -> Type)
 parseArrow = do
@@ -283,8 +331,7 @@ parseScheme :: Parser Scheme
 parseScheme = do
   fall <- option [] parseForall
   preds <- try parsePreds <|> return []
-  tp <- parseType
-  return $ Forall fall $ Qual preds tp
+  Forall fall . Qual preds <$> parseType
 
 parsePreds :: Parser [Pred]
 parsePreds = do
@@ -304,10 +351,11 @@ inLet :: Parser (String, Expr)
 inLet = do
   reserved "let"
   name <- identifier
-  args <- many identifier
+  args <- many pat
   reservedOp "="
   body <- expr
-  return (name, foldr Lam body args)
+  ret <- simplifyLam body args
+  return (name, ret)
 
 consDecl :: Parser (String, Type)
 consDecl = do
@@ -315,13 +363,13 @@ consDecl = do
   name <- identifier
   reserved "="
   x <- parseType
-  optional semi
+  semi
   return (name, x)
 
+type NakedBinding = (String, NakedStatement)
 type Binding = (String, Statement)
-type BindingAnn = (String, StatementAnn)
 
-instdecl :: Parser Binding
+instdecl :: Parser NakedBinding
 instdecl = do
   reserved "inst"
   tp <- parseType
@@ -331,60 +379,48 @@ instdecl = do
   reservedOp "{"
   vals <- many $ do {x <- inLet; semi; return x}
   reservedOp "}"
-  return ("", S.Inst cls tp vals)
+  return ("", Inst cls tp vals)
 
-sig :: Parser Binding
-sig = second S.Sig <$> sigIn
+sig :: Parser NakedBinding
+sig = second Sig <$> sigIn
 
-classdecl :: Parser Binding
+classdecl :: Parser NakedBinding
 classdecl = do
   reserved "class"
   name <- identifier
   typename <- identifier
   reservedOp "="
   reservedOp "{"
-  sigs <- many $ do {x <- sigIn; semi; return x}
+  sigs <- many $ posInTuple $ do {x <- sigIn; semi; return x}
   reservedOp "}"
-  return (name, S.Class name typename sigs)
+  return (name, Class name typename sigs)
 
-letdecl :: Parser Binding
+letdecl :: Parser NakedBinding
 letdecl = do
   (n, e) <- inLet
-  return (n, S.Expr e)
+  return (n, Expr e)
 
-letrecdecl :: Parser Binding
-letrecdecl = do
-  reserved "let"
-  reserved "rec"
-  name <- identifier
-  arg <- many identifier
-  reservedOp "="
-  body <- expr
-  return (name, S.Expr $ Fix $ Lam name $ foldr Lam body arg)
-
-typedecl :: Parser Binding
+typedecl :: Parser NakedBinding
 typedecl = do
   reserved "data"
   name <- identifier
   tvars <- many identifier
   reservedOp "="
-  body <- many consDecl
-  return (name, S.TypeDecl tvars body)
+  body <- manyOne consDecl
+  return (name, TypeDecl tvars body)
 
-decl :: Parser Binding
-decl = try letrecdecl <|> letdecl <|> typedecl <|> sig <|> classdecl <|> instdecl
+decl :: Parser NakedBinding
+decl = try letdecl <|> typedecl <|> sig <|> classdecl <|> instdecl
 
 top :: Parser Binding
 top = do
-  x <- decl
-  optional semi
-  return x
-
-modl ::  Parser (SourcePos, [Binding])
-modl = do
-  bindings <- many top
   pos <- getPosition
-  return (pos, bindings)
+  (name, s) <- decl
+  optional semi
+  return (name, (toLoc pos, s))
 
-parseModule ::  FilePath -> L.Text -> Either ParseError [BindingAnn]
-parseModule = parse (contents modl) >>> fmap (fmap $ uncurry toSyntax)
+modl ::  Parser [Binding]
+modl = many top
+
+parseModule ::  FilePath -> L.Text -> Either ParseError [Binding]
+parseModule = parse (contents modl)
