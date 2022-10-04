@@ -6,7 +6,24 @@ The only constraint is that there must not be an expression with two case expres
 
 # Examples
 
-## Simple example
+
+## SafeList 
+
+Using GADTs to make a safe ```head``` function
+```
+data NonEmpty = | NonEmpty = NonEmpty;
+data Empty = | Empty = Empty;
+
+data List x y =
+  | Nil = List Empty a;
+  | Cons = a -> List b a -> List NonEmpty a;
+
+let safeHead = \(Cons a b) -> a;
+```
+Now ```safeHead``` will always return a result of the correct type.
+
+
+## More complete example
 
 Folding Natural numbers to Ints using a catamorphism on the Maybe functor :
 
@@ -47,21 +64,8 @@ let main = printInt (toInt four);
 ```
 Prints four ()
 
-## SafeList 
-
-Using GADTs to make a safe ```head``` function
-```
-data NonEmpty = | NonEmpty = NonEmpty;
-data Empty = | Empty = Empty;
-
-data List x y =
-  | Nil = List Empty a;
-  | Cons = a -> List b a -> List NonEmpty a;
-
-let safeHead = \(Cons a b) -> a;
-```
-Now ```safeHead``` will always return a result of the correct type.
-
 ## More examples 
 
 The folder ```test``` contains easly readable files (in markdown format) and examples that can be run with ```stack test```
+
+
