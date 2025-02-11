@@ -1,3 +1,5 @@
+*This is an unfinished project, some tests still don't pass*
+
 # Mona
 
 Mona is a project programming language with full type inference for GADTs,
@@ -6,6 +8,8 @@ The only constraint is that there must not be an expression with two case expres
 
 # Examples
 
+More complex examples are available there:
+https://github.com/PBertinJohannet/Mona/blob/master/test/gadts/ArgCount.md
 
 ## SafeList 
 
@@ -22,10 +26,42 @@ let safeHead = \(Cons a b) -> a;
 ```
 Now ```safeHead``` will always return a result of the correct type.
 
+## Simple example
 
-## More complete example
+Infers the type of the correct function and refuses the incorrect one.
+```
 
-Folding Natural numbers to Ints using a catamorphism on the Maybe functor :
+let main = printInt 4;
+
+data Bool = 
+    | True = Bool;
+    | False = Bool;
+
+data R a b= 
+    | RI = a -> R Int a;
+    | RB = a -> R Bool a;
+
+let correct_1 a = case a of
+    (RI i) -> 1,
+    (RB b) -> True;
+
+let correct_2 a = case a of
+    (RI i) -> 1,
+    (RB b) -> 0;
+
+
+let BToInt b = case b of (True) -> 1, (False) -> 4;
+
+let incorrect a = case a of
+    (RI i) -> 1 + i,
+    (RB b) -> BToInt b;
+
+```
+
+
+## Folding Natural numbers to Ints using a catamorphism on the Maybe functor :
+
+Nothing to do with gadts but shows the language correctly infers and execute "normal" types
 
 ```
 data Fix f = | Fix = f (Fix f) -> Fix f;
