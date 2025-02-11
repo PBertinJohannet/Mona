@@ -28,7 +28,7 @@ Now ```safeHead``` will always return a result of the correct type.
 
 ## Simple example
 
-Infers the type of the correct function and refuses the incorrect one.
+Infers the type of the correct function and refuses the incorrect one (explanation there: https://github.com/PBertinJohannet/Mona/blob/master/test/gadts/MoreComplexType.md).
 ```
 
 let main = printInt 4;
