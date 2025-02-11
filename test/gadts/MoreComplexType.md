@@ -66,7 +66,7 @@ let fail a = case a of
 
 ## Should refuse
 
-refuse coz subpattern C a b does not cover all type possibles (a != C a b)
+refuse because subpattern C a b does not cover all type possibles (a != C a b)
 ```
 data Bool =
   | True = Bool;
@@ -91,7 +91,7 @@ let correct a = case a of
 
 ### fail 
 
-todo
+todo explain
 ```
 
 data D a b = 
@@ -120,7 +120,7 @@ let correct f = \a -> case a of
 
 ## shuffle
 
-I have no idea why its here but lets go. maybe the same with composition at some point ?
+todo explain
 
 ```
 
